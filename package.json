@@ -1,0 +1,15 @@
+{
+  "name": "lumina-loop",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Lumina Loop: El Código de los Elementos. Videojuego educativo en pixel art (HTML5 + Canvas 2D + JavaScript puro).",
+  "scripts": {
+    "build": "node tools/build.js",
+    "test:levels": "node tools/tests/levels.js",
+    "test:puzzles": "node tools/tests/puzzles.js",
+    "test:walk": "node tools/tests/walk.js",
+    "test:menus": "node tools/tests/menus.js",
+    "test": "node tools/tests/levels.js && node tools/tests/puzzles.js && node tools/tests/walk.js && node tools/tests/menus.js"
+  },
+  "license": "UNLICENSED"
+}
