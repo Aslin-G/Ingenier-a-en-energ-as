@@ -460,8 +460,14 @@ class CodeLabScene {
       if (p.move) { this.removeAt(p.move); AudioSys.sfx('remove'); }
       return;
     }
-    if (tgt.startsWith('slot:')) {
-      const [, key, idxS] = tgt.split(':');
+    let tg = tgt;
+    if (tg.startsWith('line:')) {
+      // soltar sobre una línea = colocar justo debajo de ella
+      const path = tg.split(':')[2].split('.').map(x => isNaN(+x) ? x : +x);
+      tg = 'slot:' + pathKey(path.slice(0, -1)) + ':' + (path[path.length - 1] + 1);
+    }
+    if (tg.startsWith('slot:')) {
+      const [, key, idxS] = tg.split(':');
       const listPath = key === '' ? [] : key.split('.').map(x => isNaN(+x) ? x : +x);
       const idx = +idxS;
       let block;
@@ -592,27 +598,46 @@ class CodeLabScene {
       if (this.tab !== 'main') { const f = this.functions[this.tab]; drawText(g, 'FUNCIÓN ' + this.tab + '(' + f.params.join(', ') + ')', x + 6, ty, PAL.lilac); ty += 11; }
     } else drawText(g, 'PROGRAMA', x + 6, ty + 1, PAL.sun), ty += 11;
     const lines = this.buildLines(this.curList);
-    const showSlots = !this.locked && (UI.held != null || UI.dragging != null) && this.state !== 'running';
+    const holding = UI.held != null || UI.dragging != null;
+    const showSlots = !this.locked && holding && this.state !== 'running';
+    const editable = !this.locked && this.state !== 'running' && this.state !== 'paused';
     const LH = 11;
-    const areaTop = ty + 1, areaBot = y + h - 4;
     const visible = lines.filter(l => l.kind !== 'slot' || showSlots);
-    const maxLines = Math.floor((areaBot - areaTop) / LH);
+    const areaTop = ty + 1;
+    let areaBot = y + h - 4;
+    const listKey = lp => lp.join('.');
+    const slotId = l => 'slot:' + listKey(l.listPath) + ':' + l.idx;
+    // los huecos de inserción son finos (5 px) y solo crecen bajo el cursor: el programa no se duplica de largo
+    const rowH = l => l.kind !== 'slot' ? LH : (UI.hover === slotId(l) || UI.focus === slotId(l) ? 13 : 5);
+    // fila inferior reservada para el aviso «bloque en la mano» o el indicador de desplazamiento
+    { let tot = 0; for (const l of visible) tot += rowH(l); if (UI.held != null && !this.locked || tot > areaBot - areaTop) areaBot -= 12; }
+    const fitFrom = s0 => { let hh = 0, n = 0; for (let i = s0; i < visible.length; i++) { hh += rowH(visible[i]); if (hh > areaBot - areaTop) break; n++; } return Math.max(1, n); };
+    let maxScroll = 0; { let hh = 0; for (let i = visible.length - 1; i >= 0; i--) { hh += rowH(visible[i]); if (hh > areaBot - areaTop) { maxScroll = i + 1; break; } } }
     // auto-scroll a la línea activa
-    if (this.highlight && this.state === 'running') { const hi = visible.findIndex(l => l.kind === 'head' && pathKey(l.path) === pathKey(this.highlight.path)); if (hi >= 0) { if (hi - this.scroll >= maxLines - 1) this.scroll = hi - maxLines + 2; if (hi < this.scroll) this.scroll = hi; } }
+    if (this.highlight && this.state === 'running') { const hi = visible.findIndex(l => l.kind === 'head' && pathKey(l.path) === pathKey(this.highlight.path)); if (hi >= 0) { const fit = fitFrom(this.scroll); if (hi - this.scroll >= fit - 1) this.scroll = hi - fit + 2; if (hi < this.scroll) this.scroll = hi; } }
     if (Input.pointer.wheel && inRect(Input.pointer.x, Input.pointer.y, { x, y, w, h })) this.scroll += Input.pointer.wheel;
-    this.scroll = clamp(this.scroll, 0, Math.max(0, visible.length - maxLines));
+    this.scroll = clamp(this.scroll, 0, maxScroll);
+    const maxLines = fitFrom(this.scroll);
     let lineNo = 0;
     const nums = new Map(); lines.forEach(l => { if (l.kind !== 'slot') { lineNo++; nums.set(l, lineNo); } });
     let yy = areaTop;
-    const listKey = lp => lp.join('.');
+    // aviso claro (abajo) cuando hay un bloque «en la mano»
+    if (UI.held != null && !this.locked) {
+      const lbl = UI.held.tpl ? templateLabel(UI.held.tpl, this.cfg) : 'la línea';
+      rect(g, x + 2, areaBot + 1, w - 4, 11, '#4A3A10');
+      drawText(g, fitText('¿Dónde va «' + lbl + '»?', w - 64), x + 6, areaBot + 3, PAL.sun);
+      if (UI.btn(g, 'heldCancel', x + w - 56, areaBot + 1, 52, 11, 'CANCELAR', { color: PAL.coral })) UI.cancelHeld();
+    }
     visible.slice(this.scroll, this.scroll + maxLines).forEach(l => {
       const ind = x + 20 + l.depth * 9;
       if (l.kind === 'slot') {
-        const id = 'slot:' + listKey(l.listPath) + ':' + l.idx;
-        const st = UI.register(id, ind, yy, x + w - 6 - ind, LH - 1, { drop: true });
-        rect(g, ind, yy + 4, x + w - 8 - ind, 2, st.hover || st.focus ? PAL.sun : '#2A3570');
-        if (st.hover || st.focus) drawText(g, '+ insertar aquí', ind + 4, yy + 2, PAL.sun);
-        yy += LH; return;
+        const id = slotId(l), rh = rowH(l);
+        const st = UI.register(id, ind, yy, x + w - 6 - ind, rh, { drop: true });
+        if (rh > 5) {
+          rect(g, ind, yy + 1, x + w - 8 - ind, rh - 2, 'rgba(255,216,74,0.18)'); strokeRect(g, ind, yy + 1, x + w - 8 - ind, rh - 2, PAL.sun);
+          drawText(g, '+ PONER AQUÍ', ind + 5, yy + 3, PAL.sun);
+        } else rect(g, ind + 2, yy + 2, x + w - 12 - ind, 1, st.hover ? PAL.sun : 'rgba(255,216,74,0.45)');
+        yy += rh; return;
       }
       const b = l.b, cat = BLOCK_CAT[b.op] || BLOCK_CAT.act;
       const n = nums.get(l);
@@ -630,15 +655,24 @@ class CodeLabScene {
       if (active) { rect(g, ind - 2, yy, x + w - 4 - ind, LH - 1, 'rgba(255,216,74,0.25)'); drawText(g, '▶', ind - 8, yy + 2, PAL.sun); }
       if (isErr) { rect(g, ind - 2, yy, x + w - 4 - ind, LH - 1, 'rgba(255,107,107,0.35)'); drawText(g, '✗', ind - 8, yy + 2, PAL.coral); }
       if (l.kind === 'head') {
-        const lw = x + w - 6 - ind;
-        const st = UI.register('line:' + this.tab + ':' + pathKey(l.path), ind, yy, lw, LH - 1, { drag: b.locked || this.locked ? undefined : { move: l.path }, drop: b.op === 'blank' });
+        const canDel = editable && !b.locked && !holding && b.op !== 'blank';
+        const lw = x + w - 6 - ind - (canDel ? 13 : 0);
+        const lid = 'line:' + this.tab + ':' + pathKey(l.path);
+        // con un bloque en la mano, tocar una línea lo coloca justo debajo
+        const st = UI.register(lid, ind, yy, lw, LH - 1, { drag: b.locked || this.locked ? undefined : { move: l.path }, drop: b.op === 'blank' || (showSlots && !(UI.held && UI.held.move && pathKey(UI.held.move) === pathKey(l.path))) });
         if (b.op === 'blank') { UI.items[UI.items.length - 1].id = 'blank:' + pathKey(l.path); }
-        if (UI.clicked('line:' + this.tab + ':' + pathKey(l.path))) { this.sel = l.path; }
+        if (UI.clicked(lid)) { this.sel = l.path; }
         rect(g, ind, yy, 3, LH - 1, cat.color);
         if (selected) strokeRect(g, ind - 1, yy - 1, lw + 2, LH + 1, PAL.sun);
+        if (showSlots && st.hover && b.op !== 'blank') rect(g, ind, yy + LH - 2, lw, 2, PAL.sun);
         if (b.locked) drawText(g, '■', x + w - 12, yy + 2, '#5A6090');
         this.drawBlockLine(g, b, ind + 5, yy + 2, l.path, st.hover || st.focus, lw - 8 - (b.locked ? 10 : 0));
         if (st.focus && Input.lastDevice === 'keyboard') UI.focusRing(g, ind, yy, lw, LH - 1);
+        // borrar con un toque: ✗ al final de cada línea editable
+        if (canDel && UI.btn(g, 'del:' + this.tab + ':' + pathKey(l.path), x + w - 17, yy, 11, LH - 1, '✗', { color: PAL.coral, tip: 'Borrar esta línea' })) {
+          if (this.state !== 'edit') { this.state = 'edit'; this.resetWorld(); }
+          this.removeAt(l.path); AudioSys.sfx('remove');
+        }
         // burbuja de condición e iteración
         if (active && this.condBubble && (b.op === 'if' || b.op === 'while')) {
           const tx = this.condBubble.v ? 'VERDADERO' : 'FALSO';
@@ -657,8 +691,17 @@ class CodeLabScene {
       }
       yy += LH;
     });
-    if (!visible.some(l => l.kind === 'head')) drawPara(g, this.locked ? '' : 'Arrastra bloques desde la izquierda (o selecciónalos y toca una línea amarilla).', x + 10, areaTop + 16, w - 20, '#5A6090');
-    if (visible.length > maxLines) { drawText(g, '▲▼ ' + (this.scroll + 1) + '-' + Math.min(visible.length, this.scroll + maxLines) + '/' + visible.length, x + w - 6, y + h - 10, '#5A6090', { align: 'right' }); if (UI.btn(g, 'scrUp', x + w - 30, y + 4, 12, 11, '▲')) this.scroll--; if (UI.btn(g, 'scrDn', x + w - 16, y + 4, 12, 11, '▼')) this.scroll++; }
+    // espacio libre bajo el programa: tocarlo con un bloque en la mano lo añade al final
+    if (showSlots && areaBot - yy > 12 && this.scroll + maxLines >= visible.length) {
+      const id = 'slot::' + this.curList.length, st = UI.register(id, x + 20, yy + 1, w - 26, areaBot - yy - 2, { drop: true });
+      rect(g, x + 20, yy + 2, w - 26, Math.min(14, areaBot - yy - 3), st.hover ? 'rgba(255,216,74,0.18)' : 'rgba(255,216,74,0.06)');
+      drawText(g, '+ poner al final', x + 26, yy + 5, st.hover ? PAL.sun : 'rgba(255,216,74,0.7)');
+    }
+    if (!visible.some(l => l.kind === 'head')) drawPara(g, this.locked ? '' : 'Arrastra bloques desde la izquierda (o tócalos y luego toca aquí).', x + 10, areaTop + 22, w - 20, '#5A6090');
+    if (visible.length > maxLines) {
+      if (!(UI.held != null && !this.locked)) drawText(g, 'filas ' + (this.scroll + 1) + '-' + Math.min(visible.length, this.scroll + maxLines) + ' de ' + visible.length, x + w - 6, areaBot + 3, '#5A6090', { align: 'right' });
+      if (UI.btn(g, 'scrUp', x + w - 30, y + 4, 12, 11, '▲')) this.scroll--; if (UI.btn(g, 'scrDn', x + w - 16, y + 4, 12, 11, '▼')) this.scroll++;
+    }
     // animación de llamada / retorno
     if (this.callAnim) {
       const a = this.callAnim, k = 1 - a.t / 0.8;
@@ -782,7 +825,7 @@ class CodeLabScene {
     g.save(); g.beginPath(); g.rect(x + 2, y + 2, w - 4, h - 4); g.clip();
     if (this.world.draw) this.world.draw(g, x + 2, y + 2, w - 4, h - 4, this.st, this.t, this);
     g.restore();
-    if (this.state === 'success') { drawText(g, '✓ ÉXITO', x + w - 6, y + 5, PAL.lime, { align: 'right', outline: PAL.ink }); }
+    if (this.state === 'success') { drawText(g, '✓ ÉXITO', x + w - 6, y + h - 12, PAL.lime, { align: 'right', outline: PAL.ink }); }
     if (this.state === 'running' && this.ticks > 1 && this.cfg.tickLabel) drawText(g, this.cfg.tickLabel(this.tick), x + 6, y + h - 12, PAL.sun, { outline: PAL.ink });
   }
   drawPanel(g) {

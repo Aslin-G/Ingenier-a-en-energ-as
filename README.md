@@ -58,7 +58,7 @@ Cada habilidad es un concepto que se *juega* además de programarse: el **If Shi
 
 ### Tipos de puzzle
 
-- **CodeLab**: editor de bloques (arrastrar y soltar o tocar y colocar) con intérprete real: `SI/SINO`, `REPETIR`, `MIENTRAS`, `PARA CADA`, variables, funciones con parámetros y retorno. Tiene ejecución paso a paso, puntos de interrupción, traza, vista de variables, detección de bucles infinitos y **vista de diagrama de flujo** del mismo programa.
+- **CodeLab**: editor de bloques (arrastrar y soltar, o tocar un bloque y después tocar la línea bajo la que va; cada línea se borra con su **✗**) con intérprete real: `SI/SINO`, `REPETIR`, `MIENTRAS`, `PARA CADA`, variables, funciones con parámetros y retorno. Tiene ejecución paso a paso, puntos de interrupción, traza, vista de variables, detección de bucles infinitos y **vista de diagrama de flujo** del mismo programa.
 - **Secuencias**: ordenar tarjetas de procesos energéticos (y detectar la tarjeta intrusa).
 - **Diagrama de flujo**: construir el controlador solar con nodos y decisiones.
 - **Máquina de estados**: dibujar transiciones válidas de una planta geotérmica.

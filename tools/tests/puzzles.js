@@ -37,6 +37,7 @@ const { chromium, gameFile, outDir } = require('./_pw');
     // Puerto
     await code('puerto_route', C.CFG_PUERTO_ROUTE, [null, [A('avanzar', 2), A('recoger'), A('avanzar', 2), A('girar_der'), A('avanzar', 2), A('entregar')], [A('girar_der'), A('avanzar', 1), A('girar_izq'), A('avanzar', 4), A('recoger'), A('girar_der'), A('avanzar', 1), A('girar_der'), A('avanzar', 4), A('entregar')]]);
     await code('puerto_carrera', C.CFG_PUERTO_CARRERA, [[A('avanzar', 7), A('girar_der'), A('avanzar', 2)]]);
+    await code('puerto_carrera_inicio', C.CFG_PUERTO_CARRERA, [null]);
     // Valle
     await code('valle_ruta', C.CFG_VALLE_RUTA, [[A('avanzar', 2), A('regar'), A('avanzar', 2), A('regar'), A('avanzar', 1), A('girar_der'), A('avanzar', 1), A('regar')], [A('avanzar', 3), A('regar'), A('avanzar', 3), A('girar_der'), A('avanzar', 2), A('regar'), A('girar_der'), A('avanzar', 6), A('regar')]]);
     await code('valle_sacos', C.CFG_VALLE_SACOS, [[{ op: 'set', var: 'sacos', expr: 0 }, A('llega_carro'), { op: 'add', var: 'sacos', expr: 4 }, A('llega_carro'), { op: 'add', var: 'sacos', expr: 4 }, A('llega_carro'), { op: 'add', var: 'sacos', expr: 4 }]]);
@@ -99,7 +100,7 @@ const { chromium, gameFile, outDir } = require('./_pw');
     return out;
   });
   // Soluciones incorrectas a propósito: deben fallar y explicar por qué
-  const EXPECT_FAIL = ['sol_sensor_U500', 'sol_sensor_U1000', 'aeris_molino_orig', 'bat_beta_bad'];
+  const EXPECT_FAIL = ['sol_sensor_U500', 'sol_sensor_U1000', 'aeris_molino_orig', 'bat_beta_bad', 'puerto_carrera_inicio'];
   let bad = 0;
   for (const k in results) {
     let r = results[k];

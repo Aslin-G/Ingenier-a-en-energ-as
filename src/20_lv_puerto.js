@@ -217,11 +217,23 @@ const CFG_PUERTO_CHAIN = {
 };
 const CFG_PUERTO_CARRERA = {
   kind: 'code', title: 'Carrera del algoritmo', tags: ['SECUENCIA', 'PARÁMETROS'], concepts: ['sequence'], codex: 'secuencia',
-  palette: ['act:avanzar', 'act:girar_izq', 'act:girar_der'], actions: GRID_ACTS, values: { },
-  world: W_grid({ map: ['##########', '#S.......#', '########.#', '########.#', '##########'], need: { at: [8, 3] }, maxLines: 3, okMsg: '¡3 instrucciones! El robot de Nico llega en un suspiro.' }),
-  start: [A('avanzar', 1), A('avanzar', 1), A('avanzar', 1), A('avanzar', 1), A('avanzar', 1), A('avanzar', 1), A('avanzar', 1), A('girar_der'), A('avanzar', 1), A('avanzar', 1)],
-  intro: 'El programa de Nico funciona, pero tiene 10 líneas. ¿Puedes hacer lo mismo con 3 o menos? (Toca el número de avanzar).',
-  hints: ['¿Qué pasa si avanzar recibe un número mayor que 1?', { text: 'Siete "avanzar(1)" seguidos equivalen a un solo avanzar(7).' }, { text: 'Solución parcial:', partial: [A('avanzar', 7), A('girar_der')] }]
+  palette: ['act:avanzar', 'act:girar_der', 'act:girar_izq'], actions: GRID_ACTS, values: { },
+  // Nico usaba 10 líneas (7 × avanzar 1, girar_der, 2 × avanzar 1). Lía ya tiene 3 líneas: solo falta
+  // decir CUÁNTAS casillas avanza cada una. Las casillas del mapa están numeradas para contarlas.
+  world: W_grid({
+    map: ['##########', '#S.......#', '########.#', '########.#', '##########'], need: { at: [8, 3] }, maxLines: 3, stepNumbers: true,
+    note: ['Programa de Nico: 10 líneas', 'Tú: 3 líneas · cambia los números'],
+    okMsg: '¡3 instrucciones! avanzar 7 · girar_der · avanzar 2. El robot de Nico llega en un suspiro.'
+  }),
+  start: [A('avanzar', 1), A('girar_der'), A('avanzar', 1)],
+  intro: 'Toca cada número amarillo y elige cuántas casillas avanza el robot. Cuenta las casillas numeradas del mapa. Después pulsa EJECUTAR.',
+  hints: [
+    '¿Cuántas casillas hay antes de la esquina? Están numeradas en el mapa: 1, 2, 3...',
+    { text: 'Hasta la esquina hay 7 casillas: el primer avanzar debe ser 7. Después de girar quedan 2.' },
+    { text: 'Así queda:', partial: [A('avanzar', 7), A('girar_der'), A('avanzar', 2)] }
+  ],
+  deep: 'Un parámetro dice CUÁNTO: avanzar(7) hace lo mismo que siete avanzar(1), pero en una sola línea.',
+  xp: 30
 };
 
 (function () {
@@ -252,7 +264,7 @@ const CFG_PUERTO_CARRERA = {
   b.e('N', 50, 13, {
     id: 'nico', cast: 'nico', quest: 's_carrera', talk: lv => (function* () {
       if (questState('s_carrera') === 'done') { yield C.say('nico', '¡Mi robot ahora es el más rápido del muelle! avanzar(7), ¡zas!', 'feliz'); return; }
-      if (questState('s_carrera') === 'none') { yield* talk([['nico', '¡Lía! Mi robot de carreras tarda un montón. Mi programa tiene DIEZ líneas.', 'triste'], ['nico', '¿Me ayudas a que sea más corto? El panel está aquí al lado.', 'n']]); setQuest('s_carrera', 'active'); }
+      if (questState('s_carrera') === 'none') { yield* talk([['nico', '¡Lía! Mi robot de carreras tarda un montón. Mi programa tiene DIEZ líneas.', 'triste'], ['nico', '¿Me ayudas a que sea más corto? El panel está aquí al lado.', 'n'], ['lia', 'Seguro que sí: en vez de repetir "avanzar 1" siete veces, le decimos CUÁNTO avanzar de una vez.', 'feliz']]); setQuest('s_carrera', 'active'); }
       else yield C.say('nico', '¡El panel de carreras está justo aquí! ¡Tres líneas o menos!', 'n');
     })()
   });

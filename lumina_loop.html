@@ -5588,8 +5588,14 @@ class CodeLabScene {
       if (p.move) { this.removeAt(p.move); AudioSys.sfx('remove'); }
       return;
     }
-    if (tgt.startsWith('slot:')) {
-      const [, key, idxS] = tgt.split(':');
+    let tg = tgt;
+    if (tg.startsWith('line:')) {
+      // soltar sobre una línea = colocar justo debajo de ella
+      const path = tg.split(':')[2].split('.').map(x => isNaN(+x) ? x : +x);
+      tg = 'slot:' + pathKey(path.slice(0, -1)) + ':' + (path[path.length - 1] + 1);
+    }
+    if (tg.startsWith('slot:')) {
+      const [, key, idxS] = tg.split(':');
       const listPath = key === '' ? [] : key.split('.').map(x => isNaN(+x) ? x : +x);
       const idx = +idxS;
       let block;
@@ -5720,27 +5726,46 @@ class CodeLabScene {
       if (this.tab !== 'main') { const f = this.functions[this.tab]; drawText(g, 'FUNCIÓN ' + this.tab + '(' + f.params.join(', ') + ')', x + 6, ty, PAL.lilac); ty += 11; }
     } else drawText(g, 'PROGRAMA', x + 6, ty + 1, PAL.sun), ty += 11;
     const lines = this.buildLines(this.curList);
-    const showSlots = !this.locked && (UI.held != null || UI.dragging != null) && this.state !== 'running';
+    const holding = UI.held != null || UI.dragging != null;
+    const showSlots = !this.locked && holding && this.state !== 'running';
+    const editable = !this.locked && this.state !== 'running' && this.state !== 'paused';
     const LH = 11;
-    const areaTop = ty + 1, areaBot = y + h - 4;
     const visible = lines.filter(l => l.kind !== 'slot' || showSlots);
-    const maxLines = Math.floor((areaBot - areaTop) / LH);
+    const areaTop = ty + 1;
+    let areaBot = y + h - 4;
+    const listKey = lp => lp.join('.');
+    const slotId = l => 'slot:' + listKey(l.listPath) + ':' + l.idx;
+    // los huecos de inserción son finos (5 px) y solo crecen bajo el cursor: el programa no se duplica de largo
+    const rowH = l => l.kind !== 'slot' ? LH : (UI.hover === slotId(l) || UI.focus === slotId(l) ? 13 : 5);
+    // fila inferior reservada para el aviso «bloque en la mano» o el indicador de desplazamiento
+    { let tot = 0; for (const l of visible) tot += rowH(l); if (UI.held != null && !this.locked || tot > areaBot - areaTop) areaBot -= 12; }
+    const fitFrom = s0 => { let hh = 0, n = 0; for (let i = s0; i < visible.length; i++) { hh += rowH(visible[i]); if (hh > areaBot - areaTop) break; n++; } return Math.max(1, n); };
+    let maxScroll = 0; { let hh = 0; for (let i = visible.length - 1; i >= 0; i--) { hh += rowH(visible[i]); if (hh > areaBot - areaTop) { maxScroll = i + 1; break; } } }
     // auto-scroll a la línea activa
-    if (this.highlight && this.state === 'running') { const hi = visible.findIndex(l => l.kind === 'head' && pathKey(l.path) === pathKey(this.highlight.path)); if (hi >= 0) { if (hi - this.scroll >= maxLines - 1) this.scroll = hi - maxLines + 2; if (hi < this.scroll) this.scroll = hi; } }
+    if (this.highlight && this.state === 'running') { const hi = visible.findIndex(l => l.kind === 'head' && pathKey(l.path) === pathKey(this.highlight.path)); if (hi >= 0) { const fit = fitFrom(this.scroll); if (hi - this.scroll >= fit - 1) this.scroll = hi - fit + 2; if (hi < this.scroll) this.scroll = hi; } }
     if (Input.pointer.wheel && inRect(Input.pointer.x, Input.pointer.y, { x, y, w, h })) this.scroll += Input.pointer.wheel;
-    this.scroll = clamp(this.scroll, 0, Math.max(0, visible.length - maxLines));
+    this.scroll = clamp(this.scroll, 0, maxScroll);
+    const maxLines = fitFrom(this.scroll);
     let lineNo = 0;
     const nums = new Map(); lines.forEach(l => { if (l.kind !== 'slot') { lineNo++; nums.set(l, lineNo); } });
     let yy = areaTop;
-    const listKey = lp => lp.join('.');
+    // aviso claro (abajo) cuando hay un bloque «en la mano»
+    if (UI.held != null && !this.locked) {
+      const lbl = UI.held.tpl ? templateLabel(UI.held.tpl, this.cfg) : 'la línea';
+      rect(g, x + 2, areaBot + 1, w - 4, 11, '#4A3A10');
+      drawText(g, fitText('¿Dónde va «' + lbl + '»?', w - 64), x + 6, areaBot + 3, PAL.sun);
+      if (UI.btn(g, 'heldCancel', x + w - 56, areaBot + 1, 52, 11, 'CANCELAR', { color: PAL.coral })) UI.cancelHeld();
+    }
     visible.slice(this.scroll, this.scroll + maxLines).forEach(l => {
       const ind = x + 20 + l.depth * 9;
       if (l.kind === 'slot') {
-        const id = 'slot:' + listKey(l.listPath) + ':' + l.idx;
-        const st = UI.register(id, ind, yy, x + w - 6 - ind, LH - 1, { drop: true });
-        rect(g, ind, yy + 4, x + w - 8 - ind, 2, st.hover || st.focus ? PAL.sun : '#2A3570');
-        if (st.hover || st.focus) drawText(g, '+ insertar aquí', ind + 4, yy + 2, PAL.sun);
-        yy += LH; return;
+        const id = slotId(l), rh = rowH(l);
+        const st = UI.register(id, ind, yy, x + w - 6 - ind, rh, { drop: true });
+        if (rh > 5) {
+          rect(g, ind, yy + 1, x + w - 8 - ind, rh - 2, 'rgba(255,216,74,0.18)'); strokeRect(g, ind, yy + 1, x + w - 8 - ind, rh - 2, PAL.sun);
+          drawText(g, '+ PONER AQUÍ', ind + 5, yy + 3, PAL.sun);
+        } else rect(g, ind + 2, yy + 2, x + w - 12 - ind, 1, st.hover ? PAL.sun : 'rgba(255,216,74,0.45)');
+        yy += rh; return;
       }
       const b = l.b, cat = BLOCK_CAT[b.op] || BLOCK_CAT.act;
       const n = nums.get(l);
@@ -5758,15 +5783,24 @@ class CodeLabScene {
       if (active) { rect(g, ind - 2, yy, x + w - 4 - ind, LH - 1, 'rgba(255,216,74,0.25)'); drawText(g, '▶', ind - 8, yy + 2, PAL.sun); }
       if (isErr) { rect(g, ind - 2, yy, x + w - 4 - ind, LH - 1, 'rgba(255,107,107,0.35)'); drawText(g, '✗', ind - 8, yy + 2, PAL.coral); }
       if (l.kind === 'head') {
-        const lw = x + w - 6 - ind;
-        const st = UI.register('line:' + this.tab + ':' + pathKey(l.path), ind, yy, lw, LH - 1, { drag: b.locked || this.locked ? undefined : { move: l.path }, drop: b.op === 'blank' });
+        const canDel = editable && !b.locked && !holding && b.op !== 'blank';
+        const lw = x + w - 6 - ind - (canDel ? 13 : 0);
+        const lid = 'line:' + this.tab + ':' + pathKey(l.path);
+        // con un bloque en la mano, tocar una línea lo coloca justo debajo
+        const st = UI.register(lid, ind, yy, lw, LH - 1, { drag: b.locked || this.locked ? undefined : { move: l.path }, drop: b.op === 'blank' || (showSlots && !(UI.held && UI.held.move && pathKey(UI.held.move) === pathKey(l.path))) });
         if (b.op === 'blank') { UI.items[UI.items.length - 1].id = 'blank:' + pathKey(l.path); }
-        if (UI.clicked('line:' + this.tab + ':' + pathKey(l.path))) { this.sel = l.path; }
+        if (UI.clicked(lid)) { this.sel = l.path; }
         rect(g, ind, yy, 3, LH - 1, cat.color);
         if (selected) strokeRect(g, ind - 1, yy - 1, lw + 2, LH + 1, PAL.sun);
+        if (showSlots && st.hover && b.op !== 'blank') rect(g, ind, yy + LH - 2, lw, 2, PAL.sun);
         if (b.locked) drawText(g, '■', x + w - 12, yy + 2, '#5A6090');
         this.drawBlockLine(g, b, ind + 5, yy + 2, l.path, st.hover || st.focus, lw - 8 - (b.locked ? 10 : 0));
         if (st.focus && Input.lastDevice === 'keyboard') UI.focusRing(g, ind, yy, lw, LH - 1);
+        // borrar con un toque: ✗ al final de cada línea editable
+        if (canDel && UI.btn(g, 'del:' + this.tab + ':' + pathKey(l.path), x + w - 17, yy, 11, LH - 1, '✗', { color: PAL.coral, tip: 'Borrar esta línea' })) {
+          if (this.state !== 'edit') { this.state = 'edit'; this.resetWorld(); }
+          this.removeAt(l.path); AudioSys.sfx('remove');
+        }
         // burbuja de condición e iteración
         if (active && this.condBubble && (b.op === 'if' || b.op === 'while')) {
           const tx = this.condBubble.v ? 'VERDADERO' : 'FALSO';
@@ -5785,8 +5819,17 @@ class CodeLabScene {
       }
       yy += LH;
     });
-    if (!visible.some(l => l.kind === 'head')) drawPara(g, this.locked ? '' : 'Arrastra bloques desde la izquierda (o selecciónalos y toca una línea amarilla).', x + 10, areaTop + 16, w - 20, '#5A6090');
-    if (visible.length > maxLines) { drawText(g, '▲▼ ' + (this.scroll + 1) + '-' + Math.min(visible.length, this.scroll + maxLines) + '/' + visible.length, x + w - 6, y + h - 10, '#5A6090', { align: 'right' }); if (UI.btn(g, 'scrUp', x + w - 30, y + 4, 12, 11, '▲')) this.scroll--; if (UI.btn(g, 'scrDn', x + w - 16, y + 4, 12, 11, '▼')) this.scroll++; }
+    // espacio libre bajo el programa: tocarlo con un bloque en la mano lo añade al final
+    if (showSlots && areaBot - yy > 12 && this.scroll + maxLines >= visible.length) {
+      const id = 'slot::' + this.curList.length, st = UI.register(id, x + 20, yy + 1, w - 26, areaBot - yy - 2, { drop: true });
+      rect(g, x + 20, yy + 2, w - 26, Math.min(14, areaBot - yy - 3), st.hover ? 'rgba(255,216,74,0.18)' : 'rgba(255,216,74,0.06)');
+      drawText(g, '+ poner al final', x + 26, yy + 5, st.hover ? PAL.sun : 'rgba(255,216,74,0.7)');
+    }
+    if (!visible.some(l => l.kind === 'head')) drawPara(g, this.locked ? '' : 'Arrastra bloques desde la izquierda (o tócalos y luego toca aquí).', x + 10, areaTop + 22, w - 20, '#5A6090');
+    if (visible.length > maxLines) {
+      if (!(UI.held != null && !this.locked)) drawText(g, 'filas ' + (this.scroll + 1) + '-' + Math.min(visible.length, this.scroll + maxLines) + ' de ' + visible.length, x + w - 6, areaBot + 3, '#5A6090', { align: 'right' });
+      if (UI.btn(g, 'scrUp', x + w - 30, y + 4, 12, 11, '▲')) this.scroll--; if (UI.btn(g, 'scrDn', x + w - 16, y + 4, 12, 11, '▼')) this.scroll++;
+    }
     // animación de llamada / retorno
     if (this.callAnim) {
       const a = this.callAnim, k = 1 - a.t / 0.8;
@@ -5910,7 +5953,7 @@ class CodeLabScene {
     g.save(); g.beginPath(); g.rect(x + 2, y + 2, w - 4, h - 4); g.clip();
     if (this.world.draw) this.world.draw(g, x + 2, y + 2, w - 4, h - 4, this.st, this.t, this);
     g.restore();
-    if (this.state === 'success') { drawText(g, '✓ ÉXITO', x + w - 6, y + 5, PAL.lime, { align: 'right', outline: PAL.ink }); }
+    if (this.state === 'success') { drawText(g, '✓ ÉXITO', x + w - 6, y + h - 12, PAL.lime, { align: 'right', outline: PAL.ink }); }
     if (this.state === 'running' && this.ticks > 1 && this.cfg.tickLabel) drawText(g, this.cfg.tickLabel(this.tick), x + 6, y + h - 12, PAL.sun, { outline: PAL.ink });
   }
   drawPanel(g) {
@@ -6065,7 +6108,7 @@ function W_grid(o) {
         for (let i = 0; i < n; i++) {
           const nx = st.x + DIRS[st.dir][0], ny = st.y + DIRS[st.dir][1];
           const c = cell(nx, ny);
-          if (c === '#' || c === 'c' || c === '~') { st.bump = 0.5; st.errCell = [nx, ny]; return { ok: false, msg: c === 'c' ? `Chocó con una caja en la casilla (${nx},${ny}). ¿Faltaba girar antes?` : c === '~' ? 'Delante hay agua: no puede avanzar por ahí.' : 'Delante hay un muro. Revisa hacia dónde mira (' + DN[st.dir] + ').' }; }
+          if (c === '#' || c === 'c' || c === '~') { st.bump = 0.5; st.errCell = [nx, ny]; return { ok: false, msg: c === 'c' ? `Chocó con una caja en la casilla (${nx},${ny}). ¿Faltaba girar antes?` : c === '~' ? 'Delante hay agua: no puede avanzar por ahí.' : 'Delante hay un muro (el robot mira ' + DN[st.dir] + '). ¿Giró antes de tiempo o avanzó de más? Cuenta las casillas.' }; }
           st.x = nx; st.y = ny; st.moves++;
         }
         return { ok: true, dur: 0.35 * (arg || 1) };
@@ -6135,6 +6178,25 @@ function W_grid(o) {
         if (c === 'f') { rect(g, px0 + m, py0 + m - 2, 1, 5, '#3FA85A'); rect(g, px0 + m - 2, py0 + m - 5, 5, 3, PAL.pink); px(g, px0 + m, py0 + m - 4, PAL.sun); }
         if (o.need.at && o.need.at[0] === xx && o.need.at[1] === yy) pring(g, px0 + m, py0 + m, m - 2, PAL.lime);
       }
+      // casillas numeradas por tramo recto (ayuda a contar cuánto debe avanzar cada instrucción)
+      if (o.stepNumbers) {
+        if (!this._steps) {
+          const open = (xx, yy) => { const c = map[yy] && map[yy][xx]; return c && c !== '#' && c !== 'c'; };
+          let cx0 = 0, cy0 = 0; map.forEach((r, yy) => { const i = r.indexOf('S'); if (i >= 0) { cx0 = i; cy0 = yy; } });
+          let d = o.dir || 0, n = 0; const seen = new Set([cx0 + ',' + cy0]); this._steps = [];
+          for (let guard = 0; guard < 200; guard++) {
+            let nx = cx0 + DIRS[d][0], ny = cy0 + DIRS[d][1];
+            if (!open(nx, ny) || seen.has(nx + ',' + ny)) {
+              const turns = [(d + 1) % 4, (d + 3) % 4].filter(k => open(cx0 + DIRS[k][0], cy0 + DIRS[k][1]) && !seen.has((cx0 + DIRS[k][0]) + ',' + (cy0 + DIRS[k][1])));
+              if (!turns.length) break;
+              d = turns[0]; n = 0; nx = cx0 + DIRS[d][0]; ny = cy0 + DIRS[d][1];
+            }
+            n++; cx0 = nx; cy0 = ny; seen.add(nx + ',' + ny); this._steps.push({ x: nx, y: ny, n });
+          }
+        }
+        for (const sp of this._steps) drawText(g, String(sp.n), ox + sp.x * cs + cs / 2, oy + sp.y * cs + cs / 2 - 3, 'rgba(255,243,215,0.75)', { align: 'center' });
+      }
+      if (o.note) o.note.forEach((ln, i) => drawText(g, ln, x + w / 2, y + 3 + i * 9, i ? '#C9D2F0' : PAL.sun, { align: 'center' }));
       if (st.errCell) { const [ex, ey] = st.errCell; strokeRect(g, ox + ex * cs, oy + ey * cs, cs, cs, Math.floor(t * 6) % 2 ? PAL.coral : '#FFFFFF'); }
       // bot
       const bx = ox + st.ax * cs + cs / 2, by = oy + st.ay * cs + cs / 2 + Math.sin(t * 6) * 1 + (st.bump > 0 ? Math.sin(st.bump * 40) * 2 : 0);
@@ -8931,11 +8993,23 @@ const CFG_PUERTO_CHAIN = {
 };
 const CFG_PUERTO_CARRERA = {
   kind: 'code', title: 'Carrera del algoritmo', tags: ['SECUENCIA', 'PARÁMETROS'], concepts: ['sequence'], codex: 'secuencia',
-  palette: ['act:avanzar', 'act:girar_izq', 'act:girar_der'], actions: GRID_ACTS, values: { },
-  world: W_grid({ map: ['##########', '#S.......#', '########.#', '########.#', '##########'], need: { at: [8, 3] }, maxLines: 3, okMsg: '¡3 instrucciones! El robot de Nico llega en un suspiro.' }),
-  start: [A('avanzar', 1), A('avanzar', 1), A('avanzar', 1), A('avanzar', 1), A('avanzar', 1), A('avanzar', 1), A('avanzar', 1), A('girar_der'), A('avanzar', 1), A('avanzar', 1)],
-  intro: 'El programa de Nico funciona, pero tiene 10 líneas. ¿Puedes hacer lo mismo con 3 o menos? (Toca el número de avanzar).',
-  hints: ['¿Qué pasa si avanzar recibe un número mayor que 1?', { text: 'Siete "avanzar(1)" seguidos equivalen a un solo avanzar(7).' }, { text: 'Solución parcial:', partial: [A('avanzar', 7), A('girar_der')] }]
+  palette: ['act:avanzar', 'act:girar_der', 'act:girar_izq'], actions: GRID_ACTS, values: { },
+  // Nico usaba 10 líneas (7 × avanzar 1, girar_der, 2 × avanzar 1). Lía ya tiene 3 líneas: solo falta
+  // decir CUÁNTAS casillas avanza cada una. Las casillas del mapa están numeradas para contarlas.
+  world: W_grid({
+    map: ['##########', '#S.......#', '########.#', '########.#', '##########'], need: { at: [8, 3] }, maxLines: 3, stepNumbers: true,
+    note: ['Programa de Nico: 10 líneas', 'Tú: 3 líneas · cambia los números'],
+    okMsg: '¡3 instrucciones! avanzar 7 · girar_der · avanzar 2. El robot de Nico llega en un suspiro.'
+  }),
+  start: [A('avanzar', 1), A('girar_der'), A('avanzar', 1)],
+  intro: 'Toca cada número amarillo y elige cuántas casillas avanza el robot. Cuenta las casillas numeradas del mapa. Después pulsa EJECUTAR.',
+  hints: [
+    '¿Cuántas casillas hay antes de la esquina? Están numeradas en el mapa: 1, 2, 3...',
+    { text: 'Hasta la esquina hay 7 casillas: el primer avanzar debe ser 7. Después de girar quedan 2.' },
+    { text: 'Así queda:', partial: [A('avanzar', 7), A('girar_der'), A('avanzar', 2)] }
+  ],
+  deep: 'Un parámetro dice CUÁNTO: avanzar(7) hace lo mismo que siete avanzar(1), pero en una sola línea.',
+  xp: 30
 };
 
 (function () {
@@ -8966,7 +9040,7 @@ const CFG_PUERTO_CARRERA = {
   b.e('N', 50, 13, {
     id: 'nico', cast: 'nico', quest: 's_carrera', talk: lv => (function* () {
       if (questState('s_carrera') === 'done') { yield C.say('nico', '¡Mi robot ahora es el más rápido del muelle! avanzar(7), ¡zas!', 'feliz'); return; }
-      if (questState('s_carrera') === 'none') { yield* talk([['nico', '¡Lía! Mi robot de carreras tarda un montón. Mi programa tiene DIEZ líneas.', 'triste'], ['nico', '¿Me ayudas a que sea más corto? El panel está aquí al lado.', 'n']]); setQuest('s_carrera', 'active'); }
+      if (questState('s_carrera') === 'none') { yield* talk([['nico', '¡Lía! Mi robot de carreras tarda un montón. Mi programa tiene DIEZ líneas.', 'triste'], ['nico', '¿Me ayudas a que sea más corto? El panel está aquí al lado.', 'n'], ['lia', 'Seguro que sí: en vez de repetir "avanzar 1" siete veces, le decimos CUÁNTO avanzar de una vez.', 'feliz']]); setQuest('s_carrera', 'active'); }
       else yield C.say('nico', '¡El panel de carreras está justo aquí! ¡Tres líneas o menos!', 'n');
     })()
   });

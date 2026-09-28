@@ -25,7 +25,7 @@ function W_grid(o) {
         for (let i = 0; i < n; i++) {
           const nx = st.x + DIRS[st.dir][0], ny = st.y + DIRS[st.dir][1];
           const c = cell(nx, ny);
-          if (c === '#' || c === 'c' || c === '~') { st.bump = 0.5; st.errCell = [nx, ny]; return { ok: false, msg: c === 'c' ? `Chocó con una caja en la casilla (${nx},${ny}). ¿Faltaba girar antes?` : c === '~' ? 'Delante hay agua: no puede avanzar por ahí.' : 'Delante hay un muro. Revisa hacia dónde mira (' + DN[st.dir] + ').' }; }
+          if (c === '#' || c === 'c' || c === '~') { st.bump = 0.5; st.errCell = [nx, ny]; return { ok: false, msg: c === 'c' ? `Chocó con una caja en la casilla (${nx},${ny}). ¿Faltaba girar antes?` : c === '~' ? 'Delante hay agua: no puede avanzar por ahí.' : 'Delante hay un muro (el robot mira ' + DN[st.dir] + '). ¿Giró antes de tiempo o avanzó de más? Cuenta las casillas.' }; }
           st.x = nx; st.y = ny; st.moves++;
         }
         return { ok: true, dur: 0.35 * (arg || 1) };
@@ -95,6 +95,25 @@ function W_grid(o) {
         if (c === 'f') { rect(g, px0 + m, py0 + m - 2, 1, 5, '#3FA85A'); rect(g, px0 + m - 2, py0 + m - 5, 5, 3, PAL.pink); px(g, px0 + m, py0 + m - 4, PAL.sun); }
         if (o.need.at && o.need.at[0] === xx && o.need.at[1] === yy) pring(g, px0 + m, py0 + m, m - 2, PAL.lime);
       }
+      // casillas numeradas por tramo recto (ayuda a contar cuánto debe avanzar cada instrucción)
+      if (o.stepNumbers) {
+        if (!this._steps) {
+          const open = (xx, yy) => { const c = map[yy] && map[yy][xx]; return c && c !== '#' && c !== 'c'; };
+          let cx0 = 0, cy0 = 0; map.forEach((r, yy) => { const i = r.indexOf('S'); if (i >= 0) { cx0 = i; cy0 = yy; } });
+          let d = o.dir || 0, n = 0; const seen = new Set([cx0 + ',' + cy0]); this._steps = [];
+          for (let guard = 0; guard < 200; guard++) {
+            let nx = cx0 + DIRS[d][0], ny = cy0 + DIRS[d][1];
+            if (!open(nx, ny) || seen.has(nx + ',' + ny)) {
+              const turns = [(d + 1) % 4, (d + 3) % 4].filter(k => open(cx0 + DIRS[k][0], cy0 + DIRS[k][1]) && !seen.has((cx0 + DIRS[k][0]) + ',' + (cy0 + DIRS[k][1])));
+              if (!turns.length) break;
+              d = turns[0]; n = 0; nx = cx0 + DIRS[d][0]; ny = cy0 + DIRS[d][1];
+            }
+            n++; cx0 = nx; cy0 = ny; seen.add(nx + ',' + ny); this._steps.push({ x: nx, y: ny, n });
+          }
+        }
+        for (const sp of this._steps) drawText(g, String(sp.n), ox + sp.x * cs + cs / 2, oy + sp.y * cs + cs / 2 - 3, 'rgba(255,243,215,0.75)', { align: 'center' });
+      }
+      if (o.note) o.note.forEach((ln, i) => drawText(g, ln, x + w / 2, y + 3 + i * 9, i ? '#C9D2F0' : PAL.sun, { align: 'center' }));
       if (st.errCell) { const [ex, ey] = st.errCell; strokeRect(g, ox + ex * cs, oy + ey * cs, cs, cs, Math.floor(t * 6) % 2 ? PAL.coral : '#FFFFFF'); }
       // bot
       const bx = ox + st.ax * cs + cs / 2, by = oy + st.ay * cs + cs / 2 + Math.sin(t * 6) * 1 + (st.bump > 0 ? Math.sin(st.bump * 40) * 2 : 0);
