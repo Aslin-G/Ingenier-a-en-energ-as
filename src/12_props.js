@@ -10,6 +10,11 @@ const PROP_SIZES = {
   mirror: [16, 24], banner: [64, 24], pillar: [16, 48], core: [64, 80], tank: [24, 32], kiosk: [32, 36], robot: [16, 22], bin: [16, 16],
   crystal: [24, 32], gate: [16, 48], campfire: [24, 18], screen: [48, 32], sensor: [8, 20]
 };
+// giro de aspas/ruedas según el tiempo de la entidad (igual a 60, 120 o 144 Hz; se detiene en pausa)
+function propSpin(e, rate) {
+  const now = e.t || 0, d = e._spinT == null ? 0 : clamp(now - e._spinT, 0, 0.1);
+  e._spinT = now; e.rot = (e.rot || 0) + rate * d; return e.rot;
+}
 const PROP_LIGHT = {
   lighthouse: (e, lv) => e.cfg.on && e.cfg.on(lv) ? { x: e.x + 16, y: e.y + 8, r: 140, c: PAL.sun } : null,
   house: (e, lv) => lv.zonePowered(e.x) ? { x: e.x + 24, y: e.y + 28, r: 50, c: PAL.sun, a: 0.8 } : null,
@@ -60,14 +65,12 @@ const PROP_DRAW = {
     R_(g, x + 4, y + 8, 24, 2, '#565E8C'); for (let k = 0; k < 6; k++) R_(g, x + 10 + k, y + 2 + k, 12 - k * 2, 1, '#22306B');
     R_(g, x + 13, y + 40, 6, 9, '#22306B'); R_(g, x + 14, y + 70, 5, 10, '#5E3A26');
     if (on) {
-      g.globalAlpha = 0.18; const a = Math.sin(e.t * 0.8) * 0.6 + (e.t * 0.3 % 1 > 0.5 ? Math.PI : 0);
-      for (let r = 6; r < 200; r += 2) { const w = r * 0.22; R_(g, x + 16 + Math.cos(a) * r, y + 13 + Math.sin(a) * r * 0.15 - w / 2, 2, w, PAL.sun); }
-      g.globalAlpha = 1;
+      drawLightBeam(g, x + 16, y + 13, e.t * 0.9, 200, 0.22, PAL.sun, 0.38);
     }
   },
   windmill(g, x, y, e, lv) {
     const sp = e.cfg.speed ? e.cfg.speed(lv) : 1;
-    e.rot = (e.rot || 0) + sp * 0.05;
+    propSpin(e, sp * 3);
     for (let i = 0; i < 44; i++) { const w = 8 + Math.floor(i * 0.2); R_(g, x + 16 - w / 2, y + 20 + i, w, 1, i % 11 === 0 ? '#E8D8B8' : '#FFF3D7'); }
     R_(g, x + 13, y + 52, 6, 12, '#8B5A3C'); R_(g, x + 14, y + 30, 4, 4, sp > 0.2 ? PAL.sun : '#3A4068');
     for (let k = 0; k < 7; k++) R_(g, x + 10 + k * 0.5, y + 14 + k, 12 - k, 1, e.cfg.roof || PAL.coral);
@@ -119,7 +122,7 @@ const PROP_DRAW = {
   },
   turbine(g, x, y, e, lv) {
     const sp = e.cfg.speed ? e.cfg.speed(lv) : 1;
-    e.rot = (e.rot || 0) + sp * 0.08;
+    propSpin(e, sp * 4.8);
     for (let i = 0; i < 64; i++) R_(g, x + 15 - Math.floor(i / 22), y + 20 + i, 2 + Math.floor(i / 11), 1, '#FFFFFF');
     R_(g, x + 12, y + 14, 9, 6, '#E8F0FF'); px(g, x + 19, y + 16, sp > 0.3 ? PAL.lime : PAL.coral);
     for (let b = 0; b < 3; b++) { const a = e.rot + b * 2.094; for (let r = 2; r < 18; r++) R_(g, x + 16 + Math.cos(a) * r, y + 17 + Math.sin(a) * r, r < 14 ? 2 : 1, r < 14 ? 2 : 1, '#FFFFFF'); }
@@ -127,7 +130,7 @@ const PROP_DRAW = {
     if (e.cfg.hot && e.cfg.hot(lv)) { R_(g, x + 12, y + 14, 9, 6, Math.floor(e.t * 8) % 2 ? PAL.coral : PAL.orange); if (Math.random() < 0.3) Particles.spawn({ x: e.x + 16, y: e.y + 14, vy: -30, life: 0.8, type: 'fade', size: 2, color: '#8C93B8' }); }
   },
   waterwheel(g, x, y, e, lv) {
-    const sp = e.cfg.speed ? e.cfg.speed(lv) : 1; e.rot = (e.rot || 0) + sp * 0.04;
+    const sp = e.cfg.speed ? e.cfg.speed(lv) : 1; propSpin(e, sp * 2.4);
     pring(g, x + 20, y + 20, 18, '#8B5A3C'); pring(g, x + 20, y + 20, 17, '#B07A4A');
     for (let b = 0; b < 8; b++) { const a = e.rot + b * 0.785; pline(g, x + 20, y + 20, x + 20 + Math.cos(a) * 18, y + 20 + Math.sin(a) * 18, '#8B5A3C'); R_(g, x + 18 + Math.cos(a) * 18, y + 18 + Math.sin(a) * 18, 4, 4, '#D8A06A'); }
     pcircle(g, x + 20, y + 20, 3, '#5E3A26'); R_(g, x + 18, y + 20, 4, 24, '#6B4A2A');
@@ -148,7 +151,7 @@ const PROP_DRAW = {
     R_(g, x, y + 40, 56, 3, '#FF9D42'); R_(g, x, y + 44, 56, 2, '#8A5A5A');
     if (Math.random() < 0.3) Particles.spawn({ x: e.x + 14 + (Math.random() < 0.5 ? 0 : 26), y: e.y + 2, vy: -30, vx: rand(-6, 6), life: 1.4, type: 'fade', size: 3, color: 'rgba(255,255,255,0.5)' });
     const st = e.cfg.state ? e.cfg.state(lv) : null;
-    if (st) drawText(g, st, x + 28, y + 19, { OFF: '#8C93B8', STARTING: PAL.sun, RUNNING: PAL.lime, COOLING: PAL.sky, FAULT: PAL.coral }[st] || PAL.cream, { align: 'center' });
+    if (st) { const tw = textW(st); R_(g, x + 28 - tw / 2 - 2, y + 17, tw + 4, 9, 'rgba(10,8,20,0.8)'); drawText(g, st, x + 28, y + 18, { OFF: '#8C93B8', STARTING: PAL.sun, RUNNING: PAL.lime, COOLING: PAL.sky, FAULT: PAL.coral }[st] || PAL.cream, { align: 'center' }); }
   },
   electrolyzer(g, x, y, e, lv) {
     const on = e.cfg.on && e.cfg.on(lv);

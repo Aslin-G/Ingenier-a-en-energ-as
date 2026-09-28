@@ -211,6 +211,15 @@ const Particles = {
 };
 
 // ---------- iluminación: oscuridad con fuentes de luz (a media resolución = píxeles gruesos) ----------
+// haz giratorio de un faro: cuña de luz con degradado (se acorta cuando apunta hacia la cámara)
+function drawLightBeam(g, x, y, a, len, spread, color, alpha) {
+  const dx = Math.cos(a), L = len * (0.3 + 0.7 * Math.abs(dx));
+  const ex = x + dx * L, ey = y + Math.sin(a) * L * 0.18, w = Math.max(3, L * spread);
+  const grd = g.createLinearGradient(x, y, ex, ey);
+  grd.addColorStop(0, rgba(color, alpha)); grd.addColorStop(0.6, rgba(color, alpha * 0.45)); grd.addColorStop(1, rgba(color, 0));
+  g.fillStyle = grd;
+  g.beginPath(); g.moveTo(x, y - 1.5); g.lineTo(ex, ey - w / 2); g.lineTo(ex, ey + w / 2); g.lineTo(x, y + 1.5); g.closePath(); g.fill();
+}
 const Light = {
   cv: null, lights: [],
   init() { this.cv = makeCanvas(W / 2, H / 2); },
@@ -276,10 +285,34 @@ const Trans = {
 };
 
 // ---------- notificaciones ----------
+// ---------------------------------------------------------------------
+//  Reparto del espacio en pantalla para textos flotantes (globos, Lente,
+//  avisos): cada etiqueta busca el hueco libre más cercano a su sitio ideal.
+// ---------------------------------------------------------------------
+const Labels = {
+  rects: [],
+  reset() { this.rects = []; },
+  reserve(x, y, w, h) { this.rects.push({ x, y, w, h }); },
+  hit(r) { return this.rects.some(o => r.x < o.x + o.w + 2 && r.x + r.w + 2 > o.x && r.y < o.y + o.h + 2 && r.y + r.h + 2 > o.y); },
+  place(x, y, w, h, o = {}) {
+    const minY = o.minY != null ? o.minY : 22, maxY = Math.max(minY, (o.maxY != null ? o.maxY : H - 22) - h);
+    const fx = v => Math.round(clamp(v, 2, W - w - 2)), fy = v => Math.round(clamp(v, minY, maxY));
+    const steps = [[0, 0]];
+    for (let d = 4; d <= 72; d += 4) steps.push([0, -d], [0, d], [-d * 1.5, -d / 2], [d * 1.5, -d / 2]);
+    for (const [dx, dy] of steps) {
+      const r = { x: fx(x + dx), y: fy(y + dy), w, h };
+      if (!this.hit(r)) { this.rects.push(r); return r; }
+    }
+    const r = { x: fx(x), y: fy(y), w, h }; this.rects.push(r); return r;
+  }
+};
+
 const Toast = {
   list: [],
   show(text, color = PAL.sun, dur = 2.2) { this.list.push({ text, color, t: dur, max: dur }); if (this.list.length > 4) this.list.shift(); },
   update(dt) { for (const t of this.list) t.t -= dt; this.list = this.list.filter(t => t.t > 0); },
+  // zonas que ocupan los avisos (para que los globos no se monten encima)
+  reserveAreas() { let y = 20; for (const t of this.list) { const w = textW(t.text) + 12; Labels.reserve(W - w - 6, y, w, 15); y += 18; } },
   draw(g) {
     let y = 20;
     for (const t of this.list) {

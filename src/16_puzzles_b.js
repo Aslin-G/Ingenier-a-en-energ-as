@@ -99,8 +99,8 @@ class SortScene extends PuzzleBase {
     });
     if (this.cfg.mode !== 'search' && this.state !== 'success') {
       const x = ox + this.i * cw;
-      strokeRect(g, x + 1, 36, cw * 2 - 2, 128, Math.floor(this.t * 4) % 2 ? PAL.sun : '#8A6A2A');
-      drawText(g, '¿' + this.cfg.fmt(this.arr[this.i]) + (this.cfg.desc ? ' < ' : ' > ') + this.cfg.fmt(this.arr[this.i + 1]) + '?', x + cw, 30, PAL.sun, { align: 'center', outline: PAL.ink });
+      strokeRect(g, x + 1, 36, cw * 2 - 2, 136, Math.floor(this.t * 4) % 2 ? PAL.sun : '#8A6A2A');
+      drawText(g, '¿' + this.cfg.fmt(this.arr[this.i]) + (this.cfg.desc ? ' < ' : ' > ') + this.cfg.fmt(this.arr[this.i + 1]) + '?', x + cw, 26, PAL.sun, { align: 'center', outline: PAL.ink });
     }
     const info = this.cfg.mode === 'search' ? `buscando: ${this.cfg.target} · intentos: ${this.inspected.length}/${this.cfg.limit}` : `pasada ${this.pass} · comparaciones ${this.comps} · intercambios ${this.swaps} · errores ${this.mistakes}`;
     drawText(g, info, W / 2, 184, PAL.aqua, { align: 'center' });
@@ -249,7 +249,7 @@ class MicrogridScene extends PuzzleBase {
     panel(g, 204, 20, 272, 128, { border: '#2A3570', bg: '#0B1020' });
     const sc = (this.cfg.scenarios || [this.sc])[this.scIdx] || this.sc;
     drawText(g, 'ESCENARIO: ' + (sc.name || 'día típico'), 210, 25, PAL.sun);
-    const gx = 212, gy = 36, gw = 256, gh = 88, bw = gw / 24;
+    const gx = 212, gy = 40, gw = 256, gh = 84, bw = gw / 24;
     const maxY = Math.max(...sc.demand.map((d, h) => d * ((sc.events || {})[h] === 'festival' ? 1.6 : 1))) * 1.3 || 10;
     for (let h = 0; h < 24; h++) {
       const x = gx + h * bw;

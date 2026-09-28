@@ -3,6 +3,8 @@
 // =====================================================================
 // Navegación con teclado por escena: los menús la activan, el juego no
 [TitleScene, PauseScene, SettingsScene, RemapScene, CodexScene, TeacherScene, TallerScene, ConfirmScene, QuestLogScene, SparkEditorScene, ShieldRuleScene, CodeLabScene, PuzzleBase].forEach(K => K.prototype.nav = true);
+// los avisos (MISIÓN, ATLAS, XP...) se muestran al volver al juego, no encima de puzzles o menús
+[PuzzleBase, CodeLabScene, CodexScene, SettingsScene, RemapScene, QuestLogScene, MasteryScene, LabScene, TallerScene, ControlsScene, BlueprintScene, ConceptCardScene, AbilityCardScene].forEach(K => K.prototype.hideToasts = true);
 [GameplayScene, MapScene, ChispaScene, AbilityCardScene, ConceptCardScene, MasteryScene, ControlsScene, BlueprintScene].forEach(K => K.prototype.nav = false);
 
 const STEP = 1 / 60;
@@ -16,11 +18,14 @@ function frame(now) {
     Input.pollGamepad();
     const top = Scenes.top();
     if (top && top.nav !== undefined) UI.nav = top.nav;
+    Interp.save();
     Game.update(STEP);
     Input.endStep();
     acc -= STEP; steps++;
   }
   if (steps >= 5) acc = 0;
+  // fracción del siguiente paso: el dibujo interpola posiciones (movimiento fluido a 120/144 Hz)
+  Interp.alpha = clamp(acc / STEP, 0, 1);
   Game.draw();
   requestAnimationFrame(frame);
 }

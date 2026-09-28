@@ -92,28 +92,60 @@ class Critter extends Entity {
     super(lv, x, y + 10, 6, 6);
     const th = lv.themeKey;
     this.kind = { festival: 'cat', puerto: 'crab', valle: 'bunny', solaria: 'bird', aeris: 'bird', hydria: 'frog', bioloop: 'frog', gea: 'bat', h2: 'crab', bateria: 'cat', prisma: 'bunny', faro: 'bird' }[th] || 'bird';
-    this.ox = x; this.dir = 1; this.hop = 0; this.flee = 0;
+    this.ox = x; this.oy = this.y; this.dir = Math.random() < 0.5 ? 1 : -1; this.hop = 0; this.flee = 0;
+    this.mode = 'idle'; this.modeT = rand(0.5, 2.5); this.fly = 0; this.alpha = 1;
   }
+  // comportamiento sencillo pero natural: pausa → paseo corto → pausa; huye si Lía se acerca
   update(dt) {
     super.update(dt);
-    const p = this.lv.player;
-    const d = Math.abs(p.cx - this.x);
-    if (d < 40 && this.flee <= 0) { this.flee = 2; this.dir = p.cx < this.x ? 1 : -1; }
-    if (this.flee > 0) { this.flee -= dt; this.x += this.dir * 50 * dt; this.hop = Math.abs(Math.sin(this.t * 12)) * 4; }
-    else { this.hop = 0; if (Math.random() < 0.01) this.dir *= -1; if (Math.random() < 0.3) this.x += this.dir * 6 * dt; }
-    this.x = clamp(this.x, this.ox - 60, this.ox + 60);
+    const p = this.lv.player, k = this.kind;
+    const d = Math.abs(p.cx - this.x) + Math.abs(p.y + 10 - this.y) * 0.5;
+    const flier = k === 'bird' || k === 'bat';
+    if (d < 38 && this.mode !== 'flee' && this.mode !== 'away') { this.mode = 'flee'; this.modeT = flier ? 1.6 : 1.1; this.dir = p.cx < this.x ? 1 : -1; }
+    this.modeT -= dt;
+    if (k === 'bat' && this.mode !== 'flee' && this.mode !== 'away') {
+      // murciélago: revolotea cerca de su sitio, sin pisar el suelo
+      this.x = this.ox + Math.sin(this.t * 0.9) * 22; this.y = this.oy - 26 + Math.sin(this.t * 2.3) * 6; this.dir = Math.cos(this.t * 0.9) > 0 ? 1 : -1; this.hop = 0;
+      return;
+    }
+    switch (this.mode) {
+      case 'idle': this.hop = 0; if (this.modeT <= 0) { this.mode = 'walk'; this.modeT = rand(0.5, 1.4); if (Math.random() < 0.45) this.dir *= -1; } break;
+      case 'walk': {
+        const sp = { cat: 14, crab: 12, bunny: 18, bird: 9, frog: 20 }[k] || 10;
+        const hopper = k === 'bunny' || k === 'frog' || k === 'bird';
+        this.x += this.dir * sp * dt * (hopper ? (Math.sin(this.t * 10) > 0 ? 1.6 : 0.2) : 1);
+        this.hop = hopper ? Math.max(0, Math.sin(this.t * 10)) * (k === 'bird' ? 1.5 : 3) : 0;
+        if (Math.abs(this.x - this.ox) > 50) this.dir = this.x > this.ox ? -1 : 1;
+        if (this.modeT <= 0) { this.mode = 'idle'; this.modeT = rand(1, 3); }
+        break;
+      }
+      case 'flee':
+        if (flier) { this.fly += dt; this.x += this.dir * 55 * dt; this.y -= (30 + this.fly * 60) * dt; this.alpha = clamp(1 - this.fly / 1.6, 0, 1); }
+        else { this.x += this.dir * 55 * dt; this.hop = Math.abs(Math.sin(this.t * 12)) * 4; }
+        if (this.modeT <= 0) { if (flier) { this.mode = 'away'; this.modeT = rand(3, 5); } else { this.mode = 'idle'; this.modeT = rand(1, 2.5); } }
+        break;
+      case 'away':
+        // vuelve más tarde, posándose de nuevo en su sitio
+        if (this.modeT <= 0 && Math.abs(p.cx - this.ox) > 70) { this.mode = 'idle'; this.modeT = rand(1, 3); this.x = this.ox; this.y = this.oy; this.fly = 0; this.alpha = 1; }
+        break;
+    }
+    if (this.mode !== 'flee' && this.mode !== 'away') this.x = clamp(this.x, this.ox - 60, this.ox + 60);
   }
   draw(g, cx, cy) {
+    if (this.mode === 'away' || this.alpha <= 0) return;
     const x = Math.round(this.x - cx), y = Math.round(this.y - cy - this.hop);
-    const f = Math.floor(this.t * 6) % 2;
+    const flying = this.kind === 'bat' || this.mode === 'flee' && this.kind === 'bird';
+    const f = Math.floor(this.t * (flying ? 10 : 3)) % 2;
+    g.globalAlpha = this.alpha;
     switch (this.kind) {
       case 'cat': rect(g, x, y + 2, 6, 3, '#FF9D42'); rect(g, x + (this.dir > 0 ? 4 : -1), y, 3, 3, '#FF9D42'); px(g, x + (this.dir > 0 ? 4 : -1), y - 1, '#FF9D42'); px(g, x + (this.dir > 0 ? 6 : 1), y - 1, '#FF9D42'); rect(g, x + (this.dir > 0 ? -2 : 6), y + 1 - f, 2, 1, '#FF9D42'); rect(g, x, y + 5, 1, 1, '#C8612E'); rect(g, x + 5, y + 5, 1, 1, '#C8612E'); break;
       case 'crab': rect(g, x, y + 2, 6, 3, '#FF6B6B'); px(g, x - 1, y + 1 - f, '#FF6B6B'); px(g, x + 6, y + 1 - f, '#FF6B6B'); px(g, x + 1, y + 1, '#FFFFFF'); px(g, x + 4, y + 1, '#FFFFFF'); rect(g, x, y + 5, 1, 1, '#C8412E'); rect(g, x + 5, y + 5, 1, 1, '#C8412E'); break;
       case 'bunny': rect(g, x, y + 2, 5, 4, '#FFFFFF'); rect(g, x + (this.dir > 0 ? 3 : 0), y - 2, 1, 4, '#FFFFFF'); px(g, x + (this.dir > 0 ? 4 : 0), y + 3, '#1A1030'); px(g, x + (this.dir > 0 ? -1 : 5), y + 4, '#FFB8C8'); break;
-      case 'bird': rect(g, x, y + 2, 5, 3, '#59C7FF'); px(g, x + (this.dir > 0 ? 5 : -1), y + 3, PAL.sun); px(g, x + (this.dir > 0 ? 3 : 1), y + 2, '#1A1030'); if (this.flee > 0) { rect(g, x + 1, y + 1 - f * 2, 3, 1, '#9FE8FF'); } break;
+      case 'bird': rect(g, x, y + 2, 5, 3, '#59C7FF'); px(g, x + (this.dir > 0 ? 5 : -1), y + 3, PAL.sun); px(g, x + (this.dir > 0 ? 3 : 1), y + 2, '#1A1030'); if (this.mode === 'flee') { rect(g, x + 1, y + 1 - f * 2, 3, 1, '#9FE8FF'); } else if (this.mode === 'idle' && Math.floor(this.t * 1.5) % 3 === 0) px(g, x + (this.dir > 0 ? 5 : -1), y + 4, PAL.sun); break;
       case 'frog': rect(g, x, y + 2, 6, 4, '#66D66A'); px(g, x + 1, y + 1, '#FFFFFF'); px(g, x + 4, y + 1, '#FFFFFF'); px(g, x + 1, y + 1, '#1A1030'); rect(g, x + 2, y + 4, 2, 1, '#3FA85A'); break;
       case 'bat': rect(g, x + 2, y + 1, 3, 3, '#5B3A8C'); rect(g, x - 1, y + 1 + f, 3, 1, '#5B3A8C'); rect(g, x + 5, y + 1 + f, 3, 1, '#5B3A8C'); px(g, x + 3, y + 2, PAL.pink); break;
     }
+    g.globalAlpha = 1;
   }
 }
 
@@ -144,7 +176,7 @@ class NPC extends Entity {
     } else if (this.cfg.wander && !Cut.active) {
       this.wT = (this.wT || 0) - dt;
       if (this.wT <= 0) { this.wT = rand(2, 5); if (Math.random() < 0.5) { this.walkTo(this.ox + rand(-this.cfg.wander, this.cfg.wander), 20); } }
-    } else if (!Cut.active && Math.abs(this.lv.player.cx - this.x) < 60 && !this.cfg.fixedFace) this.face = this.lv.player.cx < this.x ? -1 : 1;
+    } else if (!Cut.active && Math.abs(this.lv.player.cx - this.x) < 60 && !this.cfg.fixedFace) { const dd = this.lv.player.cx - (this.x + this.w / 2); if (Math.abs(dd) > 6) this.face = dd < 0 ? -1 : 1; }
     const talking = Dlg.box && Dlg.box.who === this.cast && Dlg.box.shown < Dlg.box.total;
     if (this.walkTarget == null) this.anim = this.cheer ? 'cheer' : talking ? 'talk' : 'idle';
     if (this.cfg.barks && !Cut.active && Math.random() < 0.002 && Math.abs(this.lv.player.cx - this.x) < 120) Bark.say(this, choice(this.cfg.barks), 3);
@@ -156,8 +188,13 @@ class NPC extends Entity {
     else set = Spr.cast[this.cast];
     if (!set) return;
     const A = set[this.anim] || set.idle;
-    const fps = this.anim === 'walk' ? 8 : this.anim === 'talk' ? 8 : 2;
-    const f = Math.floor(this.t * fps) % A.length;
+    let f;
+    if ((this.anim === 'idle' || !set[this.anim]) && A.length >= 4) {
+      // respiración y parpadeo con desfase propio: los NPCs no se mueven al unísono
+      if (this.phase == null) this.phase = (hashStr(this.cast + this.x) % 1000) / 100;
+      const t = this.t + this.phase;
+      f = ((t % 3.4) < 0.14 ? 2 : 0) + ((t % 2.8) > 1.5 ? 1 : 0);
+    } else f = Math.floor(this.t * (this.anim === 'walk' ? 8 : this.anim === 'talk' ? 6 : 3)) % A.length;
     const fr = this.face > 0 ? A[f].r : A[f].l;
     g.drawImage(fr, Math.round(this.x + this.w / 2 - fr.width / 2 - cx), Math.round(this.y + this.h - fr.height + 1 - cy));
     if (this.cast === 'beta') {
@@ -179,7 +216,7 @@ function makeTerminal(lv, x, y, cfg) { return new Terminal(lv, x, y, cfg); }
 class Terminal extends Entity {
   constructor(lv, x, y, cfg) {
     const size = PROP_SIZES[cfg.look || 'console'] || [16, 16];
-    super(lv, x + 8 - size[0] / 2, y + 16 - size[1], size[0], size[1]);
+    super(lv, x + 8 - size[0] / 2 + (cfg.ox || 0), y + 16 - size[1] + (cfg.oy || 0), size[0], size[1]);
     this.cfg = cfg; this.id = cfg.id; this.look = cfg.look || 'console'; this.layer = -1;
   }
   get present() { return (!this.cfg.needs || flag(this.cfg.needs)) && (!this.cfg.hideIf || !flag(this.cfg.hideIf)); }
@@ -316,8 +353,18 @@ class Vent extends Entity {
 // ---------- Objeto recogible para ARRAY PACK ----------
 class PackItem extends Entity {
   constructor(lv, x, y, cfg) { super(lv, x, y, 10, 10); this.cfg = cfg; this.uid = cfg.uid; if ((G.save.packTaken || {})[cfg.uid]) this.dead = true; }
+  // los residuos descansan sobre el suelo o la plataforma de debajo (no flotan)
+  settle() {
+    this.settled = true;
+    const lv = this.lv, tx = Math.floor((this.x + this.w / 2) / TILE);
+    for (let ty = Math.floor(this.y / TILE); ty < Math.min(lv.h, Math.floor(this.y / TILE) + 8); ty++) {
+      if (ty * TILE < this.y + this.h - 2) continue;
+      if (lv.solidAt(tx, ty) || lv.oneWayAt(tx, ty)) { this.y = ty * TILE - this.h; this.grounded = true; return; }
+    }
+  }
   update(dt) {
     super.update(dt);
+    if (!this.settled) this.settle();
     if (rectHit(this.lv.player, this)) {
       if (!hasAbility('pack')) { if (!this.warned) { this.warned = true; Bark.say('pix', 'Necesitamos una forma ordenada de cargar varias cosas...'); } return; }
       G.save.pack = G.save.pack || []; G.save.packTaken = G.save.packTaken || {};
@@ -329,7 +376,8 @@ class PackItem extends Entity {
     }
   }
   draw(g, cx, cy) {
-    const x = Math.round(this.x - cx), y = Math.round(this.y - cy + Math.sin(this.t * 3) * 1.5);
+    const x = Math.round(this.x - cx), y = Math.round(this.y - cy + (this.grounded ? 0 : Math.sin(this.t * 2) * 1));
+    if (this.grounded) { g.globalAlpha = 0.3; rect(g, x + 1, y + this.h, this.w - 2, 1, '#000000'); g.globalAlpha = 1; }
     drawWasteIcon(g, this.cfg.type, x, y);
   }
   lensInfo() { return `{g}${this.cfg.name}{/}: ${WASTE_TYPES[this.cfg.type].label}`; }
@@ -503,7 +551,8 @@ class ShadowIf extends Enemy {
   constructor(lv, x, y, cfg) { super(lv, x + 1, y, 14, 14, cfg); this.oy = y; this.freeKind = 'ladybug'; this.fixText = '¡condición corregida!'; }
   update(dt) {
     super.update(dt);
-    this.y = this.oy + Math.sin(this.t * 1.5) * (this.cfg.amp || 20);
+    // flota por encima de su sitio (nunca atraviesa el suelo)
+    this.y = this.oy - 4 - (Math.sin(this.t * 1.5) * 0.5 + 0.5) * (this.cfg.amp || 20);
     const p = this.lv.player;
     const near = dist(p.cx, p.y + 10, this.x + 7, this.y + 7) < 46;
     if (near && !p.shieldOn && !this.lv.inverted) { this.lv.inverted = 1.6; Bark.say('pix', '¡SHADOW IF invirtió tus controles! SI izquierda → derecha...'); AudioSys.sfx('bug'); }
@@ -525,7 +574,7 @@ class Drainer extends Enemy {
     const p = this.lv.player;
     const d = dist(p.cx, p.y + 10, this.x + 5, this.y + 5);
     if (d < 90) { this.x += sign(p.cx - this.x - 5) * 18 * dt; this.y += sign(p.y + 6 - this.y) * 12 * dt; }
-    else { this.x = lerp(this.x, this.ox, dt); this.y = this.oy + Math.sin(this.t * 2) * 6; }
+    else { this.x = lerp(this.x, this.ox, dt); this.y = lerp(this.y, this.oy - 5 + Math.sin(this.t * 2) * 3, Math.min(1, dt * 3)); }
     if (rectHit(p, this)) {
       if (p.dashT > 0) { this.debug(); return; }
       p.energy = Math.max(0, p.energy - 60 * dt);

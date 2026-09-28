@@ -151,16 +151,18 @@ class SeqScene extends PuzzleBase {
     const pst = UI.register('pool', 6, 172, W - 12, 52, { drop: true, nav: false });
     rect(g, 6, 172, W - 12, 52, pst.hover && UI.dragging ? '#1A2A50' : '#10162B');
     drawText(g, 'TARJETAS', 10, 175, '#8C93B8');
-    const pw = Math.min(88, Math.floor((W - 20) / Math.max(1, Math.ceil(this.pool.length / 2))) - 4);
+    // una fila si caben (hasta 5 tarjetas), si no dos filas; tarjetas tan anchas como permita el panel
+    const total = this.cfg.cards.length, cols = total <= 5 ? total : Math.ceil(total / 2);
+    const pw = Math.min(150, Math.floor((W - 20) / Math.max(1, cols)) - 4);
     this.pool.forEach((id, k) => {
-      const col = k % Math.ceil(Math.max(1, this.pool.length) / 2), row = Math.floor(k / Math.ceil(Math.max(1, this.pool.length) / 2));
+      const col = k % cols, row = Math.floor(k / cols);
       const x = 10 + col * (pw + 4), y = 184 + row * 20;
       const st = UI.register('card' + id, x, y, pw, 18, { drag: { id, from: 'pool' } });
       this.drawCard(g, this.card(id), x, y, pw, st.held, st.hover || st.focus);
       if (st.hover && this.card(id).desc) UI.tooltip = this.card(id).desc;
       if (st.focus && Input.lastDevice === 'keyboard') UI.focusRing(g, x, y, pw, 18);
     });
-    if (UI.dragging) { const c = this.card(UI.dragging.id); if (c) { g.globalAlpha = 0.85; this.drawCard(g, c, Input.pointer.x - 20, Input.pointer.y - 8, 80, true); g.globalAlpha = 1; } }
+    if (UI.dragging) { const c = this.card(UI.dragging.id); if (c) { g.globalAlpha = 0.85; this.drawCard(g, c, Input.pointer.x - 20, Input.pointer.y - 8, pw, true); g.globalAlpha = 1; } }
     this.drawFooter(g, [
       this.result ? null : { id: 'run', w: 70, label: '▶ EJECUTAR', primary: true, color: PAL.lime, fn: () => this.run(), disabled: this.state === 'running' }
     ]);
@@ -170,7 +172,8 @@ class SeqScene extends PuzzleBase {
     if (c.icon) icon(g, c.icon, x + 5, y + 5);
     const tx = x + (c.icon ? 15 : 6);
     const lines = wrapPlain(c.label, w - (tx - x) - 2);
-    lines.slice(0, 2).forEach((l, i) => drawText(g, l, tx, y + (lines.length > 1 ? 2 : 6) + i * 8, held ? PAL.sun : PAL.cream));
+    if (lines.length > 2) { lines.length = 2; lines[1] = lines[1].replace(/.$/, '…'); }
+    lines.forEach((l, i) => drawText(g, l, tx, y + (lines.length > 1 ? 2 : 6) + i * 8, held ? PAL.sun : PAL.cream));
   }
 }
 
@@ -180,7 +183,7 @@ function visualEnergyChain(stages) {
     const n = stages.length;
     const done = sc.marks.filter(m => m).length;
     for (let i = 0; i < n; i++) {
-      const cx = x + 30 + i * (w - 60) / (n - 1), cy = y + 40;
+      const cx = x + 30 + i * (w - 60) / (n - 1), cy = y + (sc.cfg.showEnergy ? 30 : 40); // deja sitio a la barra de energía
       const on = i < done;
       stages[i](g, cx, cy, on, sc.t);
       if (i < n - 1) {

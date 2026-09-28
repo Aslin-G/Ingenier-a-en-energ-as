@@ -90,7 +90,11 @@ Final: **reescribir la función objetivo**. Solo un equilibrio de criterios que 
 
 - **Un único HTML autocontenido** generado a partir de 28 módulos (`src/NN_*.js`) concatenados dentro de una función autoejecutable. Sin dependencias, sin red y sin recursos externos.
 - **Pila de escenas** (`push`/`pop` con `onEnter`/`onExit`); las escenas transparentes dibujan encima de la anterior.
-- **Bucle de paso fijo** (1/60 s) con dibujo por frame.
+- **Bucle de paso fijo** (1/60 s) con dibujo por frame e **interpolación**: el dibujo mezcla el estado anterior y el actual según el tiempo sobrante, así el movimiento es fluido también en pantallas de 120/144 Hz.
+- **Cámara anclada al píxel de Lía**: el escenario y la protagonista avanzan en el mismo fotograma, sin el vaivén de 1 px que aparece al redondear por separado cámara y sprite. El contacto con el suelo usa bordes exclusivos, de modo que Lía no alterna entre «caer» y «reposo» cuando está quieta.
+- **Animación natural**: ciclos de 6 fotogramas para caminar y correr cuya velocidad sigue a la velocidad real, respiración lenta y parpadeo aleatorio (también en los NPCs, cada uno con su propio desfase), giros de aspas y ruedas basados en el tiempo y criaturas que alternan pausas, paseos y huidas.
+- **Profundidad coherente del fondo**: los elementos vivos (barcos, faro, farolillos, tranvía, aspas de los molinos) se dibujan entre las capas de parallax que les corresponden y se anclan a su horizonte, de modo que los barcos siempre quedan sobre el mar y detrás de la ciudad.
+- **Reparto del espacio para textos flotantes**: globos, etiquetas de la Lente Debug y el aviso de interacción buscan el hueco libre más cercano y nunca se montan entre sí ni sobre el HUD. Los avisos (MISIÓN, ATLAS…) esperan a que se cierre el puzzle o menú abierto.
 - **UI inmediata**: los widgets se registran al dibujarse; el foco de teclado o mando es espacial (se mueve al vecino más cercano en la dirección pulsada); arrastrar/soltar y *seleccionar y colocar* para táctil y accesibilidad. Las etiquetas largas se recortan con «…» y muestran el texto completo al pasar el cursor.
 - **Cinemáticas con generadores** (`function*` + comandos `C.*`): diálogos, movimientos de cámara, esperas y `C.play()` para devolver el control durante una secuencia.
 - **Intérprete del CodeLab con generadores**: cada instrucción cede el control para animar la ejecución, permitir paso a paso y puntos de interrupción, y cortar bucles infinitos.

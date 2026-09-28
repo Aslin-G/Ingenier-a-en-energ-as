@@ -87,21 +87,29 @@ function paintLia(pose, cos) {
   return outlined(c, OUTLINE);
 }
 
+// fotograma de reposo para escenas sin física (taller, créditos): respiración lenta y parpadeo ocasional
+function liaIdleFrame(t) { return ((t % 3.7) < 0.13 ? 2 : 0) + ((t % 2.4) > 1.3 ? 1 : 0); }
 function buildLia(cos = {}) {
   const A = {};
   const mk = (arr) => arr.map(p => { const r = paintLia(p, cos); return { r, l: flipCanvas(r) }; });
-  A.idle = mk([{ expr: 'n' }, { expr: 'n', bob: 0 }, { expr: 'n', bob: 1 }, { expr: 'blink', bob: 1 }]);
+  // idle: [normal, normal respirando, parpadeo, parpadeo respirando]
+  A.idle = mk([{ expr: 'n' }, { expr: 'n', bob: 1 }, { expr: 'blink' }, { expr: 'blink', bob: 1 }]);
+  // ciclo de paso de 6 fotogramas: contacto, recogida, paso (x2), con balanceo de brazos opuesto a las piernas
   A.walk = mk([
-    { legA: 2, legB: -2, liftB: 1, arm: -1, hair: 0 },
-    { legA: 0, legB: 0, bob: -1, arm: 0, hair: 1 },
-    { legA: -2, legB: 2, liftA: 1, arm: 1, hair: 0 },
-    { legA: 0, legB: 0, bob: -1, arm: 0, hair: 1 }
+    { legA: 2, legB: -2, arm: -1, hair: 0 },
+    { legA: 1, legB: -1, liftB: 1, arm: 0, hair: 1, bob: -1 },
+    { legA: -1, legB: 1, liftB: 1, arm: 1, hair: 1, bob: -1 },
+    { legA: -2, legB: 2, arm: 1, hair: 0 },
+    { legA: -1, legB: 1, liftA: 1, arm: 0, hair: 1, bob: -1 },
+    { legA: 1, legB: -1, liftA: 1, arm: -1, hair: 1, bob: -1 }
   ]);
   A.run = mk([
-    { legA: 3, legB: -3, liftB: 2, arm: -2, hair: 1, bob: 0, expr: 'focus' },
-    { legA: 1, legB: -1, liftA: 1, bob: -1, arm: 0, hair: 2, expr: 'focus' },
-    { legA: -3, legB: 3, liftA: 2, arm: 2, hair: 1, expr: 'focus' },
-    { legA: -1, legB: 1, liftB: 1, bob: -1, arm: 0, hair: 2, expr: 'focus' }
+    { legA: 3, legB: -3, arm: -2, hair: 1, expr: 'focus' },
+    { legA: 1, legB: -2, liftB: 2, bob: -1, arm: -1, hair: 2, expr: 'focus' },
+    { legA: -1, legB: 1, liftB: 1, bob: -1, arm: 1, hair: 2, expr: 'focus' },
+    { legA: -3, legB: 3, arm: 2, hair: 1, expr: 'focus' },
+    { legA: -2, legB: 1, liftA: 2, bob: -1, arm: 1, hair: 2, expr: 'focus' },
+    { legA: 1, legB: -1, liftA: 1, bob: -1, arm: -1, hair: 2, expr: 'focus' }
   ]);
   A.jump = mk([{ legA: 1, legB: -1, liftA: 2, liftB: 1, armUp: true, hair: -1, expr: 'focus' }]);
   A.fall = mk([{ legA: -1, legB: 1, liftA: 0, liftB: 1, arm: 1, hair: -2, bob: -1, expr: 'surprise' }]);
@@ -263,8 +271,9 @@ function paintHuman(o, pose) {
 function buildHuman(o) {
   const mk = arr => arr.map(p => { const r = paintHuman(o, p); return { r, l: flipCanvas(r) }; });
   return {
-    idle: mk([{}, { bob: 1 }, { bob: 1, blink: true }, {}]),
-    talk: mk([{ talk: true }, { bob: 1 }, { talk: true, arm: 1 }, {}]),
+    // idle: [normal, respirando, parpadeo, parpadeo respirando] (el índice lo elige el NPC según su reloj)
+    idle: mk([{}, { bob: 1 }, { blink: true }, { bob: 1, blink: true }]),
+    talk: mk([{ talk: true }, {}, { talk: true, arm: 1 }, { arm: 1 }]),
     walk: mk([{ legA: 2, legB: -2 }, { bob: -1 }, { legA: -2, legB: 2 }, { bob: -1 }]),
     cheer: mk([{ armUp: true, bob: -1, talk: true }, { armUp: true }])
   };

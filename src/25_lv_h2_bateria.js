@@ -66,7 +66,7 @@ const CFG_H2_BARCO = {
   b.e('C', 46, 15).e('C', 68, 15).e('C', 102, 15);
   b.e('m', 26, 15, { id: 'electro', look: 'electrolyzer', on: () => flag('h2_pipe') });
   b.e('m', 52, 15, { look: 'tank', color: '#FFFFFF' }).e('m', 55, 15, { look: 'tank', color: PAL.orange, label: 'O2' });
-  b.e('m', 132, 15, { id: 'barco', look: 'boat', on: () => flag('restored_h2') });
+  b.e('m', 40, 17, { id: 'barco', look: 'boat', oy: -4, on: () => flag('restored_h2') }); // el barco del Capitán flota en la dársena
   b.e('m', 142, 15, { look: 'house', color: '#E8F0FF', roof: '#FF9D42' });
   const node = (id, n, label) => ({
     id, look: 'node', label, lit: lv => (lv.beamSeq || []).includes(n) || flag('h2_beam'), enabled: () => false,

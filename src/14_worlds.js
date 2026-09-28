@@ -191,7 +191,9 @@ function W_solar(o) {
       if (st.decision && scene && scene.state === 'running') { const k = (t * 2) % 1; const d = st.decision; const fx = d === 'cargar_bateria' ? [x + 30, bx] : d === 'usar_bateria' ? [bx + 12, x + 100] : [x + 30, x + 100]; px(g, lerp(fx[0], fx[1], k), y + h * 0.7 - 16, PAL.sun); px(g, lerp(fx[0], fx[1], (k + 0.5) % 1), y + h * 0.7 - 16, PAL.sun); }
       // gráfico SOC
       const gx = x + 4, gy = y + 4, gw = 70, gh = 22;
-      rect(g, gx, gy, gw, gh, 'rgba(11,16,32,0.7)');
+      rect(g, gx, gy, gw, gh, 'rgba(11,16,32,0.7)'); strokeRect(g, gx, gy, gw, gh, 'rgba(201,210,240,0.35)');
+      rect(g, gx + 2, gy + gh - 3, gw - 4, 1, 'rgba(201,210,240,0.25)');
+      if (!st.log.length) drawText(g, 'batería / hora', gx + gw / 2, gy + 8, '#8C93B8', { align: 'center' });
       st.log.forEach((l, i) => { const lx = gx + 2 + i * (gw - 4) / hours.length; rect(g, lx, gy + gh - 2 - l.soc / 100 * (gh - 4), 3, 2, l.lit ? PAL.lime : PAL.coral); });
       drawText(g, hr + ':00', x + w - 4, y + 4, PAL.white, { align: 'right', outline: PAL.ink });
       drawText(g, { sol: '☀', nube: '☁', lluvia: '☁', polvo: '≈' }[wth] || '', x + w - 4, y + 14, PAL.sun, { align: 'right' });
@@ -235,6 +237,7 @@ function W_turbine(o) {
       rect(g, x + 8, y + 10, 6, 60, '#22306B'); const th = Math.round(56 * clamp((st.temp - 20) / 80, 0, 1)); rect(g, x + 9, y + 68 - th, 4, th, st.temp > 80 ? PAL.coral : st.temp > 60 ? PAL.orange : PAL.sun);
       rect(g, x + 7, y + 10 + Math.round(56 * (1 - 70 / 100)), 8, 1, PAL.white);
       drawText(g, Math.round(st.temp) + '°', x + 18, y + 10, PAL.white, { outline: PAL.ink });
+      rect(g, x + w - 62, y + 3, 60, 33, 'rgba(16,22,60,0.55)');
       drawText(g, 'rpm ' + Math.round(st.rpm), x + w - 6, y + 6, PAL.white, { align: 'right', outline: PAL.ink });
       drawText(g, 'viento ' + st.wind + ' m/s', x + w - 6, y + 16, PAL.aqua, { align: 'right', outline: PAL.ink });
       drawText(g, 'ajustes ' + st.adj, x + w - 6, y + 26, PAL.sun, { align: 'right', outline: PAL.ink });
@@ -264,9 +267,11 @@ function W_hydro(o) {
     check(st, env) { return o.check(st, env); },
     draw(g, x, y, w, h, st, t) {
       vGradient(g, x, y, w, h, [[0, '#30C8E0'], [1, '#F0FFF8']], false);
+      // escala de altura para que las etiquetas de la torre más alta quepan bajo el total
+      const maxAlt = Math.max(...st.gates.map(gg => gg.altura)), kH = Math.min(7, (h - 52) / maxAlt);
       st.gates.forEach((gt, i) => {
         const gx = x + 10 + i * (w - 20) / st.gates.length, cw = (w - 20) / st.gates.length - 8;
-        const top = y + h - 20 - gt.altura * 7;
+        const top = Math.round(y + h - 20 - gt.altura * kH);
         rect(g, gx, top, cw, y + h - top, '#EDE6F5'); rect(g, gx, top, cw, 2, '#66D6A0');
         // agua cayendo
         if (gt.open) for (let k = 0; k < gt.caudal; k++) rect(g, gx + cw / 2 - gt.caudal + k * 2, top + ((st.flowT * 80 + k * 9) % (y + h - 26 - top)), 2, 5, '#DFFBFF');

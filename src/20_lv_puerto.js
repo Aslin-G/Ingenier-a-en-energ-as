@@ -241,7 +241,7 @@ const CFG_PUERTO_CARRERA = {
   [5, 14, 22, 36, 46, 56, 68, 88, 98, 110, 125].forEach(x => b.e('L', x, 13));
   b.e('C', 34, 13).e('C', 66, 13).e('C', 96, 13);
   b.e('m', 9, 13, { look: 'house', color: '#8B5A3C' }).e('m', 18, 13, { look: 'house', color: '#6A8AC8', roof: '#FF9D42' });
-  b.e('m', 45, 13, { look: 'boat', on: () => flag('puerto_z1') });
+  b.e('m', 28, 15, { look: 'boat', oy: -4, on: () => flag('puerto_z1') }); // amarrado en la dársena, sobre el agua
   b.e('m', 121, 13, { id: 'faro', look: 'lighthouse', on: () => flag('puerto_z2') });
   b.e('a', 22, 13).e('a', 70, 13).e('a', 106, 11);
   b.e('*', 28, 8, { id: 'c_puerto1', hidden: true }).e('*', 40, 4, { id: 'c_puerto2' });

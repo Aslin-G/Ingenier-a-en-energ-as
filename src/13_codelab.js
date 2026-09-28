@@ -559,7 +559,7 @@ class CodeLabScene {
       rect(g, x + 4, yy, w - 8, 13, st.held ? shade(cat.color, 0.2) : st.hover || st.focus ? shade(cat.dark, 0.25) : cat.dark);
       rect(g, x + 4, yy, 3, 13, cat.color);
       if (hl || st.held) strokeRect(g, x + 3, yy - 1, w - 6, 15, PAL.sun);
-      drawText(g, label.length > 16 ? label.slice(0, 15) + '…' : label, x + 10, yy + 3, st.held ? PAL.ink : PAL.cream);
+      drawText(g, fitText(label, w - 18), x + 10, yy + 3, st.held ? PAL.ink : PAL.cream);
       if (st.focus && Input.lastDevice === 'keyboard') UI.focusRing(g, x + 4, yy, w - 8, 13);
       if (st.hover) UI.tooltip = (this.cfg.tips && this.cfg.tips[tpl]) || (cat.name[0].toUpperCase() + cat.name.slice(1) + ': ' + label);
       yy += 15;
@@ -637,7 +637,7 @@ class CodeLabScene {
         rect(g, ind, yy, 3, LH - 1, cat.color);
         if (selected) strokeRect(g, ind - 1, yy - 1, lw + 2, LH + 1, PAL.sun);
         if (b.locked) drawText(g, '■', x + w - 12, yy + 2, '#5A6090');
-        this.drawBlockLine(g, b, ind + 5, yy + 2, l.path, st.hover || st.focus);
+        this.drawBlockLine(g, b, ind + 5, yy + 2, l.path, st.hover || st.focus, lw - 8 - (b.locked ? 10 : 0));
         if (st.focus && Input.lastDevice === 'keyboard') UI.focusRing(g, ind, yy, lw, LH - 1);
         // burbuja de condición e iteración
         if (active && this.condBubble && (b.op === 'if' || b.op === 'while')) {
@@ -668,12 +668,17 @@ class CodeLabScene {
     }
   }
   // dibuja una línea de bloque con parámetros editables como "chips"
-  drawBlockLine(g, b, x, y, path, hover) {
-    const parts = this.blockParts(b);
+  drawBlockLine(g, b, x, y, path, hover, maxW = 999) {
+    let parts = this.blockParts(b);
+    // si la línea no cabe: primero se compacta el texto fijo, luego se juntan las piezas
+    const widthOf = (ps, gap) => ps.reduce((s, p) => s + (typeof p === 'string' ? textW(p) + gap : textW(p.text) + 6 + gap - 1), 0);
+    let gap = 4;
+    if (widthOf(parts, gap) > maxW) parts = parts.map(p => typeof p === 'string' ? p.replace(/^LLAMAR /, '').replace('ENTONCES', '→') : p);
+    if (widthOf(parts, gap) > maxW) gap = 2;
     let cx = x;
     const editable = !this.locked && !b.locked && this.state !== 'running';
     for (const p of parts) {
-      if (typeof p === 'string') { drawText(g, p, cx, y, hover ? PAL.white : PAL.cream); cx += textW(p) + 4; continue; }
+      if (typeof p === 'string') { drawText(g, p, cx, y, hover ? PAL.white : PAL.cream); cx += textW(p) + gap; continue; }
       const txt = p.text; const w = textW(txt) + 6;
       const id = 'chip:' + this.tab + ':' + pathKey(path) + ':' + p.key;
       if (editable && p.options) {
@@ -683,7 +688,7 @@ class CodeLabScene {
         if (UI.clicked(id)) this.openChip(p, cx, y + 10);
       } else rect(g, cx - 1, y - 2, w, 11, '#1A2248');
       drawText(g, txt, cx + 2, y, p.color || PAL.sun);
-      cx += w + 3;
+      cx += w + gap - 1;
     }
   }
   blockParts(b) {

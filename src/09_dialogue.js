@@ -68,7 +68,7 @@ const Dlg = {
   },
   choiceRects() {
     const b = this.box; if (!b || !b.choices) return [];
-    const w = Math.max(...b.choices.map(c => textW(c))) + 20;
+    const w = Math.min(W - 20, Math.max(...b.choices.map(c => textW(c))) + 20);
     const h = 14;
     const x = W - w - 10, y0 = b.atTop ? 82 : 192 - b.choices.length * (h + 2) - 4;
     return b.choices.map((c, i) => ({ x, y: y0 + i * (h + 2), w, h }));
@@ -118,7 +118,7 @@ const Dlg = {
       rects.forEach((rc, i) => {
         const sel = i === b.sel;
         panel(g, rc.x, rc.y, rc.w, rc.h, { border: sel ? PAL.sun : '#3E4C8A', bg: sel ? '#2A3570' : 'rgba(14,18,40,0.95)' });
-        drawText(g, (sel ? '▶ ' : '  ') + b.choices[i], rc.x + 5, rc.y + 4, sel ? PAL.sun : PAL.cream);
+        drawText(g, fitText((sel ? '▶ ' : '  ') + b.choices[i], rc.w - 8), rc.x + 5, rc.y + 4, sel ? PAL.sun : PAL.cream);
       });
     }
   }
@@ -140,15 +140,22 @@ const Bark = {
       if (!tgt) continue;
       const lines = wrapPlain(b.text, 150);
       const w = Math.max(...lines.map(l => textW(l))) + 8, h = lines.length * 10 + 5;
-      let x = Math.round(tgt.x + (tgt.w || 0) / 2 - camX - w / 2), y = Math.round(tgt.y - camY - h - 8);
-      x = clamp(x, 2, W - w - 2); y = clamp(y, 2, H - h - 2);
+      // hueco libre más cercano encima del personaje (sin tapar HUD, avisos ni otros globos)
+      const r = Labels.place(tgt.x + (tgt.w || 0) / 2 - camX - w / 2, tgt.y - camY - h - 8, w, h + 4);
+      let x = r.x, y = r.y;
       const pop = Math.min(1, (b.max - b.t) * 8);
       if (pop < 1) y += Math.round((1 - pop) * 4);
+      const tgtY = tgt.y - camY, below = y > tgtY; // el globo quedó debajo: la cola apunta hacia arriba
       rect(g, x + 1, y, w - 2, h, '#FFF3D7'); rect(g, x, y + 1, w, h - 2, '#FFF3D7');
       strokeRect(g, x, y, w, h, '#10162B');
       const tx = clamp(Math.round(tgt.x + (tgt.w || 0) / 2 - camX), x + 3, x + w - 4);
-      rect(g, tx - 1, y + h, 3, 1, '#FFF3D7'); rect(g, tx, y + h + 1, 1, 2, '#FFF3D7');
-      px(g, tx - 2, y + h, '#10162B'); px(g, tx + 2, y + h, '#10162B'); px(g, tx - 1, y + h + 1, '#10162B'); px(g, tx + 1, y + h + 1, '#10162B'); px(g, tx, y + h + 3, '#10162B');
+      if (!below) {
+        rect(g, tx - 1, y + h, 3, 1, '#FFF3D7'); rect(g, tx, y + h + 1, 1, 2, '#FFF3D7');
+        px(g, tx - 2, y + h, '#10162B'); px(g, tx + 2, y + h, '#10162B'); px(g, tx - 1, y + h + 1, '#10162B'); px(g, tx + 1, y + h + 1, '#10162B'); px(g, tx, y + h + 3, '#10162B');
+      } else {
+        rect(g, tx - 1, y - 1, 3, 1, '#FFF3D7'); rect(g, tx, y - 3, 1, 2, '#FFF3D7');
+        px(g, tx - 2, y - 1, '#10162B'); px(g, tx + 2, y - 1, '#10162B'); px(g, tx - 1, y - 2, '#10162B'); px(g, tx + 1, y - 2, '#10162B'); px(g, tx, y - 4, '#10162B');
+      }
       lines.forEach((l, i) => drawText(g, l, x + 4, y + 4 + i * 10, b.color));
     }
   }

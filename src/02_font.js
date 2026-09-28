@@ -208,6 +208,13 @@ const Font = {
   charW(ch) { if (ch === ' ') return this.SPACE; return this.gl(ch).w + 1; }
 };
 
+// recorta un texto con «…» para que quepa en maxW píxeles
+function fitText(str, maxW) {
+  str = String(str);
+  if (textW(str) <= maxW) return str;
+  while (str.length > 1 && textW(str + '…') > maxW) str = str.slice(0, -1);
+  return str.trimEnd() + '…';
+}
 function textW(str, scale = 1) {
   str = stripMarkup(String(str));
   let w = 0;

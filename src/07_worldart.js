@@ -25,7 +25,7 @@ const THEMES = {
       { p: 0.3, fn: 'city', o: { base: 212, color: '#1B2248', win: ['#FFD84A', '#30E1C5'], min: 30, max: 70, lit: 0.12, roofs: true } },
       { p: 0.55, fn: 'trees', o: { base: 236, color: '#141A3A', type: 'palm', count: 7 } }
     ],
-    live: ['lighthouse', 'boats', 'fireflies'],
+    live: ['boats', 'fireflies'], // el faro del Puerto es un objeto del nivel: no se repite en el fondo
     ground: { fill: '#4A3F6B', fill2: '#3A3058', top: 'planks', topC: '#8B5A3C', topHi: '#B07A4A', edge: '#1A1030', deco: ['crate', 'rope'], pier: '#1B2A5A' },
     plat: 'wood', water: ['#1B3A7A', '#30E1C5'], hazard: 'goo', ambient: 'sea', music: 'puerto', particles: 'fireflies', dark: 0.5, tint: '#0B1030'
   },
@@ -128,7 +128,7 @@ const THEMES = {
       { p: 0.2, fn: 'batteries', o: { base: 196 } },
       { p: 0.4, fn: 'city', o: { base: 222, color: '#221A50', win: ['#30E1C5', '#FF4FB8', '#B6F35B'], min: 30, max: 90, lit: 0.7, neon: true } }
     ],
-    live: ['neon', 'tram', 'stars'],
+    live: ['tram', 'stars'],
     ground: { fill: '#2A2458', fill2: '#221E4A', top: 'neon', topC: '#30E1C5', topHi: '#C9FFF4', edge: '#0A0820', deco: ['lamp', 'sign', 'battery', 'plant'] },
     plat: 'neon', water: ['#2A1A6A', '#FF7FCF'], hazard: 'spark', ambient: 'city', music: 'bateria', particles: 'neon', dark: 0.45, tint: '#08061A'
   },
@@ -179,13 +179,14 @@ const BGP = {
   },
   mountains(g, w, h, rng, o) {
     const n = periodicNoise(rng, w, 5);
-    let prev = 0;
+    const ys = [];
+    for (let x = 0; x < w; x++) ys.push(o.base - (n(x) * 0.5 + 0.5) * o.amp - Math.abs(Math.sin(x / w * Math.PI * 6)) * o.amp * 0.25);
     for (let x = 0; x < w; x++) {
-      const y = Math.round(o.base - (n(x) * 0.5 + 0.5) * o.amp - Math.abs(Math.sin(x / w * Math.PI * 6)) * o.amp * 0.25);
-      const lit = y < prev;
+      const y = Math.round(ys[x]);
+      // ladera iluminada según la pendiente media (sin rayas verticales)
+      const lit = ys[(x + 4) % w] - ys[(x - 4 + w) % w] > 0.6;
       rect(g, x, y, 1, h - y, lit ? (o.color2 || o.color) : o.color);
       if (o.snow && y < o.base - o.amp * 0.75) rect(g, x, y, 1, 3, o.snow);
-      prev = y;
     }
   },
   hills(g, w, h, rng, o) {
@@ -247,6 +248,12 @@ const BGP = {
         if (rng() < o.lit) rect(g, wx, wy, 2, 3, choice(o.win)); else rect(g, wx, wy, 2, 3, shade(col, -0.15));
       }
       if (o.neon && rng() < 0.3) { const nc = choice(o.win); rect(g, x + 2, top + 6, bw - 4, 1, nc); rect(g, x + 2, top + 10, bw - 4, 1, nc); }
+      // rótulos de neón colgados de la fachada (no flotando en el cielo)
+      if (o.neon && bw >= 24 && rng() < 0.45) {
+        const nc = choice(o.win), label = choice(['BAT', 'SOC', 'LUX', '24H', 'KWH']), sw = Math.min(bw - 6, 20);
+        rect(g, x + 3, top + 14, sw, 9, '#0A0820'); strokeRect(g, x + 3, top + 14, sw, 9, nc);
+        drawText(g, label, x + 3 + Math.floor(sw / 2), top + 15, nc, { align: 'center' });
+      }
       x += bw + Math.floor(rng() * 4);
     }
   },
@@ -281,14 +288,18 @@ const BGP = {
     }
   },
   windmills(g, w, h, rng, o) {
+    const hubs = [];
     for (let i = 0; i < o.count; i++) {
-      const x = (i + 0.3 + rng() * 0.4) / o.count * w, base = o.base + rng() * 8;
-      const hh = 34 + rng() * 14;
+      const x = Math.round((i + 0.3 + rng() * 0.4) / o.count * w), base = Math.round(o.base + rng() * 8);
+      const hh = Math.round(34 + rng() * 14);
       if (o.floating) { pellipse(g, x, base + 4, 18, 7, '#AFC0FF'); rect(g, x - 18, base, 36, 3, '#9CF5D8'); }
       for (let y = 0; y < hh; y++) { const ww = 3 + y * 0.12; rect(g, x - ww, base - hh + y, ww * 2, 1, o.color); }
       for (let k = 0; k < 7; k++) rect(g, x - 5 - k * 0.2 + k, base - hh - 5 + k, 10 - k * 2 + 2, 1, o.roof);
       rect(g, x - 1, base - 8, 3, 8, shade(o.color, -0.3));
+      rect(g, x - 1, base - hh + 5, 3, 3, shade(o.color, -0.35)); // ventana
+      hubs.push({ x, y: base - hh + 1, r: 15 + (hh - 34) * 0.4, color: shade(o.color, -0.08), sail: '#FFF3D7' });
     }
+    return { hubs };
   },
   mirrors(g, w, h, rng, o) {
     for (let i = 0; i < o.count * 2; i++) {
@@ -299,14 +310,30 @@ const BGP = {
     rect(g, 0, o.base + 12, w, h, '#E8C880');
   },
   waterfalls(g, w, h, rng, o) {
+    // acantilados con cascada: la roca llega hasta la base y el agua cae por una hendidura
     for (let i = 0; i < o.count; i++) {
-      const x = (i + rng() * 0.5) / o.count * w;
-      const top = 60 + rng() * 50;
-      rect(g, x - 20, top - 8, 50, 14, o.rock); rect(g, x - 20, top - 8, 50, 2, '#66D6A0');
-      rect(g, x - 2, top, 10 + rng() * 6, o.base - top, '#DFFBFF');
-      rect(g, x + 1, top, 2, o.base - top, '#FFFFFF');
-      pellipse(g, x + 5, o.base, 16, 5, '#FFFFFF');
-      rect(g, x - 26, top, 6, o.base - top, o.coral); rect(g, x + 24, top + 10, 6, o.base - top, o.rock);
+      const x = (i + 0.2 + rng() * 0.5) / o.count * w;
+      const top = 70 + rng() * 40, cw = 46 + rng() * 20;
+      const rock = o.rock, rockS = shade(o.rock, -0.12), rockD = shade(o.rock, -0.22);
+      for (let k = -1; k <= 1; k++) {
+        const xx = x + k * w;
+        // masa rocosa con borde irregular
+        for (let yy = top; yy < o.base + 4; yy++) {
+          const f = (yy - top) / (o.base - top);
+          const half = cw / 2 + Math.sin(yy * 0.21 + i) * 2 + f * 8;
+          rect(g, xx - half, yy, half * 2, 1, yy % 7 === 0 ? rockS : rock);
+          rect(g, xx + half - 4, yy, 4, 1, rockD);
+        }
+        rect(g, xx - cw / 2 - 1, top - 2, cw + 2, 3, '#66D6A0'); rect(g, xx - cw / 2 + 4, top - 4, 10, 2, '#8FE8B8');
+        // cascada
+        const sw = 8 + (i % 2) * 4;
+        rect(g, xx - sw / 2, top - 1, sw, o.base - top + 1, '#DFFBFF');
+        for (let yy = top; yy < o.base; yy += 3) rect(g, xx - sw / 2 + ((yy / 3) % 3), yy, 1, 2, '#FFFFFF');
+        rect(g, xx - 1, top, 2, o.base - top, '#FFFFFF');
+        // espuma en la base
+        pellipse(g, xx, o.base, sw + 6, 4, '#FFFFFF'); pellipse(g, xx - sw, o.base + 1, 5, 2, '#EFFFFF');
+        if (o.coral) { rect(g, xx - cw / 2 - 2, o.base - 8, 3, 8, o.coral); rect(g, xx - cw / 2 + 2, o.base - 5, 2, 5, o.coral); }
+      }
     }
   },
   market(g, w, h, rng, o) {
@@ -385,6 +412,20 @@ const BGP = {
 };
 
 // ---------- Construcción del fondo de una región ----------
+// aspas giratorias de los molinos del fondo (las torres están pintadas en la capa)
+function drawLayerBlades(g, L, ox, oy, t, speed) {
+  if (!L.meta || !L.meta.hubs) return;
+  for (const hb of L.meta.hubs) for (const off of [0, 960]) {
+    const hx = hb.x + ox + off, hy = hb.y + oy;
+    if (hx < -30 || hx > W + 30) continue;
+    const a0 = t * speed + hb.x;
+    for (let k = 0; k < 4; k++) {
+      const a = a0 + k * Math.PI / 2, ca = Math.cos(a), sa = Math.sin(a);
+      for (let r = 2; r < hb.r; r++) { px(g, hx + ca * r, hy + sa * r, hb.color); if (r > 5) px(g, hx + ca * r - sa * 2, hy + sa * r + ca * 2, hb.sail); }
+    }
+    rect(g, hx - 1, hy - 1, 3, 3, '#5E3A26');
+  }
+}
 function buildBackground(themeKey) {
   const th = THEMES[themeKey];
   const rng = mulberry32(hashStr(themeKey));
@@ -401,8 +442,8 @@ function buildBackground(themeKey) {
   }
   const layers = th.layers.map(L => {
     const c = makeCanvas(BW, H);
-    BGP[L.fn](c.g, BW, H, rng, L.o);
-    return { c, p: L.p };
+    const meta = BGP[L.fn](c.g, BW, H, rng, L.o) || null;
+    return { c, p: L.p, meta };
   });
   return { sky, layers, theme: th };
 }

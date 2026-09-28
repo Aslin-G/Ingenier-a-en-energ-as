@@ -36,7 +36,9 @@ const Game = {
     TouchPad.update(!!(top && top.touchPad));
     if (top) top.update(dt);
     if (top && top.hostsCut && Scenes.top() === top) Cut.update(dt);
-    Particles.update(dt); FX.update(dt); Toast.update(dt); Trans.update(dt);
+    // los avisos esperan mientras hay un puzzle o menú a pantalla completa (no tapan la interfaz)
+    const holdToasts = top && top.hideToasts;
+    Particles.update(dt); FX.update(dt); if (!holdToasts) Toast.update(dt); Trans.update(dt);
     for (const c of AudioSys.captions) c.t -= dt; AudioSys.captions = AudioSys.captions.filter(c => c.t > 0);
     Save.flash = Math.max(0, Save.flash - dt);
   },
@@ -54,7 +56,7 @@ const Game = {
     }
     if (Cut.fadeA > 0.001) { ctx.globalAlpha = Cut.fadeA; rect(ctx, 0, 0, W, H, Cut.fadeColor || '#000'); ctx.globalAlpha = 1; }
     FX.drawFlash(ctx);
-    Toast.draw(ctx);
+    if (!(Scenes.top() && Scenes.top().hideToasts)) Toast.draw(ctx);
     TouchPad.draw(ctx);
     if (G.save.settings.captions && AudioSys.captions.length) {
       AudioSys.captions.forEach((c, i) => { const w = textW(c.text) + 8; ctx.globalAlpha = Math.min(1, c.t * 2); rect(ctx, W / 2 - w / 2, 24 + i * 12, w, 11, 'rgba(0,0,0,0.6)'); drawText(ctx, c.text, W / 2, 26 + i * 12, '#C9D2F0', { align: 'center' }); ctx.globalAlpha = 1; });
@@ -127,6 +129,15 @@ class GameplayScene {
 function drawHUD(g, lv) {
   const p = lv.player;
   if (lv.def.noHud) return;
+  // fondos suaves del HUD: el texto se lee sobre cualquier escenario
+  {
+    const ab0 = G.save.currentAbility, A0 = ab0 && hasAbility(ab0) ? ABILITIES[ab0] : null;
+    const info0 = A0 && (ab0 === 'shield' || ab0 === 'pack' || ab0 === 'glide');
+    const wAb = A0 ? Math.max(textW(A0.name), info0 ? 110 : 0) + 12 : 0;
+    const hudW = 38 + wAb, hudH = info0 ? 21 : 20;
+    rect(g, 1, 1, hudW, hudH, 'rgba(10,14,32,0.5)'); rect(g, 2, 0, hudW - 2, 1, 'rgba(10,14,32,0.5)');
+    rect(g, W - 75, 1, 72, 15, 'rgba(10,14,32,0.5)');
+  }
   // células de energía (forma de Lumi)
   for (let i = 0; i < p.maxCells; i++) {
     const on = i < p.cells;
@@ -157,12 +168,11 @@ function drawHUD(g, lv) {
     rect(g, 4, H - 18, w, 13, 'rgba(16,22,43,0.75)'); rect(g, 4, H - 18, 2, 13, PAL.sun);
     drawText(g, '▶ ' + obj, 9, H - 15, PAL.cream);
   }
-  // indicador de interacción
-  if (lv.nearby && (!Cut.active || Cut.free)) {
-    const e = lv.nearby;
-    const label = e.cfg && e.cfg.verb ? e.cfg.verb : e instanceof NPC ? 'Hablar' : e instanceof Exit ? (e.cfg.label ? 'Ir a ' + e.cfg.label.toLowerCase() : 'Ir al mapa') : 'Usar';
-    const x = Math.round(e.x + e.w / 2 - lv.cam.x - 20), y = Math.round(e.y - lv.cam.y - 22);
-    keyHint(g, clamp(x, 4, W - 80), clamp(y, 26, H - 30), 'interact', label, PAL.white);
+  // indicador de interacción (con fondo propio, en el hueco que le reservó el nivel)
+  if (lv.nearby && (!Cut.active || Cut.free) && lv.promptRect) {
+    const r = lv.promptRect;
+    rect(g, r.x - 1, r.y - 1, r.w + 2, r.h + 1, 'rgba(10,14,32,0.72)');
+    keyHint(g, r.x + 1, r.y + 1, 'interact', r.label, PAL.white);
   }
   // cartel de región
   if (lv.banner > 0 && lv.def.title) {
@@ -656,7 +666,7 @@ class TallerScene {
     drawText(g, 'PEGATINAS', 385, 34, PAL.pink, { align: 'center' });
     Object.keys(ACHIEVEMENTS).forEach((k, i) => { const x = 308 + (i % 9) * 18, y = 48 + Math.floor(i / 9) * 20; if (G.save.achievements[k]) { pcircle(g, x + 6, y + 6, 6, hsl(i * 40, 80, 65)); icon(g, 'star', x + 2, y + 2); } else pring(g, x + 6, y + 6, 6, '#7A5A4A'); });
     // Lía y PÍX
-    const f = Spr.lia.idle[Math.floor(this.t * 3) % 4];
+    const f = Spr.lia.idle[liaIdleFrame(this.t)];
     g.drawImage(f.r, 230, 164); g.drawImage(Spr.pix[Math.floor(this.t * 16) % 4].r, 252, 150 + Math.sin(this.t * 3) * 2);
     PROP_DRAW.workbench(g, 150, 168, { t: this.t, cfg: {} });
     // armario de cosméticos
