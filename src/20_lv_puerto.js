@@ -185,7 +185,7 @@ function* festivalBlackout(lv) {
 })();
 
 // ---------- REGIÓN 00: PUERTO INICIAL ----------
-const GRID_ACTS = { avanzar: { label: 'avanzar', arg: 1, options: [1, 2, 3, 4, 5, 6, 7] }, girar_izq: { label: 'girar_izq ↺' }, girar_der: { label: 'girar_der ↻' }, recoger: { label: 'recoger' }, entregar: { label: 'entregar' }, activar: { label: 'activar' }, regar: { label: 'regar' } };
+const GRID_ACTS = { avanzar: { label: 'avanzar', arg: 1, options: [1, 2, 3, 4, 5, 6, 7], desc: 'Avanza tantas casillas como indique el número, en la dirección en que mira el robot.' }, girar_izq: { label: 'girar_izq ↰', desc: 'Gira 90° hacia la IZQUIERDA de donde mira el robot (sin moverse de casilla).' }, girar_der: { label: 'girar_der ↱', desc: 'Gira 90° hacia la DERECHA de donde mira el robot (sin moverse de casilla).' }, recoger: { label: 'recoger' }, entregar: { label: 'entregar' }, activar: { label: 'activar' }, regar: { label: 'regar' } };
 const A = (name, arg, locked) => ({ op: 'act', name, arg, locked: !!locked });
 const CFG_PUERTO_ROUTE = {
   kind: 'code', main: true, title: 'Camino de instrucciones', tags: ['SECUENCIA', 'FLUJO'], concepts: ['sequence'], codex: 'secuencia', music: 'puerto',

@@ -567,7 +567,8 @@ class CodeLabScene {
       if (hl || st.held) strokeRect(g, x + 3, yy - 1, w - 6, 15, PAL.sun);
       drawText(g, fitText(label, w - 18), x + 10, yy + 3, st.held ? PAL.ink : PAL.cream);
       if (st.focus && Input.lastDevice === 'keyboard') UI.focusRing(g, x + 4, yy, w - 8, 13);
-      if (st.hover) UI.tooltip = (this.cfg.tips && this.cfg.tips[tpl]) || (cat.name[0].toUpperCase() + cat.name.slice(1) + ': ' + label);
+      const actDesc = tpl.startsWith('act:') && this.cfg.actions && this.cfg.actions[tpl.slice(4)] && this.cfg.actions[tpl.slice(4)].desc;
+      if (st.hover) UI.tooltip = (this.cfg.tips && this.cfg.tips[tpl]) || actDesc || (cat.name[0].toUpperCase() + cat.name.slice(1) + ': ' + label);
       yy += 15;
     });
     // papelera

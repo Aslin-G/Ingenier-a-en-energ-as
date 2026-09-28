@@ -146,6 +146,7 @@ Los módulos `src/NN_*.js` se concatenan en orden numérico dentro de una única
 Requieren [Playwright](https://playwright.dev/) (local o global) con Chromium:
 
 ```bash
+node tools/tests/glyphs.js    # comprueba que las flechas de la fuente apuntan bien (sin navegador)
 node tools/tests/levels.js    # carga los 14 niveles y guarda capturas
 node tools/tests/puzzles.js   # resuelve los puzzles principales y construye los 115 retos
 node tools/tests/walk.js      # recorre la campaña completa hasta el epílogo
