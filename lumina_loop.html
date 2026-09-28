@@ -5276,7 +5276,7 @@ function* execStmt(b, env, path, fnName) {
   if (env.steps > env.maxSteps) throw new ExecError(path, 'Demasiados pasos: el programa parece no terminar nunca.', 'infinite');
   yield { t: 'line', path, fn: fnName, b };
   switch (b.op) {
-    case 'blank': throw new ExecError(path, 'Hay un hueco ▢ sin completar. Arrastra un bloque sobre él.', 'blank');
+    case 'blank': throw new ExecError(path, 'Hay un hueco ▢ sin completar: tócalo y elige qué instrucción va ahí.', 'blank');
     case 'act': {
       const arg = b.arg != null ? evalExpr(b.arg, env) : undefined;
       const r = env.world.act(b.name, arg, env.st, env) || { ok: true };
@@ -5680,35 +5680,93 @@ class CodeLabScene {
     Particles.draw(g, 0, 0, true);
     UI.drawTooltip(g);
   }
+  // ---------- edición sencilla (sin arrastrar) ----------
+  // Tocar un bloque de la izquierda lo AÑADE debajo de la línea marcada (o al final).
+  canEdit() { return !this.locked && this.state !== 'running' && this.state !== 'paused'; }
+  touchEdit() { if (this.state !== 'edit') { this.state = 'edit'; this.resetWorld(); } }
+  addBlock(tpl) {
+    if (!this.canEdit()) { if (this.locked) this.msg = 'Este es un ejemplo: obsérvalo y pulsa EJECUTAR.'; return; }
+    if (this.cfg.maxBlocks && countBlocks(this.curList) >= this.cfg.maxBlocks) { this.msg = 'Máximo ' + this.cfg.maxBlocks + ' bloques. Borra uno con ✗ o reutiliza los que tienes.'; AudioSys.sfx('error'); return; }
+    this.touchEdit();
+    const block = makeFromTemplate(tpl, this.cfg);
+    const sel = this.sel && getBlock(this.curList, this.sel) ? this.sel : null;
+    let list = this.curList, idx = list.length, path = [list.length];
+    if (sel) {
+      const cur = getBlock(this.curList, sel);
+      if (cur.op === 'blank') { Object.keys(cur).forEach(k => delete cur[k]); Object.assign(cur, block); this.sel = sel; this.flashLine(sel); AudioSys.sfx('place'); return; }
+      if (hasBody(cur) && !cur.body.length) { list = cur.body; idx = 0; path = sel.concat('body', 0); }
+      else { list = getList(this.curList, sel.slice(0, -1)); idx = sel[sel.length - 1] + 1; path = sel.slice(0, -1).concat(idx); }
+    }
+    list.splice(idx, 0, block);
+    this.sel = path; this.flashLine(path);
+    AudioSys.sfx('place');
+  }
+  flashLine(path) { this.flash = { key: this.tab + ':' + pathKey(path), t: 0.7 }; }
+  // ▲ / ▼: la línea sube o baja UNA fila del programa; al cruzar un SI/REPETIR/MIENTRAS entra o sale de él
+  moveLine(path, dir) {
+    if (!this.canEdit()) return;
+    const root = this.curList, lp = path.slice(0, -1), list = getList(root, lp), i = path[path.length - 1], b = list[i];
+    if (!b || b.locked) { this.msg = 'Esa línea está fija en este reto.'; return; }
+    this.touchEdit();
+    let np = null;
+    const into = t => t.op === 'if' && t.else ? 'else' : 'body';
+    if (dir < 0) {
+      if (i > 0) {
+        const prev = list[i - 1];
+        if (hasBody(prev) && !prev.locked) { list.splice(i, 1); const k = into(prev); prev[k].push(b); np = lp.concat(i - 1, k, prev[k].length - 1); }
+        else { list[i] = prev; list[i - 1] = b; np = lp.concat(i - 1); }
+      } else if (lp.length) {
+        const key = lp[lp.length - 1], op = lp.slice(0, -1), owner = getBlock(root, op);
+        list.splice(0, 1);
+        if (key === 'else') { owner.body.push(b); np = op.concat('body', owner.body.length - 1); }
+        else { const ol = getList(root, op.slice(0, -1)), oi = op[op.length - 1]; ol.splice(oi, 0, b); np = op.slice(0, -1).concat(oi); }
+      }
+    } else {
+      if (i < list.length - 1) {
+        const next = list[i + 1];
+        if (hasBody(next) && !next.locked) { list.splice(i, 1); next.body.unshift(b); np = lp.concat(i, 'body', 0); }
+        else { list[i] = next; list[i + 1] = b; np = lp.concat(i + 1); }
+      } else if (lp.length) {
+        const key = lp[lp.length - 1], op = lp.slice(0, -1), owner = getBlock(root, op);
+        list.splice(i, 1);
+        if (key === 'body' && owner.op === 'if' && owner.else) { owner.else.unshift(b); np = op.concat('else', 0); }
+        else { const ol = getList(root, op.slice(0, -1)), oi = op[op.length - 1]; ol.splice(oi + 1, 0, b); np = op.slice(0, -1).concat(oi + 1); }
+      }
+    }
+    if (!np) { AudioSys.sfx('error'); return; }
+    this.sel = np; this.flashLine(np); AudioSys.sfx('swap');
+  }
   drawPalette(g) {
     const x = 4, y = 20, w = 92;
     panel(g, x, y, w, 204, { border: '#2A3570' });
     drawText(g, 'BLOQUES', x + 6, y + 5, PAL.sun);
     const pal = this.cfg.palette || [];
     let yy = y + 17;
-    pal.forEach((tpl, i) => {
+    const can = this.canEdit();
+    pal.forEach(tpl => {
       if (this.hiddenTpl && this.hiddenTpl.includes(tpl)) return;
       const cat = BLOCK_CAT[templateCat(tpl)] || BLOCK_CAT.act;
       const label = templateLabel(tpl, this.cfg);
       const id = 'pal:' + tpl;
-      const st = UI.register(id, x + 4, yy, w - 8, 13, { drag: { tpl } });
+      const st = UI.register(id, x + 4, yy, w - 8, 13, {});
       const hl = this.hintHighlight && this.hintHighlight.what === 'palette:' + tpl && Math.floor(this.t * 4) % 2;
-      rect(g, x + 4, yy, w - 8, 13, st.held ? shade(cat.color, 0.2) : st.hover || st.focus ? shade(cat.dark, 0.25) : cat.dark);
+      rect(g, x + 4, yy, w - 8, 13, st.pressed ? shade(cat.color, 0.2) : st.hover || st.focus ? shade(cat.dark, 0.25) : cat.dark);
       rect(g, x + 4, yy, 3, 13, cat.color);
-      if (hl || st.held) strokeRect(g, x + 3, yy - 1, w - 6, 15, PAL.sun);
-      drawText(g, fitText(label, w - 18), x + 10, yy + 3, st.held ? PAL.ink : PAL.cream);
+      if (hl) strokeRect(g, x + 3, yy - 1, w - 6, 15, PAL.sun);
+      drawText(g, fitText(label, w - 22), x + 10, yy + 3, can ? PAL.cream : '#8C93B8');
+      if (can) drawText(g, '+', x + w - 9, yy + 3, cat.color);
       if (st.focus && Input.lastDevice === 'keyboard') UI.focusRing(g, x + 4, yy, w - 8, 13);
       const actDesc = tpl.startsWith('act:') && this.cfg.actions && this.cfg.actions[tpl.slice(4)] && this.cfg.actions[tpl.slice(4)].desc;
       if (st.hover) UI.tooltip = (this.cfg.tips && this.cfg.tips[tpl]) || actDesc || (cat.name[0].toUpperCase() + cat.name.slice(1) + ': ' + label);
+      if (UI.clicked(id)) this.addBlock(tpl);
       yy += 15;
     });
-    // papelera
-    const tr = UI.register('trash', x + 4, 200, w - 8, 18, { drop: true });
-    const dragging = UI.dragging && UI.dragging.move || UI.held && UI.held.move;
-    rect(g, x + 4, 200, w - 8, 18, dragging ? (tr.hover || tr.focus ? '#7A2A3A' : '#4A1A2A') : '#1A1F38');
-    drawText(g, dragging ? '✗ SOLTAR AQUÍ: BORRAR' : '✗ papelera', x + w / 2, 206, dragging ? PAL.coral : '#5A6090', { align: 'center' });
-    if (this.sel && UI.held == null && !UI.dragging && this.state === 'edit') {
-      if (UI.btn(g, 'delsel', x + 4, 184, w - 8, 13, 'BORRAR LÍNEA', { color: PAL.coral })) this.deleteSel();
+    // leyenda de controles (en lugar de la papelera)
+    if (!this.locked) {
+      const lines = [['Toca un bloque:', 0], ['se añade bajo', 0], ['la línea marcada', 0], ['', 0], ['▲ ▼  mover', 1], ['−  +  números', 1], ['✗  borrar', 1], ['toca un valor', 0], ['para cambiarlo', 0]];
+      const ly = Math.max(yy + 6, 221 - lines.length * 9);
+      rect(g, x + 4, ly - 3, w - 8, lines.length * 9 + 4, '#10162B');
+      lines.forEach(([t, k], i) => drawText(g, fitText(t, w - 14), x + 7, ly + i * 9, k ? PAL.sun : '#8C93B8'));
     }
   }
   drawCode(g) {
@@ -5729,53 +5787,34 @@ class CodeLabScene {
       ty += 15;
       if (this.tab !== 'main') { const f = this.functions[this.tab]; drawText(g, 'FUNCIÓN ' + this.tab + '(' + f.params.join(', ') + ')', x + 6, ty, PAL.lilac); ty += 11; }
     } else drawText(g, 'PROGRAMA', x + 6, ty + 1, PAL.sun), ty += 11;
-    const lines = this.buildLines(this.curList);
-    const holding = UI.held != null || UI.dragging != null;
-    const showSlots = !this.locked && holding && this.state !== 'running';
-    const editable = !this.locked && this.state !== 'running' && this.state !== 'paused';
-    const LH = 11;
-    const visible = lines.filter(l => l.kind !== 'slot' || showSlots);
-    const areaTop = ty + 1;
-    let areaBot = y + h - 4;
-    const listKey = lp => lp.join('.');
-    const slotId = l => 'slot:' + listKey(l.listPath) + ':' + l.idx;
-    // los huecos de inserción son finos (5 px) y solo crecen bajo el cursor: el programa no se duplica de largo
-    const rowH = l => l.kind !== 'slot' ? LH : (UI.hover === slotId(l) || UI.focus === slotId(l) ? 13 : 5);
-    // fila inferior reservada para el aviso «bloque en la mano» o el indicador de desplazamiento
-    { let tot = 0; for (const l of visible) tot += rowH(l); if (UI.held != null && !this.locked || tot > areaBot - areaTop) areaBot -= 12; }
-    const fitFrom = s0 => { let hh = 0, n = 0; for (let i = s0; i < visible.length; i++) { hh += rowH(visible[i]); if (hh > areaBot - areaTop) break; n++; } return Math.max(1, n); };
-    let maxScroll = 0; { let hh = 0; for (let i = visible.length - 1; i >= 0; i--) { hh += rowH(visible[i]); if (hh > areaBot - areaTop) { maxScroll = i + 1; break; } } }
-    // auto-scroll a la línea activa
-    if (this.highlight && this.state === 'running') { const hi = visible.findIndex(l => l.kind === 'head' && pathKey(l.path) === pathKey(this.highlight.path)); if (hi >= 0) { const fit = fitFrom(this.scroll); if (hi - this.scroll >= fit - 1) this.scroll = hi - fit + 2; if (hi < this.scroll) this.scroll = hi; } }
+    const lines = this.buildLines(this.curList).filter(l => l.kind !== 'slot');
+    const editable = this.canEdit();
+    const LH = 12;
+    const areaTop = ty + 1, areaBot = y + h - 16; // fila inferior: ayuda de la línea marcada
+    const maxLines = Math.floor((areaBot - areaTop) / LH);
+    if (this.sel && !getBlock(this.curList, this.sel)) this.sel = null;
+    // mantener visible la línea activa o la marcada
+    const focusKey = this.highlight && this.state === 'running' ? pathKey(this.highlight.path) : this.sel && this.selMoved ? pathKey(this.sel) : null;
+    if (focusKey != null) { const hi = lines.findIndex(l => l.kind === 'head' && pathKey(l.path) === focusKey); if (hi >= 0) { if (hi - this.scroll >= maxLines - 1) this.scroll = hi - maxLines + 2; if (hi < this.scroll) this.scroll = hi; } }
+    this.selMoved = false;
     if (Input.pointer.wheel && inRect(Input.pointer.x, Input.pointer.y, { x, y, w, h })) this.scroll += Input.pointer.wheel;
-    this.scroll = clamp(this.scroll, 0, maxScroll);
-    const maxLines = fitFrom(this.scroll);
+    this.scroll = clamp(this.scroll, 0, Math.max(0, lines.length - maxLines));
     let lineNo = 0;
-    const nums = new Map(); lines.forEach(l => { if (l.kind !== 'slot') { lineNo++; nums.set(l, lineNo); } });
+    const nums = new Map(); lines.forEach(l => { lineNo++; nums.set(l, lineNo); });
+    // tocar el fondo vacío quita la marca
+    const bgId = 'codebg:' + this.tab;
+    UI.register(bgId, x + 2, areaTop, w - 4, areaBot - areaTop, { nav: false });
+    if (UI.clicked(bgId)) this.sel = null;
     let yy = areaTop;
-    // aviso claro (abajo) cuando hay un bloque «en la mano»
-    if (UI.held != null && !this.locked) {
-      const lbl = UI.held.tpl ? templateLabel(UI.held.tpl, this.cfg) : 'la línea';
-      rect(g, x + 2, areaBot + 1, w - 4, 11, '#4A3A10');
-      drawText(g, fitText('¿Dónde va «' + lbl + '»?', w - 64), x + 6, areaBot + 3, PAL.sun);
-      if (UI.btn(g, 'heldCancel', x + w - 56, areaBot + 1, 52, 11, 'CANCELAR', { color: PAL.coral })) UI.cancelHeld();
-    }
-    visible.slice(this.scroll, this.scroll + maxLines).forEach(l => {
+    let selRow = null;
+    lines.slice(this.scroll, this.scroll + maxLines).forEach(l => {
       const ind = x + 20 + l.depth * 9;
-      if (l.kind === 'slot') {
-        const id = slotId(l), rh = rowH(l);
-        const st = UI.register(id, ind, yy, x + w - 6 - ind, rh, { drop: true });
-        if (rh > 5) {
-          rect(g, ind, yy + 1, x + w - 8 - ind, rh - 2, 'rgba(255,216,74,0.18)'); strokeRect(g, ind, yy + 1, x + w - 8 - ind, rh - 2, PAL.sun);
-          drawText(g, '+ PONER AQUÍ', ind + 5, yy + 3, PAL.sun);
-        } else rect(g, ind + 2, yy + 2, x + w - 12 - ind, 1, st.hover ? PAL.sun : 'rgba(255,216,74,0.45)');
-        yy += rh; return;
-      }
       const b = l.b, cat = BLOCK_CAT[b.op] || BLOCK_CAT.act;
       const n = nums.get(l);
       const active = this.highlight && l.kind === 'head' && pathKey(this.highlight.path) === pathKey(l.path) && (this.highlight.fn || 'main') === this.tab;
       const isErr = this.state === 'error' && this.errPath && l.kind === 'head' && pathKey(this.errPath) === pathKey(l.path) && (this.errFn || 'main') === this.tab;
       const selected = this.sel && l.kind === 'head' && pathKey(this.sel) === pathKey(l.path);
+      const flashing = this.flash && this.flash.t > 0 && l.kind === 'head' && this.flash.key === this.tab + ':' + pathKey(l.path);
       // gutter: número de línea + punto de interrupción
       const bpk = this.bpKey(l.path, this.tab === 'main' ? null : this.tab);
       if (l.kind === 'head') {
@@ -5787,23 +5826,25 @@ class CodeLabScene {
       if (active) { rect(g, ind - 2, yy, x + w - 4 - ind, LH - 1, 'rgba(255,216,74,0.25)'); drawText(g, '▶', ind - 8, yy + 2, PAL.sun); }
       if (isErr) { rect(g, ind - 2, yy, x + w - 4 - ind, LH - 1, 'rgba(255,107,107,0.35)'); drawText(g, '✗', ind - 8, yy + 2, PAL.coral); }
       if (l.kind === 'head') {
-        const canDel = editable && !b.locked && !holding && b.op !== 'blank';
-        const lw = x + w - 6 - ind - (canDel ? 13 : 0);
+        const ctl = selected && editable && !b.locked;
+        const lw = x + w - 6 - ind - (ctl ? 36 : 0);
         const lid = 'line:' + this.tab + ':' + pathKey(l.path);
-        // con un bloque en la mano, tocar una línea lo coloca justo debajo
-        const st = UI.register(lid, ind, yy, lw, LH - 1, { drag: b.locked || this.locked ? undefined : { move: l.path }, drop: b.op === 'blank' || (showSlots && !(UI.held && UI.held.move && pathKey(UI.held.move) === pathKey(l.path))) });
-        if (b.op === 'blank') { UI.items[UI.items.length - 1].id = 'blank:' + pathKey(l.path); }
-        if (UI.clicked(lid)) { this.sel = l.path; }
+        const st = UI.register(lid, ind, yy, lw, LH - 1, {});
+        if (UI.clicked(lid)) { this.sel = selected ? null : l.path; AudioSys.sfx('select'); }
+        if (selected) rect(g, ind - 1, yy - 1, x + w - 5 - ind, LH + 1, 'rgba(255,216,74,0.14)');
+        if (flashing) rect(g, ind - 1, yy - 1, x + w - 5 - ind, LH + 1, `rgba(255,216,74,${0.35 * this.flash.t})`);
         rect(g, ind, yy, 3, LH - 1, cat.color);
-        if (selected) strokeRect(g, ind - 1, yy - 1, lw + 2, LH + 1, PAL.sun);
-        if (showSlots && st.hover && b.op !== 'blank') rect(g, ind, yy + LH - 2, lw, 2, PAL.sun);
+        if (selected) strokeRect(g, ind - 1, yy - 1, x + w - 5 - ind, LH + 1, PAL.sun);
         if (b.locked) drawText(g, '■', x + w - 12, yy + 2, '#5A6090');
         this.drawBlockLine(g, b, ind + 5, yy + 2, l.path, st.hover || st.focus, lw - 8 - (b.locked ? 10 : 0));
         if (st.focus && Input.lastDevice === 'keyboard') UI.focusRing(g, ind, yy, lw, LH - 1);
-        // borrar con un toque: ✗ al final de cada línea editable
-        if (canDel && UI.btn(g, 'del:' + this.tab + ':' + pathKey(l.path), x + w - 17, yy, 11, LH - 1, '✗', { color: PAL.coral, tip: 'Borrar esta línea' })) {
-          if (this.state !== 'edit') { this.state = 'edit'; this.resetWorld(); }
-          this.removeAt(l.path); AudioSys.sfx('remove');
+        // controles de la línea marcada: subir, bajar, borrar
+        if (ctl) {
+          const bx = x + w - 40, pk = this.tab + ':' + pathKey(l.path);
+          if (UI.btn(g, 'up:' + pk, bx, yy, 11, LH - 1, '▲', { color: PAL.sky, tip: 'Subir una fila' })) { this.moveLine(l.path, -1); this.selMoved = true; }
+          if (UI.btn(g, 'dn:' + pk, bx + 12, yy, 11, LH - 1, '▼', { color: PAL.sky, tip: 'Bajar una fila' })) { this.moveLine(l.path, 1); this.selMoved = true; }
+          if (UI.btn(g, 'del:' + pk, bx + 24, yy, 11, LH - 1, '✗', { color: PAL.coral, tip: 'Borrar esta línea' })) { this.touchEdit(); this.removeAt(l.path); AudioSys.sfx('remove'); }
+          selRow = n;
         }
         // burbuja de condición e iteración
         if (active && this.condBubble && (b.op === 'if' || b.op === 'while')) {
@@ -5823,43 +5864,63 @@ class CodeLabScene {
       }
       yy += LH;
     });
-    // espacio libre bajo el programa: tocarlo con un bloque en la mano lo añade al final
-    if (showSlots && areaBot - yy > 12 && this.scroll + maxLines >= visible.length) {
-      const id = 'slot::' + this.curList.length, st = UI.register(id, x + 20, yy + 1, w - 26, areaBot - yy - 2, { drop: true });
-      rect(g, x + 20, yy + 2, w - 26, Math.min(14, areaBot - yy - 3), st.hover ? 'rgba(255,216,74,0.18)' : 'rgba(255,216,74,0.06)');
-      drawText(g, '+ poner al final', x + 26, yy + 5, st.hover ? PAL.sun : 'rgba(255,216,74,0.7)');
-    }
-    if (!visible.some(l => l.kind === 'head')) drawPara(g, this.locked ? '' : 'Arrastra bloques desde la izquierda (o tócalos y luego toca aquí).', x + 10, areaTop + 22, w - 20, '#5A6090');
-    if (visible.length > maxLines) {
-      if (!(UI.held != null && !this.locked)) drawText(g, 'filas ' + (this.scroll + 1) + '-' + Math.min(visible.length, this.scroll + maxLines) + ' de ' + visible.length, x + w - 6, areaBot + 3, '#5A6090', { align: 'right' });
-      if (UI.btn(g, 'scrUp', x + w - 30, y + 4, 12, 11, '▲')) this.scroll--; if (UI.btn(g, 'scrDn', x + w - 16, y + 4, 12, 11, '▼')) this.scroll++;
+    if (this.flash) { this.flash.t -= 1 / 60; if (this.flash.t <= 0) this.flash = null; }
+    if (!lines.length) drawPara(g, this.locked ? '' : 'Toca un bloque de la izquierda para añadirlo aquí.', x + 10, areaTop + 16, w - 20, '#5A6090');
+    // fila de ayuda inferior
+    rect(g, x + 2, areaBot + 1, w - 4, 11, '#10162B');
+    let help;
+    if (this.locked) help = 'Ejemplo: pulsa EJECUTAR y observa.';
+    else if (!editable) help = 'Ejecutando… (PARAR para editar)';
+    else if (selRow) help = 'Línea ' + selRow + ' marcada: ▲▼ mover · ✗ borrar';
+    else help = 'Toca una línea para moverla o borrarla';
+    drawText(g, fitText(help, w - (lines.length > maxLines ? 44 : 10)), x + 6, areaBot + 3, selRow ? PAL.sun : '#8C93B8');
+    if (lines.length > maxLines) {
+      if (UI.btn(g, 'scrUp', x + w - 30, areaBot + 1, 12, 11, '▲')) this.scroll--;
+      if (UI.btn(g, 'scrDn', x + w - 16, areaBot + 1, 12, 11, '▼')) this.scroll++;
     }
     // animación de llamada / retorno
     if (this.callAnim) {
       const a = this.callAnim, k = 1 - a.t / 0.8;
       const txt = a.dir > 0 ? '→ LLAMANDO ' + a.fn + '()' : '↩ ' + a.fn + ' DEVUELVE ' + (a.value === undefined ? '' : fmtVal(a.value));
       const bw = textW(txt) + 10;
-      rect(g, x + w / 2 - bw / 2, y + h - 22 - k * 6, bw, 12, a.dir > 0 ? '#4A2A7A' : '#2A5A1A'); drawText(g, txt, x + w / 2, y + h - 20 - k * 6, PAL.white, { align: 'center' });
+      rect(g, x + w / 2 - bw / 2, y + h - 34 - k * 6, bw, 12, a.dir > 0 ? '#4A2A7A' : '#2A5A1A'); drawText(g, txt, x + w / 2, y + h - 32 - k * 6, PAL.white, { align: 'center' });
     }
   }
-  // dibuja una línea de bloque con parámetros editables como "chips"
   drawBlockLine(g, b, x, y, path, hover, maxW = 999) {
     let parts = this.blockParts(b);
+    const editable = !this.locked && !b.locked && this.state !== 'running' && this.state !== 'paused';
+    // números con − y +: se ajustan sin abrir listas
+    const isNum = p => editable && p.options && p.options.length > 1 && p.options.every(o => typeof o.value === 'number');
+    const chipW = p => textW(p.text) + 6 + (isNum(p) ? 18 : 0);
     // si la línea no cabe: primero se compacta el texto fijo, luego se juntan las piezas
-    const widthOf = (ps, gap) => ps.reduce((s, p) => s + (typeof p === 'string' ? textW(p) + gap : textW(p.text) + 6 + gap - 1), 0);
+    const widthOf = (ps, gap) => ps.reduce((s, p) => s + (typeof p === 'string' ? textW(p) + gap : chipW(p) + gap - 1), 0);
     let gap = 4;
     if (widthOf(parts, gap) > maxW) parts = parts.map(p => typeof p === 'string' ? p.replace(/^LLAMAR /, '').replace('ENTONCES', '→') : p);
     if (widthOf(parts, gap) > maxW) gap = 2;
     let cx = x;
-    const editable = !this.locked && !b.locked && this.state !== 'running';
     for (const p of parts) {
       if (typeof p === 'string') { drawText(g, p, cx, y, hover ? PAL.white : PAL.cream); cx += textW(p) + gap; continue; }
       const txt = p.text; const w = textW(txt) + 6;
       const id = 'chip:' + this.tab + ':' + pathKey(path) + ':' + p.key;
+      if (isNum(p)) {
+        const opts = p.options, cur = opts.findIndex(o => o.value === p.value);
+        const step = d => { const k = clamp((cur < 0 ? 0 : cur) + d, 0, opts.length - 1); if (k !== cur) { this.touchEdit(); p.set(opts[k].value); AudioSys.sfx('click'); } else AudioSys.sfx('error'); };
+        if (UI.btn(g, id + ':m', cx - 1, y - 2, 8, 11, '−', { color: PAL.sky, disabled: cur === 0, tip: 'Menos' })) step(-1);
+        cx += 8;
+        const st = UI.register(id, cx, y - 2, w, 11);
+        rect(g, cx, y - 2, w, 11, st.hover || st.focus ? '#3A4A8A' : '#22306B'); rect(g, cx, y + 8, w, 1, p.color || PAL.sun);
+        drawText(g, txt, cx + 3, y, p.color || PAL.sun);
+        if (UI.clicked(id)) this.openChip(p, cx, y + 10);
+        cx += w;
+        if (UI.btn(g, id + ':p', cx + 1, y - 2, 8, 11, '+', { color: PAL.sky, disabled: cur === opts.length - 1, tip: 'Más' })) step(1);
+        cx += 10 + gap - 1;
+        continue;
+      }
       if (editable && p.options) {
         const st = UI.register(id, cx - 1, y - 2, w, 11);
-        rect(g, cx - 1, y - 2, w, 11, st.hover || st.focus ? '#3A4A8A' : '#22306B');
+        rect(g, cx - 1, y - 2, w, 11, st.hover || st.focus ? '#3A4A8A' : p.blank ? '#4A3A10' : '#22306B');
         rect(g, cx - 1, y + 8, w, 1, p.color || PAL.sun);
+        if (p.blank && Math.floor(this.t * 2) % 2) strokeRect(g, cx - 1, y - 2, w, 11, PAL.sun);
         if (UI.clicked(id)) this.openChip(p, cx, y + 10);
       } else rect(g, cx - 1, y - 2, w, 11, '#1A2248');
       drawText(g, txt, cx + 2, y, p.color || PAL.sun);
@@ -5878,9 +5939,9 @@ class CodeLabScene {
     const condParts = (c, pre) => {
       const lopts = (cfg.condLeft || cfg.sensors || []).concat(cfg.varNames || []).map(v => ({ label: v, value: v }));
       const r = [
-        { key: pre + 'l', text: exprText(c.l), options: lopts, set: v => c.l = v, color: PAL.aqua },
+        { key: pre + 'l', text: exprText(c.l), value: c.l, options: lopts, set: v => c.l = v, color: PAL.aqua },
         { key: pre + 'op', text: OP_TXT[c.op], options: (cfg.ops || OPS).map(o => ({ label: OP_TXT[o], value: o })), set: v => c.op = v, color: PAL.orange },
-        { key: pre + 'r', text: exprText(c.r), options: (cfg.condRight ? cfg.condRight.map(v => ({ label: exprText(v), value: v })) : exprOpts('cond')), set: v => c.r = v, color: PAL.sun }
+        { key: pre + 'r', text: exprText(c.r), value: c.r, options: (cfg.condRight ? cfg.condRight.map(v => ({ label: exprText(v), value: v })) : exprOpts('cond')), set: v => c.r = v, color: PAL.sun }
       ];
       if (cfg.allowJoin) {
         r.push({ key: pre + 'join', text: c.join ? c.join : '+', options: [{ label: '(ninguna)', value: null }, { label: 'Y', value: 'Y' }, { label: 'O', value: 'O' }], set: v => { c.join = v; if (v && !c.c2) c.c2 = { l: (cfg.condLeft || cfg.sensors || ['x'])[1] || (cfg.sensors || ['x'])[0], op: '<', r: 0 }; if (!v) delete c.c2; }, color: PAL.pink });
@@ -5891,26 +5952,33 @@ class CodeLabScene {
     switch (b.op) {
       case 'act': {
         const a = (cfg.actions || {})[b.name] || {};
-        if (b.arg !== undefined && a.options) return [a.label || b.name, { key: 'arg', text: exprText(b.arg), options: a.options.map(v => ({ label: exprText(v), value: v })), set: v => b.arg = v, color: PAL.sun }];
-        return [a.label || b.name];
+        // el nombre de la instrucción se puede cambiar por otra de la paleta con un toque
+        const alts = (cfg.palette || []).filter(t => t.startsWith('act:')).map(t => t.slice(4));
+        const name = alts.length > 1 ? { key: 'name', text: a.label || b.name, color: PAL.cream, value: b.name, options: alts.map(nm => ({ label: ((cfg.actions || {})[nm] || {}).label || nm, value: nm })), set: v => { const na = (cfg.actions || {})[v] || {}; b.name = v; b.arg = na.arg != null ? (b.arg != null && na.options && na.options.includes(b.arg) ? b.arg : na.arg) : undefined; } } : a.label || b.name;
+        if (b.arg !== undefined && a.options) return [name, { key: 'arg', text: exprText(b.arg), value: b.arg, options: a.options.map(v => ({ label: exprText(v), value: v })), set: v => b.arg = v, color: PAL.sun }];
+        return [name];
       }
       case 'if': return ['SI'].concat(condParts(b.cond, 'c')).concat(['ENTONCES']);
       case 'while': return ['MIENTRAS'].concat(condParts(b.cond, 'c'));
-      case 'repeat': return ['REPETIR', { key: 'n', text: exprText(b.n), options: numOpts('repeat').concat(cfg.repeatVars || []).map(v => ({ label: exprText(v), value: v })), set: v => b.n = v, color: PAL.sun }, 'VECES'];
+      case 'repeat': return ['REPETIR', { key: 'n', text: exprText(b.n), value: b.n, options: numOpts('repeat').concat(cfg.repeatVars || []).map(v => ({ label: exprText(v), value: v })), set: v => b.n = v, color: PAL.sun }, 'VECES'];
       case 'foreach': return ['PARA CADA', { key: 'var', text: b.var, color: PAL.lime }, 'EN', { key: 'list', text: b.list, color: PAL.aqua }];
-      case 'set': return [{ key: 'var', text: b.var, color: PAL.lime }, '←', { key: 'expr', text: exprText(b.expr), options: exprOpts('set:' + b.var).length ? exprOpts('set:' + b.var) : exprOpts('set'), set: v => b.expr = v, color: PAL.sun }];
-      case 'add': return [{ key: 'var', text: b.var, color: PAL.lime }, '← ' + b.var + ' +', { key: 'expr', text: exprText(b.expr), options: exprOpts('add:' + b.var).length ? exprOpts('add:' + b.var) : exprOpts('add'), set: v => b.expr = v, color: PAL.sun }];
+      case 'set': return [{ key: 'var', text: b.var, color: PAL.lime }, '←', { key: 'expr', text: exprText(b.expr), value: b.expr, options: exprOpts('set:' + b.var).length ? exprOpts('set:' + b.var) : exprOpts('set'), set: v => b.expr = v, color: PAL.sun }];
+      case 'add': return [{ key: 'var', text: b.var, color: PAL.lime }, '← ' + b.var + ' +', { key: 'expr', text: exprText(b.expr), value: b.expr, options: exprOpts('add:' + b.var).length ? exprOpts('add:' + b.var) : exprOpts('add'), set: v => b.expr = v, color: PAL.sun }];
       case 'call': {
         const f = cfg.functions && cfg.functions[b.fn];
         const parts = [];
         if (b.into) parts.push({ key: 'into', text: b.into, color: PAL.lime, options: (cfg.intoOptions || [b.into]).map(v => ({ label: v, value: v })), set: v => b.into = v }, '←');
         parts.push('LLAMAR ' + b.fn + '(');
-        (b.args || []).forEach((a, i) => { parts.push({ key: 'a' + i, text: exprText(a), options: exprOpts('arg:' + b.fn + ':' + i).length ? exprOpts('arg:' + b.fn + ':' + i) : exprOpts('arg'), set: v => b.args[i] = v, color: PAL.sun }); });
+        (b.args || []).forEach((a, i) => { parts.push({ key: 'a' + i, text: exprText(a), value: a, options: exprOpts('arg:' + b.fn + ':' + i).length ? exprOpts('arg:' + b.fn + ':' + i) : exprOpts('arg'), set: v => b.args[i] = v, color: PAL.sun }); });
         parts.push(')');
         return parts;
       }
-      case 'ret': return ['DEVOLVER', { key: 'expr', text: exprText(b.expr), options: exprOpts('ret'), set: v => b.expr = v, color: PAL.sun }];
-      case 'blank': return ['▢ ' + (b.hint || 'completa aquí')];
+      case 'ret': return ['DEVOLVER', { key: 'expr', text: exprText(b.expr), value: b.expr, options: exprOpts('ret'), set: v => b.expr = v, color: PAL.sun }];
+      case 'blank': {
+        // hueco: al tocarlo se elige qué instrucción va ahí
+        const opts = (cfg.palette || []).map(t => ({ label: templateLabel(t, cfg), value: t }));
+        return [{ key: 'blank', blank: true, text: '▢ ' + (b.hint || 'toca para elegir'), color: PAL.sun, options: opts, set: v => { const nb = makeFromTemplate(v, cfg); Object.keys(b).forEach(k => delete b[k]); Object.assign(b, nb); } }];
+      }
     }
     return ['?'];
   }
@@ -6663,10 +6731,13 @@ class SeqScene extends PuzzleBase {
     for (let i = 0; i < n; i++) {
       const x = sx0 + i * (sw + 6), y = 132;
       const id = this.slots[i];
-      const st = UI.register('slot' + i, x, y, sw, 36, { drop: true, drag: id ? { id, from: 'slot', slot: i } : undefined });
+      // tocar una casilla llena devuelve su tarjeta al montón
+      const st = UI.register('slot' + i, x, y, sw, 36, {});
+      if (UI.clicked('slot' + i) && id && this.state !== 'running') { if (this.state !== 'edit') { this.state = 'edit'; this.marks = []; } this.slots[i] = null; this.pool.push(id); AudioSys.sfx('remove'); }
       const mk = this.marks[i];
       rect(g, x, y, sw, 36, st.hover || st.focus ? '#2A3570' : '#1A2248');
-      strokeRect(g, x, y, sw, 36, mk === true ? PAL.lime : mk === false ? PAL.coral : this.stepI === i && this.state === 'running' ? PAL.sun : UI.held || UI.dragging ? PAL.sun : '#3E4C8A');
+      strokeRect(g, x, y, sw, 36, mk === true ? PAL.lime : mk === false ? PAL.coral : this.stepI === i && this.state === 'running' ? PAL.sun : !id && this.slots.indexOf(null) === i ? PAL.sun : '#3E4C8A');
+      if (id && (st.hover || st.focus) && this.state !== 'running') drawText(g, '✗', x + sw - 8, y + 26, PAL.coral);
       drawText(g, (i + 1) + '', x + 3, y + 3, '#8C93B8');
       if (id) this.drawCard(g, this.card(id), x + 2, y + 10, sw - 4, st.held);
       if (mk != null) drawText(g, mk ? '✓' : '✗', x + sw - 8, y + 3, mk ? PAL.lime : PAL.coral);
@@ -6676,19 +6747,24 @@ class SeqScene extends PuzzleBase {
     // tarjetas disponibles
     const pst = UI.register('pool', 6, 172, W - 12, 52, { drop: true, nav: false });
     rect(g, 6, 172, W - 12, 52, pst.hover && UI.dragging ? '#1A2A50' : '#10162B');
-    drawText(g, 'TARJETAS', 10, 175, '#8C93B8');
+    drawText(g, 'TARJETAS · toca una para ponerla en la siguiente casilla; toca una casilla para quitarla', 10, 175, '#8C93B8');
     // una fila si caben (hasta 5 tarjetas), si no dos filas; tarjetas tan anchas como permita el panel
     const total = this.cfg.cards.length, cols = total <= 5 ? total : Math.ceil(total / 2);
     const pw = Math.min(150, Math.floor((W - 20) / Math.max(1, cols)) - 4);
     this.pool.forEach((id, k) => {
       const col = k % cols, row = Math.floor(k / cols);
       const x = 10 + col * (pw + 4), y = 184 + row * 20;
-      const st = UI.register('card' + id, x, y, pw, 18, { drag: { id, from: 'pool' } });
+      // tocar una tarjeta la coloca en la primera casilla libre
+      const st = UI.register('card' + id, x, y, pw, 18, {});
+      if (UI.clicked('card' + id) && this.state !== 'running') {
+        const free = this.slots.indexOf(null);
+        if (free < 0) { this.say('Todas las casillas están llenas: toca una casilla para devolver su tarjeta.', PAL.sun); AudioSys.sfx('error'); }
+        else { if (this.state !== 'edit') { this.state = 'edit'; this.marks = []; } this.slots[free] = id; this.pool = this.pool.filter(x2 => x2 !== id); AudioSys.sfx('place'); }
+      }
       this.drawCard(g, this.card(id), x, y, pw, st.held, st.hover || st.focus);
       if (st.hover && this.card(id).desc) UI.tooltip = this.card(id).desc;
       if (st.focus && Input.lastDevice === 'keyboard') UI.focusRing(g, x, y, pw, 18);
     });
-    if (UI.dragging) { const c = this.card(UI.dragging.id); if (c) { g.globalAlpha = 0.85; this.drawCard(g, c, Input.pointer.x - 20, Input.pointer.y - 8, pw, true); g.globalAlpha = 1; } }
     this.drawFooter(g, [
       this.result ? null : { id: 'run', w: 70, label: '▶ EJECUTAR', primary: true, color: PAL.lime, fn: () => this.run(), disabled: this.state === 'running' }
     ]);
@@ -6832,28 +6908,20 @@ class FlowScene extends PuzzleBase {
   }
   draw(g) {
     this.drawHeader(g, 'FLOWCHART');
-    // paleta
+    // panel izquierdo: instrucciones y umbral (el diagrama ya viene armado: nada que arrastrar)
     panel(g, 4, 20, 92, 204, { border: '#2A3570' });
-    drawText(g, 'NODOS', 10, 25, PAL.sun);
-    (this.cfg.palette || ['start', 'read', 'dec', 'charge', 'use', 'end']).forEach((tp, i) => {
-      const y = 36 + i * 17, T = FLOW_TYPES[tp];
-      const st = UI.register('fp:' + tp, 8, y, 84, 14, { drag: { newType: tp } });
-      rect(g, 8, y, 84, 14, st.held ? '#5A4A1A' : st.hover || st.focus ? '#2A3570' : '#1A2248'); rect(g, 8, y, 3, 14, T.color);
-      drawText(g, tp === 'dec' ? '¿rad > U?' : T.label, 14, y + 4, st.held ? PAL.sun : PAL.cream);
-      if (st.focus && Input.lastDevice === 'keyboard') UI.focusRing(g, 8, y, 84, 14);
-    });
-    // umbral
+    drawText(g, 'CÓMO SE EDITA', 10, 25, PAL.sun);
+    drawPara(g, 'Toca un nodo de {c}acción{/} para cambiarlo.\n\nToca {y}⇄{/} junto al rombo para intercambiar SÍ y NO.\n\nAbajo: umbral con − +.', 10, 38, 80, '#C9D2F0');
     drawText(g, 'UMBRAL U', 10, 150, PAL.orange);
     drawText(g, this.threshold + ' W/m²', 50, 162, PAL.sun, { align: 'center' });
-    if (UI.btn(g, 'thDn', 8, 158, 14, 13, '−', { color: PAL.orange })) { this.threshold = Math.max(0, this.threshold - 100); AudioSys.sfx('click'); }
-    if (UI.btn(g, 'thUp', 78, 158, 14, 13, '+', { color: PAL.orange })) { this.threshold = Math.min(1000, this.threshold + 100); AudioSys.sfx('click'); }
-    const tr = UI.register('trash', 8, 200, 84, 18, { drop: true });
-    rect(g, 8, 200, 84, 18, UI.dragging && UI.dragging.move ? '#4A1A2A' : '#1A1F38'); drawText(g, '✗ papelera', 50, 206, '#8C93B8', { align: 'center' });
+    const edit = () => { if (this.state !== 'edit') this.state = 'edit'; };
+    if (UI.btn(g, 'thDn', 8, 158, 14, 13, '−', { color: PAL.orange, disabled: this.running })) { edit(); this.threshold = Math.max(0, this.threshold - 100); AudioSys.sfx('click'); }
+    if (UI.btn(g, 'thUp', 78, 158, 14, 13, '+', { color: PAL.orange, disabled: this.running })) { edit(); this.threshold = Math.min(1000, this.threshold + 100); AudioSys.sfx('click'); }
     // cuadrícula
     panel(g, this.OX - 4, 20, this.COLS * this.CW + 8, 204, { border: '#2A3570', bg: '#0B1020' });
     for (let r = 0; r < this.ROWS; r++) for (let c = 0; c < this.COLS; c++) {
       const x = this.OX + c * this.CW, y = this.OY + r * this.CH;
-      if (!this.nodeAt(c, r)) { const st = UI.register('cell:' + c + ',' + r, x + 2, y + 2, this.CW - 4, this.CH - 4, { drop: true, nav: !!(UI.held || UI.dragging) }); if (UI.held || UI.dragging) strokeRect(g, x + 2, y + 2, this.CW - 4, this.CH - 4, st.hover || st.focus ? PAL.sun : '#1E2748'); else px(g, x + this.CW / 2, y + this.CH / 2, '#2A3570'); }
+      if (!this.nodeAt(c, r)) { g.globalAlpha = 0.25; px(g, x + this.CW / 2, y + this.CH / 2, '#5A6090'); g.globalAlpha = 1; }
     }
     // conexiones
     for (const n of this.nodes) for (const o of FLOW_TYPES[n.type].outs) {
@@ -6868,8 +6936,11 @@ class FlowScene extends PuzzleBase {
     // nodos
     for (const n of this.nodes) {
       const R = this.nodeRect(n), T = FLOW_TYPES[n.type];
-      const st = UI.register('node:' + n.id, R.x, R.y, R.w, R.h, { drag: this.running ? undefined : { move: n.id }, drop: !!this.conn });
-      if (UI.clicked('node:' + n.id) && this.conn && this.conn.id !== n.id) { const from = this.byId(this.conn.id); from[this.conn.o] = n.id; this.conn = null; UI.cancelHeld(); AudioSys.sfx('place'); }
+      const acts = this.cfg.actTypes || ['charge', 'use'];
+      const isAct = acts.includes(n.type);
+      const st = UI.register('node:' + n.id, R.x, R.y, R.w, R.h, { nav: isAct && !this.running });
+      if (UI.clicked('node:' + n.id) && isAct && !this.running) { this.state = 'edit'; n.type = acts[(acts.indexOf(n.type) + 1) % acts.length]; AudioSys.sfx('place'); }
+      if (isAct && st.hover && !this.running) UI.tooltip = 'Toca para cambiar la acción';
       const active = this.tokenAt === n.id && this.running, err = this.errNode === n.id;
       const bg = active ? '#5A4A1A' : err ? '#5A1A2A' : '#1A2248';
       if (n.type === 'dec' || n.type === 'dec2') { for (let k = 0; k < R.h; k++) { const ww = Math.round((R.w / 2) * (1 - Math.abs(k - R.h / 2) / (R.h / 2 + 2))); rect(g, R.x + R.w / 2 - ww, R.y + k, ww * 2, 1, bg); } }
@@ -6879,8 +6950,10 @@ class FlowScene extends PuzzleBase {
       const lbl = n.type === 'dec' ? 'rad > ' + this.threshold + '?' : T.label;
       drawText(g, lbl.length > 11 ? lbl.slice(0, 10) + '…' : lbl, R.x + R.w / 2, R.y + 5, active ? PAL.sun : PAL.cream, { align: 'center' });
       if (this.lastDec && this.lastDec.id === n.id && this.running) drawText(g, this.lastDec.v ? 'SÍ' : 'NO', R.x + R.w + 1, R.y + 5, this.lastDec.v ? PAL.lime : PAL.coral);
-      // puertos
-      if (!this.running) for (const o of T.outs) {
+      if ((n.type === 'dec' || n.type === 'dec2') && !this.running && UI.btn(g, 'swap:' + n.id, R.x + R.w + 2, R.y + 3, 12, 11, '⇄', { color: PAL.orange, tip: 'Intercambiar las salidas SÍ y NO' })) { this.state = 'edit'; [n.yes, n.no] = [n.no, n.yes]; AudioSys.sfx('swap'); }
+      // etiquetas de las salidas del rombo (sin puertos que conectar)
+      if (n.type === 'dec' || n.type === 'dec2') { const py = R.y + R.h + 3; drawText(g, 'SÍ', R.x + 2, py - 3, PAL.lime); drawText(g, 'NO', R.x + R.w - 12, py - 3, PAL.coral); }
+      if (this.cfg.editPorts) for (const o of T.outs) {
         const p = this.portPos(n, o);
         const pid = 'port:' + n.id + ':' + o;
         const pst = UI.register(pid, p.x - 5, p.y - 4, 10, 8);
@@ -6902,7 +6975,6 @@ class FlowScene extends PuzzleBase {
     const rows = [['hora', S.hora(this.st) + ':00'], ['radiación', S.radiacion(this.st)], ['batería', S.bateria(this.st) + '%'], ['apagones', this.st.blackout]];
     rows.forEach((r, i) => { drawText(g, r[0], 364, 148 + i * 11, i === 3 && this.st.blackout ? PAL.coral : PAL.aqua); drawText(g, String(r[1]), 470, 148 + i * 11, PAL.cream, { align: 'right' }); });
     drawPara(g, 'El diagrama decide qué hacer {y}cada hora{/}.', 364, 196, 108, '#8C93B8');
-    if (UI.dragging) { const lbl = UI.dragging.newType ? FLOW_TYPES[UI.dragging.newType].label : 'mover'; drawText(g, lbl, Input.pointer.x, Input.pointer.y - 8, PAL.sun, { outline: PAL.ink }); }
     this.drawFooter(g, [this.result ? null : { id: 'run', w: 70, label: this.running ? '...' : '▶ EJECUTAR', primary: true, color: PAL.lime, fn: () => { if (!this.running) this.run(); } },
       this.result || !this.running ? null : { id: 'stop', w: 44, label: '■ PARAR', color: PAL.coral, fn: () => { this.running = false; this.state = 'edit'; this.say('Detenido.'); } },
       this.result ? null : { id: 'fast', w: 50, label: this.cfg.fast ? 'RÁPIDO' : 'NORMAL', color: PAL.sun, fn: () => { this.cfg.fast = !this.cfg.fast; } }]);
@@ -7622,7 +7694,8 @@ const Game = {
     FX.drawFlash(ctx);
     if (!(Scenes.top() && Scenes.top().hideToasts)) Toast.draw(ctx);
     TouchPad.draw(ctx);
-    if (G.save.settings.captions && AudioSys.captions.length) {
+    // en puzzles y menús los resultados ya se leen en pantalla: los subtítulos de sonido no tapan la interfaz
+    if (G.save.settings.captions && AudioSys.captions.length && !(Scenes.top() && Scenes.top().hideToasts)) {
       AudioSys.captions.forEach((c, i) => { const w = textW(c.text) + 8; ctx.globalAlpha = Math.min(1, c.t * 2); rect(ctx, W / 2 - w / 2, 24 + i * 12, w, 11, 'rgba(0,0,0,0.6)'); drawText(ctx, c.text, W / 2, 26 + i * 12, '#C9D2F0', { align: 'center' }); ctx.globalAlpha = 1; });
     }
     if (Save.flash > 0) { ctx.globalAlpha = Math.min(1, Save.flash); icon(ctx, 'star', W - 12, H - 12); ctx.globalAlpha = 1; }
@@ -8786,7 +8859,7 @@ C.during = (t, fn) => { let e = 0; return { update(dt) { e += dt * (G.autoDialog
 // ---------- Puzzle de arranque (primer algoritmo: una secuencia) ----------
 const CFG_FEST_BOOT = {
   kind: 'seq', title: 'Secuencia de arranque de LUMINA LOOP', tags: ['ALGORITMO', 'SECUENCIA'], concepts: ['sequence'], codex: 'algoritmo', label: 'ARRANQUE',
-  intro: 'Arrastra las tarjetas a las casillas en orden (o tócalas y luego toca la casilla). Después: EJECUTAR.',
+  intro: 'Toca las tarjetas en el orden correcto: cada una va a la siguiente casilla libre. Después: EJECUTAR.',
   slotLabel: 'LUMINA LOOP · pasos de arranque:',
   cards: [
     { id: 'ini', label: 'iniciar LUMINA LOOP', icon: 'chip', color: PAL.teal, desc: 'Carga el algoritmo de Lía en memoria.' },
@@ -8973,10 +9046,11 @@ const CFG_PUERTO_ROUTE = {
   world: W_grid({ map: ['########', '#S.c...#', '#....k.#', '#T.....#', '########'], need: { deliver: 1 }, okMsg: '¡El fusible llegó! PÍX lo entregó en la casilla ★.' }),
   stages: [
     { mode: 'demo', label: 'YO TE MUESTRO', text: 'Mira: PÍX ejecuta cada línea EN ORDEN, de arriba abajo. Pulsa EJECUTAR.', world: W_grid({ map: ['#######', '#S.k.T#', '#######'], need: { deliver: 1 }, okMsg: 'Así funciona una secuencia: un paso detrás de otro.' }), program: [A('avanzar', 2, 1), A('recoger', undefined, 1), A('avanzar', 2, 1), A('entregar', undefined, 1)] },
-    { mode: 'guided', label: 'LO HACEMOS JUNTOS', text: 'Completa los huecos ▢: arrastra un bloque ENCIMA de cada hueco.', world: W_grid({ map: ['#######', '#S.k..#', '#####.#', '#####T#', '#######'], need: { deliver: 1 }, okMsg: '¡Juntos lo logramos! Ahora te toca sola/solo.' }), program: [A('avanzar', 2, 1), A('recoger', undefined, 1), { op: 'blank', hint: '¿avanzar cuánto?' }, A('girar_der', undefined, 1), A('avanzar', 2, 1), { op: 'blank', hint: '¿y al llegar?' }] },
-    { mode: 'solo', label: 'LO HACES TÚ', text: 'Ahora tú. Ojo: la caja bloquea el camino recto. PÍX empieza mirando →.', program: [] }
+    { mode: 'guided', label: 'LO HACEMOS JUNTOS', text: 'Completa: en la línea 3 ajusta cuánto avanza con − +, y toca el hueco ▢ de la última línea para elegir qué hace al llegar.', world: W_grid({ map: ['#######', '#S.k..#', '#####.#', '#####T#', '#######'], need: { deliver: 1 }, okMsg: '¡Juntos lo logramos! Ahora te toca sola/solo.' }), program: [A('avanzar', 2, 1), A('recoger', undefined, 1), A('avanzar', 1), A('girar_der', undefined, 1), A('avanzar', 2, 1), { op: 'blank', hint: '¿y al llegar? (toca)' }] },
+    // todas las instrucciones ya están: solo hay que ordenarlas (▲▼) y ajustar los números (− +)
+    { mode: 'solo', label: 'LO HACES TÚ', text: 'Ahora tú: las instrucciones ya están. Toca una línea y muévela con ▲▼ hasta ordenarlas, y ajusta los números con − +. La caja bloquea el camino recto.', program: [A('girar_der'), A('avanzar', 1), A('girar_izq'), A('recoger'), A('avanzar', 1), A('girar_der'), A('avanzar', 1), A('girar_der'), A('avanzar', 1), A('entregar')] }
   ],
-  hints: ['¿Hacia dónde mira PÍX al empezar? La flecha amarilla lo indica. ¿Qué hay delante?', { text: 'Primero baja una fila para esquivar la caja: girar_der y avanzar.', highlight: 'palette:act:girar_der' }, { text: 'Te dejo el principio: bajar, girar, avanzar hasta la pieza.', partial: [A('girar_der'), A('avanzar', 1), A('girar_izq'), A('avanzar', 4)] }],
+  hints: ['¿Hacia dónde mira PÍX al empezar? La flecha amarilla lo indica. ¿Qué hay delante?', { text: 'Primero baja una fila para esquivar la caja: girar_der y avanzar.', highlight: 'palette:act:girar_der' }, { text: 'recoger va DESPUÉS de llegar a la pieza: bájalo una fila. Hasta la pieza hay 4 casillas.' }, { text: 'Así queda:', partial: [A('girar_der'), A('avanzar', 1), A('girar_izq'), A('avanzar', 4), A('recoger'), A('girar_der'), A('avanzar', 1), A('girar_der'), A('avanzar', 4), A('entregar')] }],
   deep: 'Otra forma de verlo: el diagrama de flujo muestra que cada caja ocurre solo si la anterior terminó bien.',
   intro: 'PÍX llevará el fusible de la casilla amarilla a la ★. Dile EXACTAMENTE qué hacer.', xp: 50
 };
@@ -9248,11 +9322,11 @@ const CFG_VALLE_RUTA = {
   world: W_grid({ map: ['#########', '#S..p...#', '#.##.##.#', '#p.....p#', '#########'], bot: 'robot', floor: '#A0643C', wall: '#3FA85A', bg: '#66D66A', need: { plants: true }, okMsg: '¡Las tres plantas regadas y ninguna dos veces!' }),
   stages: [
     {
-      mode: 'guided', label: 'DEPURA EL BUG', text: 'Un BUGGLIN intercambió dos instrucciones. Ejecuta, mira la TRAZA y encuentra dónde falla. Arrastra líneas para reordenarlas.',
+      mode: 'guided', label: 'DEPURA EL BUG', text: 'Un BUGGLIN intercambió dos instrucciones. Ejecuta, mira la TRAZA y encuentra dónde falla. Toca una línea y muévela con ▲▼.',
       world: W_grid({ map: ['########', '#S.p.p.#', '#.....p#', '########'], bot: 'robot', floor: '#A0643C', wall: '#3FA85A', bg: '#66D66A', need: { plants: true }, okMsg: '¡Bug corregido! El orden lo era todo.' }),
       program: [A('avanzar', 2), A('regar'), A('avanzar', 2), A('regar'), A('girar_der'), A('avanzar', 1), A('avanzar', 1), A('regar')]
     },
-    { mode: 'solo', label: 'LO HACES TÚ', text: 'Nuevo huerto. Riega las 3 plantas (una sola vez cada una). El robot empieza mirando →.', program: [] }
+    { mode: 'solo', label: 'LO HACES TÚ', text: 'Nuevo huerto: las instrucciones ya están en orden. Ajusta cuántas casillas avanza cada «avanzar» (− +) para regar las 3 plantas.', program: [A('avanzar', 1), A('regar'), A('avanzar', 1), A('girar_der'), A('avanzar', 1), A('regar'), A('girar_der'), A('avanzar', 1), A('regar')] }
   ],
   hints: ['Pulsa PASO para ejecutar línea a línea. ¿En qué paso el robot se desvía?', { text: 'En el huerto nuevo, la primera planta está en la misma fila. Después hay que bajar por la derecha.', highlight: 'palette:act:regar' }, { text: 'Te dejo la primera parte:', partial: [A('avanzar', 3), A('regar'), A('avanzar', 3), A('girar_der'), A('avanzar', 2), A('regar')] }],
   deep: 'Mira el diagrama: cada caja depende de dónde dejó al robot la anterior. El error no está en una instrucción sino en su POSICIÓN.',
@@ -9263,9 +9337,9 @@ const CFG_VALLE_SACOS = {
   palette: ['set:sacos', 'add:sacos', 'act:llega_carro'], actions: { llega_carro: { label: 'llega_carro' } },
   exprOptions: { set: [0, 4, 8, 12], add: [1, 2, 4, 8] }, varNames: ['sacos'],
   world: W_sacks({ expect: 12 }),
-  start: [A('llega_carro'), { op: 'add', var: 'sacos', expr: 4 }, A('llega_carro'), { op: 'add', var: 'sacos', expr: 4 }, A('llega_carro'), { op: 'add', var: 'sacos', expr: 4 }],
-  intro: 'El contador de sacos de Pepa dice "???". Ejecuta y lee el error.',
-  hints: ['¿Qué valor tiene "sacos" antes de la primera suma?', { text: 'Un acumulador necesita un valor inicial: sacos ← 0 al principio.', highlight: 'palette:set:sacos' }, { text: 'Añadí la inicialización:', partial: [{ op: 'set', var: 'sacos', expr: 0 }, A('llega_carro'), { op: 'add', var: 'sacos', expr: 4 }, A('llega_carro'), { op: 'add', var: 'sacos', expr: 4 }, A('llega_carro'), { op: 'add', var: 'sacos', expr: 4 }] }]
+  start: [A('llega_carro'), { op: 'add', var: 'sacos', expr: 4 }, A('llega_carro'), { op: 'add', var: 'sacos', expr: 4 }, A('llega_carro'), { op: 'add', var: 'sacos', expr: 4 }, { op: 'set', var: 'sacos', expr: 0 }],
+  intro: 'El contador de sacos de Pepa dice "???". Ejecuta, lee el error y ordena las líneas (toca una línea y usa ▲▼).',
+  hints: ['¿Qué valor tiene "sacos" antes de la primera suma?', { text: 'Un acumulador necesita un valor inicial ANTES de sumar: sube «sacos ← 0» hasta la línea 1.' }, { text: 'Añadí la inicialización:', partial: [{ op: 'set', var: 'sacos', expr: 0 }, A('llega_carro'), { op: 'add', var: 'sacos', expr: 4 }, A('llega_carro'), { op: 'add', var: 'sacos', expr: 4 }, A('llega_carro'), { op: 'add', var: 'sacos', expr: 4 }] }]
 };
 const CFG_VALLE_MOLINO = {
   kind: 'seq', title: 'Molino dormido', tags: ['SECUENCIA', 'EÓLICA'], concepts: ['sequence', 'wind'], codex: 'eolica', label: 'MOLINO',
@@ -9391,10 +9465,11 @@ const CFG_SOL_FLOW = {
   kind: 'flow', main: true, title: 'El controlador solar', tags: ['SI / SINO', 'VARIABLES', 'SOLAR'], concepts: ['conditions', 'variables', 'solar'], codex: 'condicional', music: 'solaria',
   world: W_solar({ weather: SOL_WEATHER, demand: SOL_DEMAND, panels: 6, soc0: 60, K: 3, okMsg: '¡Ni un solo apagón en todo el día!' }),
   hours: 16, threshold0: 300,
-  start: [{ id: 1, type: 'start', c: 1, r: 0 }, { id: 2, type: 'end', c: 1, r: 5 }],
-  palette: ['start', 'read', 'dec', 'charge', 'use', 'end'],
-  intro: 'Cada hora: SI radiación > umbral → cargar_bateria (la ciudad usa el sol) SINO → usar_bateria. Construye el diagrama y ajusta el umbral.',
-  hints: ['Necesitas: INICIO → rombo de decisión → dos acciones (una por rama) → FIN.', { text: 'Si el umbral es muy bajo, "cargas" cuando el sol no alcanza para la ciudad. Si es muy alto, la batería nunca se carga. Prueba entre 700 y 900.' }, { text: 'Te armo el esqueleto: conecta los puertos que faltan.', apply: sc => { sc.nodes = [{ id: 1, type: 'start', c: 1, r: 0, next: 3 }, { id: 3, type: 'dec', c: 1, r: 2 }, { id: 4, type: 'charge', c: 0, r: 3 }, { id: 5, type: 'use', c: 2, r: 3 }, { id: 2, type: 'end', c: 1, r: 5 }]; } }],
+  // el diagrama viene armado, con las acciones cambiadas y un umbral demasiado bajo
+  start: [{ id: 1, type: 'start', c: 1, r: 0, next: 2 }, { id: 2, type: 'read', c: 1, r: 1, next: 3 }, { id: 3, type: 'dec', c: 1, r: 2, yes: 4, no: 5 }, { id: 4, type: 'use', c: 0, r: 3, next: 6 }, { id: 5, type: 'charge', c: 2, r: 3, next: 6 }, { id: 6, type: 'end', c: 1, r: 5 }],
+  actTypes: ['charge', 'use'],
+  intro: 'Cada hora: SI radiación > umbral → cargar_bateria SINO → usar_bateria. El diagrama ya está, pero las acciones están cambiadas y el umbral es muy bajo: tócalas y ajusta el umbral.',
+  hints: ['Con mucho sol (SÍ), la ciudad debe usar el sol y guardar el sobrante: ¿qué acción va en la rama SÍ?', { text: 'Si el umbral es muy bajo, "cargas" cuando el sol no alcanza para la ciudad. Si es muy alto, la batería nunca se carga. Prueba entre 700 y 900.' }, { text: 'Te coloco las acciones: SÍ → cargar_bateria, NO → usar_bateria. Solo falta el umbral.', apply: sc => { sc.nodes.forEach(n => { if (n.id === 4) n.type = 'charge'; if (n.id === 5) n.type = 'use'; }); } }],
   xp: 60
 };
 const CFG_SOL_FLORES = {
@@ -9402,7 +9477,8 @@ const CFG_SOL_FLORES = {
   palette: ['ifelse', 'act:abrir_flores', 'act:cerrar_flores'], actions: { abrir_flores: { label: 'abrir_flores' }, cerrar_flores: { label: 'cerrar_flores' } },
   sensors: ['radiacion', 'hora'], condRight: [100, 200, 300, 400, 500, 600, 700, 800, 900], defaults: { cond: { l: 'radiacion', op: '>', r: 100 } },
   world: W_flowers({ weather: ['sol', 'sol', 'sol', 'nube', 'sol', 'lluvia', 'sol', 'sol'] }),
-  intro: 'Las flores-panel de Suri deben abrirse con sol fuerte y cerrarse con poca luz (¡y con lluvia!). El programa se ejecuta cada 2 horas.',
+  start: [{ op: 'if', cond: { l: 'radiacion', op: '>', r: 100 }, body: [A('cerrar_flores')], else: [A('abrir_flores')] }],
+  intro: 'Las flores-panel de Suri deben abrirse con sol fuerte y cerrarse con poca luz (¡y con lluvia!). La regla ya está, pero al revés y con un umbral muy bajo: arréglala.',
   hints: ['¿Qué variable dice cuánto sol hay?', { text: 'SI radiacion > ... ENTONCES abrir_flores SINO cerrar_flores.', highlight: 'palette:ifelse' }, { text: 'Estructura lista; ajusta el número.', partial: [{ op: 'if', cond: { l: 'radiacion', op: '>', r: 100 }, body: [A('abrir_flores')], else: [A('cerrar_flores')] }] }]
 };
 const CFG_SOL_SENSOR = {
@@ -9420,7 +9496,8 @@ const CFG_SOL_MATRIZ = {
   palette: ['set:total', 'add:total'], exprOptions: { set: [0, 10], add: ['fila1', 'fila2', 'fila3', 1] },
   world: W_accum({ data: [12, 18, 9], var: 'total', unit: 'kW por fila', color: PAL.sun, check: (st, env) => env.vars.total === 39 ? { ok: true, msg: 'total = 39 kW. ¡La matriz está bien sumada!' } : { ok: false, msg: `total = ${env.vars.total}. Debe ser la suma de las tres filas.` } }),
   vars: { fila1: 12, fila2: 18, fila3: 9 },
-  intro: 'Suma la potencia de las tres filas de paneles en la variable "total". Empieza en 0 y ve acumulando.',
+  start: [{ op: 'add', var: 'total', expr: 'fila1' }, { op: 'add', var: 'total', expr: 'fila1' }, { op: 'add', var: 'total', expr: 'fila1' }, { op: 'set', var: 'total', expr: 10 }],
+  intro: 'Suma la potencia de las tres filas en "total": debe empezar en 0 (primera línea) y sumar fila1, fila2 y fila3. Ordena las líneas y toca los valores para cambiarlos.',
   hints: ['¿Con qué valor debe empezar "total"?', 'total ← 0, luego total ← total + fila1...', { text: 'Te dejo el inicio.', partial: [{ op: 'set', var: 'total', expr: 0 }, { op: 'add', var: 'total', expr: 'fila1' }] }]
 };
 const CFG_SOL_NUBE = {
@@ -9603,7 +9680,7 @@ const CFG_AERIS_MOLINO = {
   world: W_turbine({ heat: 6, check: (st, env) => st.broken ? { ok: false, msg: 'La turbina se rompió por sobrecalentamiento.' } : st.rpm < 60 ? { ok: false, msg: `Solo ${Math.round(st.rpm)} rpm: la turbina gira demasiado lento para producir. Necesita al menos 60.` } : st.temp > 90 ? { ok: false, msg: 'Está a más de 90°. Peligroso.' } : { ok: true, msg: `${Math.round(st.rpm)} rpm y ${Math.round(st.temp)}°: produce energía sin quemarse.` } }),
   stages: [
     { mode: 'demo', label: 'YO TE MUESTRO', text: 'Un bucle REPETIR hace lo mismo varias veces. Mira el contador ↻ junto a la línea. Pulsa EJECUTAR.', program: [{ op: 'repeat', n: 3, body: [A('ajustar_aspas', undefined, 1), A('medir_viento', undefined, 1)], locked: true }], world: W_turbine({ heat: 6, check: st => ({ ok: true, msg: 'Tres vueltas, contadas una por una. ¿Viste el ↻ 1/3, 2/3, 3/3?' }) }) },
-    { mode: 'solo', label: 'LO HACES TÚ', text: 'Este es el programa real del molino. Ejecútalo... y luego arréglalo: necesita ≥ 60 rpm sin pasar de 90°.', program: [{ op: 'while', cond: { l: 'rpm', op: '>=', r: 0 }, body: [A('girar')] }] }
+    { mode: 'solo', label: 'LO HACES TÚ', text: 'Programa real del molino: gira MIENTRAS rpm ≥ 0… para siempre. Ejecútalo y luego toca las partes de la condición para darle una salida: ≥ 60 rpm sin pasar de 90°.', program: [{ op: 'while', cond: { l: 'rpm', op: '>=', r: 0 }, body: [A('girar'), A('medir_viento')] }] }
   ],
   hints: ['¿Cuándo deja de ser verdadera la condición "rpm ≥ 0"? ¿Alguna vez?', { text: 'La condición de salida debería depender de algo que CAMBIE dentro del bucle y que importe: la temperatura, por ejemplo.', highlight: 'palette:while' }, { text: 'Una posible solución:', partial: [{ op: 'while', cond: { l: 'temperatura', op: '<', r: 70 }, body: [A('ajustar_aspas'), A('medir_viento')] }] }],
   deep: 'Un bucle MIENTRAS necesita que algo dentro de él haga falsa la condición algún día. Si no, es un LOOPLING.',
@@ -9613,18 +9690,18 @@ const CFG_AERIS_VIENTO = {
   kind: 'code', title: 'Viento caprichoso', tags: ['MIENTRAS', 'EÓLICA'], concepts: ['loops', 'debugging', 'wind'], codex: 'mientras', loopLimit: 30,
   palette: ['while', 'act:medir_viento', 'act:generar'], actions: TURB_ACTS, sensors: ['viento', 'temperatura'], condRight: [1, 2, 3, 4, 5, 6],
   world: W_turbine({ wind0: 8, gusts: [8, 7, 7, 6, 5, 4, 3, 2, 2, 1], heat: 2, check: (st) => st.gen > 0 ? { ok: true, msg: 'Genera mientras hay viento y para cuando se calma. ¡No estaba embrujado!' } : { ok: false, msg: 'No generó nada.' } }),
-  start: [A('medir_viento'), { op: 'while', cond: { l: 'viento', op: '>', r: 3 }, body: [A('generar')] }],
-  intro: 'Don Vento jura que su molino está embrujado: "¡Nunca se detiene aunque el viento pare!".',
-  hints: ['Dentro del bucle, ¿alguien vuelve a mirar el viento?', { text: '"viento" solo cambia cuando se ejecuta medir_viento. ¿Dónde debería estar?', highlight: 'palette:act:medir_viento' }, { text: 'Así:', partial: [A('medir_viento'), { op: 'while', cond: { l: 'viento', op: '>', r: 3 }, body: [A('generar'), A('medir_viento')] }] }]
+  start: [A('medir_viento'), { op: 'while', cond: { l: 'viento', op: '>', r: 3 }, body: [A('generar')] }, A('medir_viento')],
+  intro: 'Don Vento jura que su molino está embrujado: "¡Nunca se detiene aunque el viento pare!". Una línea está en mal sitio.',
+  hints: ['Dentro del bucle, ¿alguien vuelve a mirar el viento?', { text: '"viento" solo cambia con medir_viento. Toca la última línea y súbela (▲) para meterla DENTRO del bucle.' }, { text: 'Así:', partial: [A('medir_viento'), { op: 'while', cond: { l: 'viento', op: '>', r: 3 }, body: [A('generar'), A('medir_viento')] }] }]
 };
 const CFG_AERIS_BUCLE = {
   kind: 'code', title: 'Bucle infinito', tags: ['BUCLES', 'ACUMULADOR', 'EÓLICA'], concepts: ['loops', 'debugging', 'wind'], codex: 'acumulador', loopLimit: 25,
   palette: ['while', 'repeat', 'set:total', 'add:total', 'act:siguiente_hora'], actions: { siguiente_hora: { label: 'siguiente_hora' } },
   sensors: ['hora', 'produccion'], condRight: [3, 4, 5, 6, 7], exprOptions: { set: [0], add: ['produccion', 1] },
   world: W_accum({ data: [2, 3, 5, 4, 3, 1], var: 'total', unit: 'kWh por hora', color: PAL.aqua, check: (st, env) => env.vars.total === 18 ? { ok: true, msg: 'total = 18 kWh. ¡La cometa-generador de Mika sumó bien su día!' } : { ok: false, msg: `total = ${env.vars.total}, debería ser 18 (la suma de las 6 horas).` } }),
-  start: [{ op: 'set', var: 'total', expr: 0 }, { op: 'while', cond: { l: 'hora', op: '<', r: 6 }, body: [{ op: 'add', var: 'total', expr: 'produccion' }] }],
-  intro: 'La cometa de Mika mide energía hora a hora. Su programa se quedó colgado. ¿Por qué?',
-  hints: ['¿Qué valor tiene "hora" en cada vuelta? ¿Cambia?', { text: 'Falta avanzar la hora dentro del bucle.', highlight: 'palette:act:siguiente_hora' }, { text: 'Así:', partial: [{ op: 'set', var: 'total', expr: 0 }, { op: 'while', cond: { l: 'hora', op: '<', r: 6 }, body: [{ op: 'add', var: 'total', expr: 'produccion' }, A('siguiente_hora')] }] }]
+  start: [{ op: 'set', var: 'total', expr: 0 }, { op: 'while', cond: { l: 'hora', op: '<', r: 6 }, body: [{ op: 'add', var: 'total', expr: 'produccion' }] }, A('siguiente_hora')],
+  intro: 'La cometa de Mika mide energía hora a hora. Su programa se quedó colgado. ¿Por qué? Una línea está en mal sitio.',
+  hints: ['¿Qué valor tiene "hora" en cada vuelta? ¿Cambia?', { text: 'siguiente_hora debe ir DENTRO del bucle: toca la última línea y súbela (▲).' }, { text: 'Así:', partial: [{ op: 'set', var: 'total', expr: 0 }, { op: 'while', cond: { l: 'hora', op: '<', r: 6 }, body: [{ op: 'add', var: 'total', expr: 'produccion' }, A('siguiente_hora')] }] }]
 };
 
 (function () {
@@ -9732,7 +9809,7 @@ const CFG_HYD_FORJA = {
   maxBlocks: 3,
   world: W_hydro({ gates: HYD_GATES, check: (st) => { for (let i = 0; i < st.gates.length; i++) { const g = st.gates[i], want = g.caudal * g.altura * 8; if (!g.called) return { ok: false, msg: `La turbina ${i + 1} (caudal ${g.caudal}, altura ${g.altura}) no recibió ninguna llamada.` }; if (Math.round(g.power) !== want) return { ok: false, msg: `La turbina ${i + 1} dio ${Math.round(g.power)} kW; con caudal ${g.caudal} y altura ${g.altura} deberían ser ${want} kW. Revisa lo que DEVUELVE la función.` }; } return { ok: true, msg: `¡Tres turbinas, una sola función! Total: ${Math.round(st.total)} kW.` }; } }),
   stages: [
-    { mode: 'guided', label: 'LO HACEMOS JUNTOS', text: 'Pestaña "f: generarEnergia": arrastra DEVOLVER al cuerpo y elige la fórmula. Luego llama a la función en PRINCIPAL para cada turbina.', program: [{ op: 'call', fn: 'generarEnergia', args: [3, 10], into: 'p1', locked: true }], functions: { generarEnergia: [] } },
+    { mode: 'guided', label: 'LO HACEMOS JUNTOS', text: 'En la pestaña «f: generarEnergia» toca la fórmula de DEVOLVER y elige la correcta. En PRINCIPAL ajusta caudal y altura de las turbinas 2 y 3 con − +.', program: [{ op: 'call', fn: 'generarEnergia', args: [3, 10], into: 'p1', locked: true }, { op: 'call', fn: 'generarEnergia', args: [1, 5], into: 'p2' }, { op: 'call', fn: 'generarEnergia', args: [1, 5], into: 'p3' }], functions: { generarEnergia: [{ op: 'ret', expr: { bin: '+', a: 'caudal', b: 'altura' } }] } },
   ],
   hints: ['Potencia hidráulica ≈ 8 × caudal × altura (en kW). ¿Qué debe DEVOLVER la función?', { text: 'En PRINCIPAL: tres LLAMAR, uno por turbina, con su caudal y su altura.', highlight: 'palette:call:generarEnergia' }, { text: 'Función lista; faltan las llamadas 2 y 3.', partialFn: { generarEnergia: [{ op: 'ret', expr: { bin: '*', a: { bin: '*', a: 'caudal', b: 'altura' }, b: 8 } }] } }],
   deep: 'Una función es una mini-máquina: recibe caudal y altura, calcula, y DEVUELVE el resultado a quien la llamó.',
@@ -9773,13 +9850,15 @@ const CFG_HYD_RIO = {
     };
     return w;
   })(),
+  start: [{ op: 'call', fn: 'abrirCompuerta', args: [1] }, { op: 'call', fn: 'abrirCompuerta', args: [2] }, { op: 'call', fn: 'abrirCompuerta', args: [3] }],
   intro: 'La función abrirCompuerta(n) ya existe (está bloqueada). Tú decides con qué número y en qué orden llamarla. El pueblo está río abajo, junto a la 3.',
   hints: ['El agua baja de la 1 a la 3. ¿Qué pasa si abres arriba con abajo cerrado?', 'Abre primero la compuerta más cercana al pueblo.', { text: 'Orden: 3, 2, 1.', partial: [{ op: 'call', fn: 'abrirCompuerta', args: [3] }] }]
 };
 const CFG_HYD_DUP = {
   kind: 'code', title: 'Función duplicada', tags: ['FUNCIONES', 'REFACTORIZAR'], concepts: ['functions', 'debugging'], codex: 'funcion',
   palette: ['call:revisarTurbina', 'act:cerrar_valvula', 'act:limpiar_rejilla', 'act:abrir_valvula'],
-  functions: { revisarTurbina: { params: ['n'], body: [], defaults: { n: 1 } } },
+  // la función ya tiene sus 3 pasos, pero desordenados
+  functions: { revisarTurbina: { params: ['n'], body: [A('abrir_valvula'), A('cerrar_valvula'), A('limpiar_rejilla')], defaults: { n: 1 } } },
   actions: { cerrar_valvula: { label: 'cerrar_valvula(n)' }, limpiar_rejilla: { label: 'limpiar_rejilla(n)' }, abrir_valvula: { label: 'abrir_valvula(n)' } },
   exprOptions: { 'arg:revisarTurbina:0': [1, 2, 3] },
   world: (() => ({
@@ -9802,10 +9881,10 @@ const CFG_HYD_DUP = {
       for (let n = 1; n <= 3; n++) { const cx = x + 30 + (n - 1) * 60, L = st.log[n] || []; pcircle(g, cx, y + 50, 16, L.length === 3 ? PAL.lime : '#565E8C'); drawText(g, 'T' + n, cx, y + 47, PAL.ink, { align: 'center' }); L.forEach((s, i) => drawText(g, '✓ ' + s.split('_')[0], cx - 24, y + 76 + i * 10, PAL.lime)); }
     }
   }))(),
-  start: [A('cerrar_valvula'), A('limpiar_rejilla'), A('abrir_valvula'), { op: 'call', fn: 'revisarTurbina', args: [2] }, { op: 'call', fn: 'revisarTurbina', args: [3] }],
+  start: [{ op: 'call', fn: 'revisarTurbina', args: [1] }, { op: 'call', fn: 'revisarTurbina', args: [2] }, { op: 'call', fn: 'revisarTurbina', args: [2] }],
   vars: { n: 1 },
-  intro: 'El programa de mantenimiento copia los mismos 3 pasos para cada turbina. La función revisarTurbina(n) está vacía. Arréglalo: PRINCIPAL con 3 líneas como máximo.',
-  hints: ['Abre la pestaña de la función: ¿qué pasos deberían ir ahí dentro?', 'Mueve cerrar → limpiar → abrir a la función. En PRINCIPAL, tres LLAMAR con n = 1, 2, 3.', { text: 'Función completada:', partialFn: { revisarTurbina: [A('cerrar_valvula'), A('limpiar_rejilla'), A('abrir_valvula')] } }]
+  intro: 'En vez de copiar 3 pasos por turbina, usamos UNA función: revisarTurbina(n). Sus pasos están desordenados (pestaña «f:») y una llamada revisa la turbina equivocada.',
+  hints: ['Abre la pestaña de la función: el mantenimiento es cerrar → limpiar → abrir.', 'En PRINCIPAL, las tres llamadas deben ser para las turbinas 1, 2 y 3 (usa − +).', { text: 'Función completada:', partialFn: { revisarTurbina: [A('cerrar_valvula'), A('limpiar_rejilla'), A('abrir_valvula')] } }]
 };
 
 (function () {
@@ -9947,7 +10026,7 @@ function cfgBioSorter() {
     world: W_sorter({ items, bins: ['biodigestor', 'reciclaje', 'secado'], rule: BIO_RULE, okMsg: '¡Todo clasificado en su sitio! El biodigestor produce biogás limpio.' }),
     stages: [
       { mode: 'demo', label: 'YO TE MUESTRO', text: 'Una LISTA guarda varios elementos en orden: [0], [1], [2]... PARA CADA los visita uno a uno. Mira el ▼.', world: W_sorter({ items: [{ name: 'botella', type: 'plastico' }, { name: 'lata', type: 'metal' }, { name: 'frasco', type: 'vidrio' }], bins: ['biodigestor', 'reciclaje', 'secado'], rule: BIO_RULE, okMsg: 'Tres elementos, tres vueltas. Todos eran reciclables.' }), program: [{ op: 'foreach', var: 'residuo', list: 'residuos', body: [A('a_reciclaje', undefined, 1)], locked: true }] },
-      { mode: 'solo', label: 'LO HACES TÚ', text: 'Ahora TU mochila: orgánico → biodigestor, madera → secado, lo demás → reciclaje. (Puedes poner un SI dentro de un SINO.)', program: [] }
+      { mode: 'solo', label: 'LO HACES TÚ', text: 'Ahora TU mochila: orgánico → biodigestor, madera → secado, lo demás → reciclaje. La estructura ya está: toca los valores de las preguntas para corregirlas.', program: [{ op: 'foreach', var: 'residuo', list: 'residuos', body: [{ op: 'if', cond: { l: 'tipo', op: '==', r: 'plastico' }, body: [A('a_biodigestor')], else: [{ op: 'if', cond: { l: 'tipo', op: '==', r: 'organico' }, body: [A('a_secado')], else: [A('a_reciclaje')] }] }] }] }
     ],
     hints: ['Dentro del PARA CADA, cada residuo debe ir a UN solo contenedor. ¿Qué pregunta harías primero?', { text: 'SI tipo = organico → a_biodigestor. SINO → otra pregunta: SI tipo = madera...', highlight: 'palette:ifelse' }, { text: 'Estructura casi completa:', partial: [{ op: 'foreach', var: 'residuo', list: 'residuos', body: [{ op: 'if', cond: { l: 'tipo', op: '==', r: 'organico' }, body: [A('a_biodigestor')], else: [{ op: 'if', cond: { l: 'tipo', op: '==', r: 'madera' }, body: [A('a_secado')], else: [A('a_reciclaje')] }] }] }] }],
     deep: 'Piensa en la lista como una fila de cajas numeradas: el PARA CADA pasa por todas, y el SI decide para cada una por separado.',
@@ -9975,7 +10054,8 @@ const CFG_BIO_LISTA = {
   palette: ['set:organicos', 'foreach:residuos', 'if', 'add:organicos'], sensors: ['tipo'], ops: ['==', '!='], condRight: ['organico', 'madera', 'plastico'],
   defaults: { itemVar: 'residuo', cond: { l: 'tipo', op: '==', r: 'organico' } }, exprOptions: { set: [0, 1], add: [1, 2] },
   world: W_counter({ items: [{ name: 'hojas', type: 'organico' }, { name: 'bolsa', type: 'plastico' }, { name: 'cáscara', type: 'organico' }, { name: 'rama', type: 'madera' }, { name: 'fruta', type: 'organico' }, { name: 'semillas', type: 'organico' }, { name: 'lata', type: 'metal' }] }),
-  intro: 'El mercado quiere saber cuántos residuos orgánicos hay en la lista para planificar el biogás. Usa un CONTADOR.',
+  start: [{ op: 'set', var: 'organicos', expr: 1 }, { op: 'foreach', var: 'residuo', list: 'residuos', body: [{ op: 'if', cond: { l: 'tipo', op: '==', r: 'plastico' }, body: [{ op: 'add', var: 'organicos', expr: 1 }], else: null }] }],
+  intro: 'El mercado quiere saber cuántos residuos orgánicos hay en la lista. El CONTADOR ya está armado, pero con dos valores mal: tócalos para corregirlos.',
   hints: ['Un contador empieza en 0 y suma 1 cuando se cumple algo.', 'organicos ← 0; PARA CADA...; SI tipo = organico: organicos ← organicos + 1', { text: 'Estructura:', partial: [{ op: 'set', var: 'organicos', expr: 0 }, { op: 'foreach', var: 'residuo', list: 'residuos', body: [] }] }]
 };
 const CFG_BIO_MERCADO = {
@@ -9997,7 +10077,8 @@ const CFG_BIO_MERCADO = {
       if (st.decision) drawText(g, st.decision, x + 6, y + 96, st.decision === 'pedir_energia' ? PAL.lime : PAL.coral);
     }
   }))(),
-  intro: 'Cada puesto del mercado necesita energía. ¿Alcanza el biogás (18 kWh)? Suma las demandas y decide.',
+  start: [{ op: 'set', var: 'total', expr: 0 }, { op: 'foreach', var: 'd', list: 'demandas', body: [{ op: 'add', var: 'total', expr: 1 }] }, { op: 'if', cond: { l: 'total', op: '>', r: 'biogas' }, body: [A('abrir_mercado')], else: [A('pedir_energia')] }],
+  intro: 'Cada puesto del mercado necesita energía. ¿Alcanza el biogás (18 kWh)? El programa suma mal y decide al revés: toca los valores y las acciones para corregirlo.',
   hints: ['Primero suma todas las demandas en "total".', 'Después: SI total > biogas ENTONCES pedir_energia SINO abrir_mercado.', { text: 'Suma lista:', partial: [{ op: 'set', var: 'total', expr: 0 }, { op: 'foreach', var: 'd', list: 'demandas', body: [{ op: 'add', var: 'total', expr: 'd' }] }] }]
 };
 
@@ -10501,8 +10582,8 @@ const CFG_BAT_BETA = {
   palette: ['ifelse', 'act:usar_A', 'act:usar_B'], actions: { usar_A: { label: 'usar_A' }, usar_B: { label: 'usar_B' } },
   sensors: ['soc_A', 'soc_B', 'demanda'], condRight: ['soc_A', 'soc_B', 20, 40, 60], defaults: { cond: { l: 'soc_A', op: '>', r: 'soc_B' } },
   world: W_dispatch({ bats: [{ name: 'A', soc: 90, eff: 0.9 }, { name: 'B', soc: 80, eff: 0.95 }], demand: [2, 2, 2, 2, 2, 2], okMsg: 'El barrio tiene luz 6 horas y ninguna torre bajó del 5%.' }),
-  start: [A('usar_A')],
-  intro: 'El barrio de BETA siempre descarga la torre A, hasta agotarla. Haz que cada hora use la torre con MÁS carga.',
+  start: [{ op: 'if', cond: { l: 'soc_A', op: '>', r: 'soc_B' }, body: [A('usar_B')], else: [A('usar_A')] }],
+  intro: 'El barrio de BETA agota siempre la torre equivocada. Cada hora debe usar la torre con MÁS carga: la pregunta está bien, pero las acciones están cambiadas (tócalas o muévelas con ▲▼).',
   hints: ['¿Qué pregunta harías cada hora para elegir la torre?', { text: 'SI soc_A > soc_B ENTONCES usar_A SINO usar_B', highlight: 'palette:ifelse' }, { text: 'Estructura:', partial: [{ op: 'if', cond: { l: 'soc_A', op: '>', r: 'soc_B' }, body: [A('usar_A')], else: [A('usar_B')] }] }]
 };
 const CFG_BAT_BUG = {
@@ -10829,9 +10910,35 @@ function genGrid(seed) {
   }
   return ['#######', '#S.k.T#', '#######'];
 }
+// Solución de una ruta: recoger la pieza (k) y entregarla en la ★ (T); PÍX empieza mirando →
+function gridSolution(map) {
+  const find = ch => { for (let y = 0; y < map.length; y++) { const x = map[y].indexOf(ch); if (x >= 0) return [x, y]; } return null; };
+  const D = [[1, 0], [0, 1], [-1, 0], [0, -1]];
+  const path = (a, b) => {
+    const key = p => p[0] + ',' + p[1], prev = new Map([[key(a), null]]), q = [a];
+    while (q.length) { const c = q.shift(); if (c[0] === b[0] && c[1] === b[1]) break; for (const [dx, dy] of D) { const n = [c[0] + dx, c[1] + dy], ch = map[n[1]] && map[n[1]][n[0]]; if (!ch || ch === '#' || ch === 'c' || prev.has(key(n))) continue; prev.set(key(n), c); q.push(n); } }
+    const out = []; let c = b; while (c) { out.unshift(c); c = prev.get(key(c)); } return out;
+  };
+  const prog = []; let dir = 0;
+  const walk = cells => {
+    for (let i = 1; i < cells.length;) {
+      const nd = D.findIndex(([dx, dy]) => dx === cells[i][0] - cells[i - 1][0] && dy === cells[i][1] - cells[i - 1][1]);
+      const turn = (nd - dir + 4) % 4;
+      if (turn === 1) prog.push(A('girar_der')); else if (turn === 3) prog.push(A('girar_izq')); else if (turn === 2) prog.push(A('girar_der'), A('girar_der'));
+      dir = nd; let n = 0;
+      while (i < cells.length && cells[i][0] - cells[i - 1][0] === D[dir][0] && cells[i][1] - cells[i - 1][1] === D[dir][1]) { n++; i++; }
+      prog.push(A('avanzar', n));
+    }
+  };
+  walk(path(find('S'), find('k'))); prog.push(A('recoger'));
+  walk(path(find('k'), find('T'))); prog.push(A('entregar'));
+  return prog;
+}
+// punto de partida: mismas instrucciones, pero los «avanzar» con un número que hay que ajustar
+const resetNums = prog => { const same = prog.every(b => b.name !== 'avanzar' || b.arg === 1); return prog.map(b => b.name === 'avanzar' ? A('avanzar', same ? 2 : 1) : b); };
 for (let i = 1; i <= 12; i++) addCh({
   title: 'Ruta de PÍX #' + i, type: 'construir', prog: ['sequence', i > 8 ? 'debugging' : 'sequence'], energy: ['storage'],
-  make: () => ({ kind: 'code', tags: ['SECUENCIA'], concepts: ['sequence'], codex: 'secuencia', palette: ['act:avanzar', 'act:girar_izq', 'act:girar_der', 'act:recoger', 'act:entregar'], actions: GRID_ACTS, world: W_grid({ map: genGrid(i), need: { deliver: 1 } }), intro: 'Lleva la pieza amarilla hasta la ★. PÍX empieza mirando →.', hints: ['Planifica la ruta antes de escribir.', 'Usa avanzar(n) para ahorrar líneas.'] })
+  make: () => ({ kind: 'code', tags: ['SECUENCIA'], concepts: ['sequence'], codex: 'secuencia', palette: ['act:avanzar', 'act:girar_izq', 'act:girar_der', 'act:recoger', 'act:entregar'], actions: GRID_ACTS, world: W_grid({ map: genGrid(i), need: { deliver: 1 } }), solution: gridSolution(genGrid(i)), start: resetNums(gridSolution(genGrid(i))), intro: 'Las instrucciones ya están en orden: ajusta con − + cuántas casillas avanza PÍX en cada «avanzar». Lleva la pieza amarilla hasta la ★. PÍX empieza mirando →.', hints: ['Planifica la ruta antes de escribir.', 'Usa avanzar(n) para ahorrar líneas.'] })
 });
 
 // ---------- 3. Umbral solar (simular) ----------
@@ -10847,7 +10954,7 @@ const SOLAR_DAYS = [
 ];
 SOLAR_DAYS.forEach((wx, i) => addCh({
   title: 'Controlador solar · día ' + (i + 1), type: 'simular', prog: ['conditions', 'variables'], energy: ['solar'],
-  make: () => ({ kind: 'code', tags: ['SI / SINO', 'SOLAR'], concepts: ['conditions', 'solar'], codex: 'condicional', ticks: 16, tickLabel: t => (6 + Math.min(15, t)) + ':00', palette: ['ifelse', 'act:cargar_bateria', 'act:usar_bateria'], actions: { cargar_bateria: { label: 'cargar_bateria' }, usar_bateria: { label: 'usar_bateria' } }, sensors: ['radiacion', 'bateria', 'hora'], condRight: [300, 500, 600, 700, 800, 900, 1000], world: W_solar({ weather: wx, demand: SOL_DEMAND, panels: 6, soc0: 60, K: 3 }), intro: 'Escribe la regla que decide cada hora. Ningún apagón.', hints: ['SI radiacion > umbral → cargar SINO usar.', 'Si el umbral es bajo, "cargas" cuando el sol no alcanza.'] })
+  make: () => ({ kind: 'code', tags: ['SI / SINO', 'SOLAR'], concepts: ['conditions', 'solar'], codex: 'condicional', ticks: 16, tickLabel: t => (6 + Math.min(15, t)) + ':00', palette: ['ifelse', 'act:cargar_bateria', 'act:usar_bateria'], actions: { cargar_bateria: { label: 'cargar_bateria' }, usar_bateria: { label: 'usar_bateria' } }, sensors: ['radiacion', 'bateria', 'hora'], condRight: [300, 500, 600, 700, 800, 900, 1000], world: W_solar({ weather: wx, demand: SOL_DEMAND, panels: 6, soc0: 60, K: 3 }), start: [{ op: 'if', cond: { l: 'radiacion', op: '>', r: 300 }, body: [A('usar_bateria')], else: [A('cargar_bateria')] }], solution: [{ op: 'if', cond: { l: 'radiacion', op: '>', r: 800 }, body: [A('cargar_bateria')], else: [A('usar_bateria')] }], intro: 'La regla ya está, pero con las acciones cambiadas y un umbral bajo. Corrígela (toca los valores): ningún apagón.', hints: ['SI radiacion > umbral → cargar SINO usar.', 'Si el umbral es bajo, "cargas" cuando el sol no alcanza.'] })
 }));
 
 // ---------- 4. Depurar condiciones invertidas (depurar) ----------
@@ -10855,18 +10962,18 @@ const DEBUG_SETS = [
   ['Sensor loco del mercado', 'solar', () => ({ world: W_solar({ weather: SOLAR_DAYS[1], demand: SOL_DEMAND, panels: 6, soc0: 60, K: 3 }), ticks: 16, sensors: ['radiacion', 'bateria'], condRight: [500, 700, 800, 900], palette: ['ifelse', 'act:cargar_bateria', 'act:usar_bateria'], actions: { cargar_bateria: { label: 'cargar_bateria' }, usar_bateria: { label: 'usar_bateria' } }, start: [{ op: 'if', cond: { l: 'radiacion', op: '<', r: 800 }, body: [A('cargar_bateria')], else: [A('usar_bateria')] }] })],
   ['Flores al revés', 'solar', () => ({ world: W_flowers({ weather: ['sol', 'sol', 'sol', 'sol', 'nube', 'lluvia', 'sol', 'sol'] }), ticks: 8, sensors: ['radiacion'], condRight: [100, 300, 500], palette: ['ifelse', 'act:abrir_flores', 'act:cerrar_flores'], actions: { abrir_flores: { label: 'abrir_flores' }, cerrar_flores: { label: 'cerrar_flores' } }, start: [{ op: 'if', cond: { l: 'radiacion', op: '<', r: 300 }, body: [A('abrir_flores')], else: [A('cerrar_flores')] }] })],
   ['Prioridad invertida', 'storage', () => ({ world: W_dispatch({ bats: [{ name: 'A', soc: 90, eff: 0.9 }, { name: 'B', soc: 80, eff: 0.95 }], demand: [2, 2, 2, 2, 2, 2] }), ticks: 6, sensors: ['soc_A', 'soc_B'], condRight: ['soc_A', 'soc_B'], palette: ['ifelse', 'act:usar_A', 'act:usar_B'], actions: { usar_A: { label: 'usar_A' }, usar_B: { label: 'usar_B' } }, start: [{ op: 'if', cond: { l: 'soc_A', op: '<', r: 'soc_B' }, body: [A('usar_A')], else: [A('usar_B')] }] })],
-  ['Viento sin medir', 'wind', () => ({ world: W_turbine({ wind0: 8, gusts: [8, 7, 6, 5, 4, 3, 2], heat: 2, check: st => st.gen > 0 ? { ok: true, msg: '¡Bucle con salida!' } : { ok: false, msg: 'No generó.' } }), loopLimit: 25, sensors: ['viento'], condRight: [2, 3, 4], palette: ['while', 'act:medir_viento', 'act:generar'], actions: TURB_ACTS, start: [A('medir_viento'), { op: 'while', cond: { l: 'viento', op: '>', r: 3 }, body: [A('generar')] }] })],
-  ['Hora que no avanza', 'wind', () => ({ world: W_accum({ data: [1, 4, 6, 3], var: 'total', check: (st, env) => env.vars.total === 14 ? { ok: true, msg: '¡14 kWh!' } : { ok: false, msg: 'total debería ser 14.' } }), loopLimit: 20, sensors: ['hora', 'produccion'], condRight: [3, 4, 5], exprOptions: { set: [0], add: ['produccion'] }, palette: ['while', 'set:total', 'add:total', 'act:siguiente_hora'], actions: { siguiente_hora: { label: 'siguiente_hora' } }, start: [{ op: 'set', var: 'total', expr: 0 }, { op: 'while', cond: { l: 'hora', op: '<', r: 4 }, body: [{ op: 'add', var: 'total', expr: 'produccion' }] }] })],
-  ['Contador sin inicializar', 'biomass', () => ({ world: W_counter({ items: [{ name: 'hojas', type: 'organico' }, { name: 'lata', type: 'metal' }, { name: 'fruta', type: 'organico' }] }), sensors: ['tipo'], ops: ['==', '!='], condRight: ['organico', 'metal'], defaults: { itemVar: 'residuo' }, exprOptions: { set: [0], add: [1] }, palette: ['set:organicos', 'foreach:residuos', 'if', 'add:organicos'], start: [{ op: 'foreach', var: 'residuo', list: 'residuos', body: [{ op: 'if', cond: { l: 'tipo', op: '==', r: 'organico' }, body: [{ op: 'add', var: 'organicos', expr: 1 }], else: null }] }] })],
+  ['Viento sin medir', 'wind', () => ({ world: W_turbine({ wind0: 8, gusts: [8, 7, 6, 5, 4, 3, 2], heat: 2, check: st => st.gen > 0 ? { ok: true, msg: '¡Bucle con salida!' } : { ok: false, msg: 'No generó.' } }), loopLimit: 25, sensors: ['viento'], condRight: [2, 3, 4], palette: ['while', 'act:medir_viento', 'act:generar'], actions: TURB_ACTS, start: [A('medir_viento'), { op: 'while', cond: { l: 'viento', op: '>', r: 3 }, body: [A('generar')] }, A('medir_viento')] })],
+  ['Hora que no avanza', 'wind', () => ({ world: W_accum({ data: [1, 4, 6, 3], var: 'total', check: (st, env) => env.vars.total === 14 ? { ok: true, msg: '¡14 kWh!' } : { ok: false, msg: 'total debería ser 14.' } }), loopLimit: 20, sensors: ['hora', 'produccion'], condRight: [3, 4, 5], exprOptions: { set: [0], add: ['produccion'] }, palette: ['while', 'set:total', 'add:total', 'act:siguiente_hora'], actions: { siguiente_hora: { label: 'siguiente_hora' } }, start: [{ op: 'set', var: 'total', expr: 0 }, { op: 'while', cond: { l: 'hora', op: '<', r: 4 }, body: [{ op: 'add', var: 'total', expr: 'produccion' }] }, A('siguiente_hora')] })],
+  ['Contador sin inicializar', 'biomass', () => ({ world: W_counter({ items: [{ name: 'hojas', type: 'organico' }, { name: 'lata', type: 'metal' }, { name: 'fruta', type: 'organico' }] }), sensors: ['tipo'], ops: ['==', '!='], condRight: ['organico', 'metal'], defaults: { itemVar: 'residuo' }, exprOptions: { set: [0], add: [1] }, palette: ['set:organicos', 'foreach:residuos', 'if', 'add:organicos'], start: [{ op: 'foreach', var: 'residuo', list: 'residuos', body: [{ op: 'if', cond: { l: 'tipo', op: '==', r: 'organico' }, body: [{ op: 'add', var: 'organicos', expr: 1 }], else: null }] }, { op: 'set', var: 'organicos', expr: 0 }] })],
   ['Plástico en el biodigestor', 'biomass', () => ({ world: W_sorter({ items: [{ name: 'bolsa', type: 'plastico' }, { name: 'cáscara', type: 'organico' }, { name: 'botella', type: 'plastico' }], bins: ['biodigestor', 'reciclaje'], rule: t => t === 'organico' ? 'biodigestor' : 'reciclaje' }), sensors: ['tipo'], ops: ['==', '!='], condRight: ['organico', 'plastico'], defaults: { itemVar: 'residuo' }, palette: ['foreach:residuos', 'ifelse', 'act:a_biodigestor', 'act:a_reciclaje'], actions: BIO_ACTS, start: [{ op: 'foreach', var: 'residuo', list: 'residuos', body: [{ op: 'if', cond: { l: 'tipo', op: '!=', r: 'organico' }, body: [A('a_biodigestor')], else: [A('a_reciclaje')] }] }] })],
   ['Robot que riega de más', 'storage', () => ({ world: W_grid({ map: ['#######', '#S.p.p#', '#######'], bot: 'robot', floor: '#A0643C', wall: '#3FA85A', need: { plants: true } }), palette: ['act:avanzar', 'act:regar'], actions: GRID_ACTS, start: [A('avanzar', 2), A('regar'), A('regar'), A('avanzar', 2), A('regar')] })]
 ];
-DEBUG_SETS.forEach(([t, e, mk]) => addCh({ title: 'Depurar: ' + t, type: 'depurar', prog: ['debugging', 'conditions'], energy: [e], make: () => Object.assign({ kind: 'code', tags: ['DEPURACIÓN', MASTERY_LABELS[e]], concepts: ['debugging', e], codex: 'depuracion', intro: 'Este programa tiene un error. Ejecútalo, observa la traza y corrígelo.', hints: ['Usa PASO para ir línea a línea.', 'Revisa operadores, orden y valores iniciales.'] }, mk()) }));
+DEBUG_SETS.forEach(([t, e, mk]) => addCh({ title: 'Depurar: ' + t, type: 'depurar', prog: ['debugging', 'conditions'], energy: [e], make: () => Object.assign({ kind: 'code', tags: ['DEPURACIÓN', MASTERY_LABELS[e]], concepts: ['debugging', e], codex: 'depuracion', intro: 'Este programa tiene un error. Ejecútalo, observa la traza y corrígelo: toca los valores para cambiarlos, o toca una línea y muévela con ▲▼ (✗ la borra).', hints: ['Usa PASO para ir línea a línea.', 'Revisa operadores, orden y valores iniciales.'] }, mk()) }));
 
 // ---------- 5. Bucles con turbina (completar) ----------
 [[6, 60, 'temperatura'], [8, 80, 'temperatura'], [5, 50, 'rpm'], [7, 90, 'rpm'], [4, 40, 'temperatura'], [6, 100, 'rpm'], [9, 70, 'temperatura'], [3, 45, 'rpm']].forEach(([heat, target, key], i) => addCh({
   title: `Turbina #${i + 1}: ≥ ${target} rpm`, type: 'completar', prog: ['loops'], energy: ['wind'],
-  make: () => ({ kind: 'code', tags: ['BUCLES', 'EÓLICA'], concepts: ['loops', 'wind'], codex: key === 'rpm' ? 'repetir' : 'mientras', palette: ['repeat', 'while', 'act:ajustar_aspas', 'act:medir_viento'], actions: TURB_ACTS, sensors: ['temperatura', 'rpm', 'viento'], condRight: [30, 40, 50, 60, 70, 80, 90, 100], values: { repeat: [1, 2, 3, 4, 5, 6, 8, 10] }, defaults: { wcond: { l: key, op: '<', r: key === 'rpm' ? target : 70 }, n: 3 }, world: W_turbine({ heat, check: st => st.broken ? { ok: false, msg: 'Sobrecalentada.' } : st.rpm < target ? { ok: false, msg: `Solo ${Math.round(st.rpm)} rpm; necesita ${target}.` } : { ok: true, msg: `${Math.round(st.rpm)} rpm a ${Math.round(st.temp)}°.` } }), intro: `Cada ajuste suma rpm y calienta +${heat}°. Llega a ${target} rpm sin pasar de 90°.`, hints: ['REPETIR n VECES o MIENTRAS con una condición que termine.', 'Calcula: ¿cuántos ajustes hacen falta?'] })
+  make: () => ({ kind: 'code', tags: ['BUCLES', 'EÓLICA'], concepts: ['loops', 'wind'], codex: key === 'rpm' ? 'repetir' : 'mientras', palette: ['repeat', 'while', 'act:ajustar_aspas', 'act:medir_viento'], actions: TURB_ACTS, sensors: ['temperatura', 'rpm', 'viento'], condRight: [30, 40, 50, 60, 70, 80, 90, 100], values: { repeat: [1, 2, 3, 4, 5, 6, 8, 10] }, defaults: { wcond: { l: key, op: '<', r: key === 'rpm' ? target : 70 }, n: 3 }, start: [{ op: 'repeat', n: 1, body: [A('ajustar_aspas')] }], solution: [{ op: 'repeat', n: Math.ceil(target / 18), body: [A('ajustar_aspas')] }], world: W_turbine({ heat, check: st => st.broken ? { ok: false, msg: 'Sobrecalentada.' } : st.rpm < target ? { ok: false, msg: `Solo ${Math.round(st.rpm)} rpm; necesita ${target}.` } : { ok: true, msg: `${Math.round(st.rpm)} rpm a ${Math.round(st.temp)}°.` } }), intro: `Cada ajuste suma 18 rpm y calienta +${heat}°. Llega a ${target} rpm sin pasar de 90°: ajusta cuántas veces se repite (− +).`, hints: ['REPETIR n VECES o MIENTRAS con una condición que termine.', 'Calcula: ¿cuántos ajustes hacen falta?'] })
 }));
 
 // ---------- 6. Predicción (opción múltiple) ----------
@@ -10888,7 +10995,10 @@ CHALLENGES.filter(c => c.type === 'predecir').forEach(c => { const mk = c.make; 
 // ---------- 7. Funciones hidráulicas (construir) ----------
 [[[2, 10], [3, 5], [1, 20]], [[4, 5], [2, 8], [5, 4]], [[3, 6], [3, 8], [2, 12]], [[1, 15], [4, 6], [2, 5]], [[5, 5], [2, 10], [3, 12]], [[2, 6], [2, 15], [4, 8]]].forEach((gs, i) => addCh({
   title: 'Forja de funciones #' + (i + 1), type: 'construir', prog: ['functions'], energy: ['hydro'],
-  make: () => Object.assign({}, CFG_HYD_FORJA, { main: false, stages: null, start: [], functions: { generarEnergia: { params: ['caudal', 'altura'], body: [], returns: 'p1', defaults: { caudal: 1, altura: 5 } } }, exprOptions: Object.assign({}, CFG_HYD_FORJA.exprOptions, { 'arg:generarEnergia:0': [1, 2, 3, 4, 5], 'arg:generarEnergia:1': [4, 5, 6, 8, 10, 12, 15, 20] }), world: W_hydro({ gates: gs.map(([c, h]) => ({ caudal: c, altura: h })), check: CFG_HYD_FORJA.world.check }), intro: 'Define generarEnergia(caudal, altura) y llámala una vez por turbina (3 líneas en PRINCIPAL).' })
+  make: () => Object.assign({}, CFG_HYD_FORJA, { main: false, stages: null,
+    start: [0, 1, 2].map(k => ({ op: 'call', fn: 'generarEnergia', args: [1, 5], into: 'p' + (k + 1) })),
+    solution: gs.map(([c, h], k) => ({ op: 'call', fn: 'generarEnergia', args: [c, h], into: 'p' + (k + 1) })),
+    functions: { generarEnergia: { params: ['caudal', 'altura'], body: [{ op: 'ret', expr: { bin: '+', a: 'caudal', b: 'altura' } }], returns: 'p1', defaults: { caudal: 1, altura: 5 } } }, exprOptions: Object.assign({}, CFG_HYD_FORJA.exprOptions, { 'arg:generarEnergia:0': [1, 2, 3, 4, 5], 'arg:generarEnergia:1': [4, 5, 6, 8, 10, 12, 15, 20] }), world: W_hydro({ gates: gs.map(([c, h]) => ({ caudal: c, altura: h })), check: CFG_HYD_FORJA.world.check }), intro: 'En «f: generarEnergia» toca la fórmula de DEVOLVER y elige la correcta. En PRINCIPAL ajusta caudal y altura de cada turbina (− +).' })
 }));
 
 // ---------- 8. Clasificar listas (clasificar) ----------
@@ -10896,7 +11006,11 @@ for (let i = 0; i < 8; i++) {
   const rng = mulberry32(900 + i);
   const items = []; const n = 4 + (i % 4);
   for (let k = 0; k < n; k++) items.push(Object.assign({}, WASTE_ITEMS[Math.floor(rng() * WASTE_ITEMS.length)]));
-  addCh({ title: 'Clasificador #' + (i + 1), type: 'clasificar', prog: ['arrays', 'conditions'], energy: ['biomass'], make: () => { const c = cfgBioSorter(); c.main = false; c.stages = null; c.world = W_sorter({ items: items.map(x => ({ name: x.name, type: x.type })), bins: ['biodigestor', 'reciclaje', 'secado'], rule: BIO_RULE }); c.intro = 'Orgánico → biodigestor, madera → secado, lo demás → reciclaje.'; return c; } });
+  addCh({ title: 'Clasificador #' + (i + 1), type: 'clasificar', prog: ['arrays', 'conditions'], energy: ['biomass'], make: () => { const c = cfgBioSorter(); c.main = false; c.stages = null; c.world = W_sorter({ items: items.map(x => ({ name: x.name, type: x.type })), bins: ['biodigestor', 'reciclaje', 'secado'], rule: BIO_RULE });
+    // estructura armada con las preguntas cambiadas: hay que corregir los valores (o las acciones)
+    const sorter = (a, b2) => [{ op: 'foreach', var: 'residuo', list: 'residuos', body: [{ op: 'if', cond: { l: 'tipo', op: '==', r: a }, body: [A('a_biodigestor')], else: [{ op: 'if', cond: { l: 'tipo', op: '==', r: b2 }, body: [A('a_secado')], else: [A('a_reciclaje')] }] }] }];
+    c.start = sorter(i % 2 ? 'madera' : 'plastico', i % 2 ? 'organico' : 'vidrio'); c.solution = sorter('organico', 'madera');
+    c.intro = 'Orgánico → biodigestor, madera → secado, lo demás → reciclaje. La estructura ya está: toca los valores de las preguntas para corregirlas.'; return c; } });
 }
 
 // ---------- 9. Máquinas de estados (diagnosticar) ----------
@@ -10939,7 +11053,9 @@ addCh({ title: 'Microred: semana completa', type: 'optimizar', prog: ['optimizat
 // ---------- 15. Acumuladores (completar) ----------
 [[3, 5, 2, 6], [4, 4, 4, 4, 4], [1, 2, 3, 4, 5, 6], [7, 0, 3, 5], [2, 9, 1], [6, 6, 2, 2, 8]].forEach((data, i) => {
   const sum = data.reduce((a, b) => a + b, 0);
-  addCh({ title: `Energía del día #${i + 1}`, type: 'completar', prog: ['loops', 'variables'], energy: ['solar'], make: () => ({ kind: 'code', tags: ['ACUMULADOR', 'SOLAR'], concepts: ['loops', 'variables', 'solar'], codex: 'acumulador', palette: ['set:total', 'foreach:produccion_dia', 'add:total'], defaults: { itemVar: 'p' }, exprOptions: { set: [0, 1], add: ['p', 1] }, world: W_accum({ data, var: 'total', color: PAL.sun, check: (st, env) => env.vars.total === sum ? { ok: true, msg: `total = ${sum} kWh.` } : { ok: false, msg: `total = ${env.vars.total}; debería ser ${sum}.` } }), intro: 'Suma la producción de todas las horas con un PARA CADA.', hints: ['total ← 0 antes del bucle.', 'Dentro: total ← total + p.'] }) });
+  addCh({ title: `Energía del día #${i + 1}`, type: 'completar', prog: ['loops', 'variables'], energy: ['solar'], make: () => ({ kind: 'code', tags: ['ACUMULADOR', 'SOLAR'], concepts: ['loops', 'variables', 'solar'], codex: 'acumulador', palette: ['set:total', 'foreach:produccion_dia', 'add:total'], defaults: { itemVar: 'p' }, exprOptions: { set: [0, 1], add: ['p', 1] },
+    start: [{ op: 'set', var: 'total', expr: 1 }, { op: 'foreach', var: 'p', list: 'produccion_dia', body: [{ op: 'add', var: 'total', expr: 1 }] }],
+    solution: [{ op: 'set', var: 'total', expr: 0 }, { op: 'foreach', var: 'p', list: 'produccion_dia', body: [{ op: 'add', var: 'total', expr: 'p' }] }], world: W_accum({ data, var: 'total', color: PAL.sun, check: (st, env) => env.vars.total === sum ? { ok: true, msg: `total = ${sum} kWh.` } : { ok: false, msg: `total = ${env.vars.total}; debería ser ${sum}.` } }), intro: 'Suma la producción de todas las horas con un PARA CADA. El programa ya está armado: corrige los dos valores (tócalos).', hints: ['total ← 0 antes del bucle.', 'Dentro: total ← total + p.'] }) });
 });
 
 
@@ -11042,7 +11158,7 @@ function pzPhaseCfg(i) {
       intro: 'Perfect Zero convirtió el controlador solar en una regla extrema. Reescríbelo (¿recuerdas Solaria?).',
       hints: ['Ninguna rama debería apagarlo todo.', 'SI radiacion > 800 → cargar_bateria SINO → usar_bateria.', { text: 'Así:', partial: [{ op: 'if', cond: { l: 'radiacion', op: '>', r: 800 }, body: [A('cargar_bateria')], else: [A('usar_bateria')] }] }]
     };
-    case 2: return Object.assign({}, CFG_AERIS_MOLINO, { title: 'Fase 3 · Bucles', main: false, music: 'boss', stages: [{ mode: 'solo', text: 'Perfect Zero puso la red en un bucle eterno. Dale una salida.', program: [{ op: 'while', cond: { l: 'rpm', op: '>=', r: 0 }, body: [A('girar')] }] }], intro: 'MIENTRAS VERDADERO: optimizar. Dale una condición de salida.' });
+    case 2: return Object.assign({}, CFG_AERIS_MOLINO, { title: 'Fase 3 · Bucles', main: false, music: 'boss', stages: [{ mode: 'solo', text: 'Perfect Zero puso la red en un bucle eterno. Toca las partes de la condición para darle una salida.', program: [{ op: 'while', cond: { l: 'rpm', op: '>=', r: 0 }, body: [A('girar'), A('medir_viento')] }] }], intro: 'MIENTRAS VERDADERO: optimizar. Dale una condición de salida.' });
     case 3: return Object.assign({}, CFG_HYD_DUP, { title: 'Fase 4 · Funciones', music: 'boss', intro: 'Perfect Zero copió el mismo código en cada turbina. Modularízalo: 3 líneas en PRINCIPAL.' });
     case 4: {
       const isl = [{ name: 'Puerto', type: 'baja' }, { name: 'Solaria', type: 'alta' }, { name: 'Aeris', type: 'baja' }, { name: 'Hydria', type: 'alta' }, { name: 'Gea', type: 'baja' }, { name: 'Batería', type: 'alta' }];
@@ -11051,7 +11167,8 @@ function pzPhaseCfg(i) {
         palette: ['foreach:islas', 'ifelse', 'act:a_prioridad', 'act:a_normal'], actions: { a_prioridad: { label: 'a_prioridad' }, a_normal: { label: 'a_normal' } },
         defaults: { itemVar: 'isla', cond: { l: 'tipo', op: '==', r: 'baja' } }, sensors: ['tipo'], ops: ['==', '!='], condRight: ['baja', 'alta'],
         world: Object.assign(W_sorter({ items: isl, bins: [], itemVar: 'isla', binDefs: [['prioridad', PAL.pink], ['normal', PAL.teal]], actMap: { a_prioridad: 'prioridad', a_normal: 'normal' }, rule: t => t === 'baja' ? 'prioridad' : 'normal', wrongMsg: (it, bin, right) => `${it.name} tiene energía ${it.type}: debía ir a ${right}.`, itemDraw: (g, it, x, y) => { pcircle(g, x + 4, y + 4, 4, it.type === 'baja' ? PAL.coral : PAL.lime); }, okMsg: 'Las islas con energía baja reciben prioridad. Nadie se queda atrás.' }), { lists: () => ({ islas: isl.map(i => ({ name: i.name, type: i.type })) }), sensors: { tipo: (st, env) => env && env.vars && env.vars.isla ? env.vars.isla.type : '-' } }),
-        intro: 'Perfect Zero dejó a las islas débiles al final de la lista. Recórrela y da prioridad a las que tienen energía baja.',
+        start: [{ op: 'foreach', var: 'isla', list: 'islas', body: [{ op: 'if', cond: { l: 'tipo', op: '==', r: 'alta' }, body: [A('a_prioridad')], else: [A('a_normal')] }] }],
+        intro: 'Perfect Zero dejó a las islas débiles al final de la lista: su programa da prioridad a las de energía ALTA. Toca el valor de la pregunta para corregirlo.',
         hints: ['PARA CADA isla EN islas...', 'SI tipo = baja → a_prioridad SINO → a_normal', { text: 'Estructura:', partial: [{ op: 'foreach', var: 'isla', list: 'islas', body: [{ op: 'if', cond: { l: 'tipo', op: '==', r: 'baja' }, body: [A('a_prioridad')], else: [A('a_normal')] }] }] }]
       };
     }

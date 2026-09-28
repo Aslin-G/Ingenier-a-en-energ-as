@@ -72,6 +72,8 @@ Final: **reescribir la función objetivo**. Solo un equilibrio de criterios que 
 
 ## 5. Progresión pedagógica
 
+- **Ordenar y ajustar, no construir desde cero**: cada reto de código trae las instrucciones necesarias ya colocadas (en desorden, con números por ajustar o con valores equivocados). El estudiante razona sobre el algoritmo, no sobre la interfaz: toca una línea y la mueve con ▲ ▼ (entra y sale de los bucles fila a fila), ajusta números con − +, toca un valor o el nombre de una instrucción para elegir otro en una lista, y toca un hueco ▢ para elegir qué va ahí. No hay que arrastrar nada. Una prueba automática (`tools/tests/presets.js`) garantiza que ningún programa inicial resuelve ya el reto y que la solución se alcanza.
+
 - **Andamiaje por etapas**: casi todos los retos principales tienen **DEMO** (PÍX lo resuelve y explica), **LO HACEMOS JUNTOS** (programa con huecos ▢) y **TÚ SOLO**.
 - **Pistas en 3 niveles**: una pregunta orientadora, luego el concepto y por último una solución parcial que se puede insertar. Usarlas reduce XP, pero no penaliza el avance.
 - **Errores explicativos**: el intérprete detecta huecos sin completar, bucles infinitos (límite de pasos), variables sin valor y transiciones inválidas, y las simulaciones explican el fallo con datos (p. ej. «a las 8:00 la ciudad se quedó sin luz: eligió cargar_bateria con radiación 434 W/m²»).

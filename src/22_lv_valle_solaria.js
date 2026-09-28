@@ -116,11 +116,11 @@ const CFG_VALLE_RUTA = {
   world: W_grid({ map: ['#########', '#S..p...#', '#.##.##.#', '#p.....p#', '#########'], bot: 'robot', floor: '#A0643C', wall: '#3FA85A', bg: '#66D66A', need: { plants: true }, okMsg: '¡Las tres plantas regadas y ninguna dos veces!' }),
   stages: [
     {
-      mode: 'guided', label: 'DEPURA EL BUG', text: 'Un BUGGLIN intercambió dos instrucciones. Ejecuta, mira la TRAZA y encuentra dónde falla. Arrastra líneas para reordenarlas.',
+      mode: 'guided', label: 'DEPURA EL BUG', text: 'Un BUGGLIN intercambió dos instrucciones. Ejecuta, mira la TRAZA y encuentra dónde falla. Toca una línea y muévela con ▲▼.',
       world: W_grid({ map: ['########', '#S.p.p.#', '#.....p#', '########'], bot: 'robot', floor: '#A0643C', wall: '#3FA85A', bg: '#66D66A', need: { plants: true }, okMsg: '¡Bug corregido! El orden lo era todo.' }),
       program: [A('avanzar', 2), A('regar'), A('avanzar', 2), A('regar'), A('girar_der'), A('avanzar', 1), A('avanzar', 1), A('regar')]
     },
-    { mode: 'solo', label: 'LO HACES TÚ', text: 'Nuevo huerto. Riega las 3 plantas (una sola vez cada una). El robot empieza mirando →.', program: [] }
+    { mode: 'solo', label: 'LO HACES TÚ', text: 'Nuevo huerto: las instrucciones ya están en orden. Ajusta cuántas casillas avanza cada «avanzar» (− +) para regar las 3 plantas.', program: [A('avanzar', 1), A('regar'), A('avanzar', 1), A('girar_der'), A('avanzar', 1), A('regar'), A('girar_der'), A('avanzar', 1), A('regar')] }
   ],
   hints: ['Pulsa PASO para ejecutar línea a línea. ¿En qué paso el robot se desvía?', { text: 'En el huerto nuevo, la primera planta está en la misma fila. Después hay que bajar por la derecha.', highlight: 'palette:act:regar' }, { text: 'Te dejo la primera parte:', partial: [A('avanzar', 3), A('regar'), A('avanzar', 3), A('girar_der'), A('avanzar', 2), A('regar')] }],
   deep: 'Mira el diagrama: cada caja depende de dónde dejó al robot la anterior. El error no está en una instrucción sino en su POSICIÓN.',
@@ -131,9 +131,9 @@ const CFG_VALLE_SACOS = {
   palette: ['set:sacos', 'add:sacos', 'act:llega_carro'], actions: { llega_carro: { label: 'llega_carro' } },
   exprOptions: { set: [0, 4, 8, 12], add: [1, 2, 4, 8] }, varNames: ['sacos'],
   world: W_sacks({ expect: 12 }),
-  start: [A('llega_carro'), { op: 'add', var: 'sacos', expr: 4 }, A('llega_carro'), { op: 'add', var: 'sacos', expr: 4 }, A('llega_carro'), { op: 'add', var: 'sacos', expr: 4 }],
-  intro: 'El contador de sacos de Pepa dice "???". Ejecuta y lee el error.',
-  hints: ['¿Qué valor tiene "sacos" antes de la primera suma?', { text: 'Un acumulador necesita un valor inicial: sacos ← 0 al principio.', highlight: 'palette:set:sacos' }, { text: 'Añadí la inicialización:', partial: [{ op: 'set', var: 'sacos', expr: 0 }, A('llega_carro'), { op: 'add', var: 'sacos', expr: 4 }, A('llega_carro'), { op: 'add', var: 'sacos', expr: 4 }, A('llega_carro'), { op: 'add', var: 'sacos', expr: 4 }] }]
+  start: [A('llega_carro'), { op: 'add', var: 'sacos', expr: 4 }, A('llega_carro'), { op: 'add', var: 'sacos', expr: 4 }, A('llega_carro'), { op: 'add', var: 'sacos', expr: 4 }, { op: 'set', var: 'sacos', expr: 0 }],
+  intro: 'El contador de sacos de Pepa dice "???". Ejecuta, lee el error y ordena las líneas (toca una línea y usa ▲▼).',
+  hints: ['¿Qué valor tiene "sacos" antes de la primera suma?', { text: 'Un acumulador necesita un valor inicial ANTES de sumar: sube «sacos ← 0» hasta la línea 1.' }, { text: 'Añadí la inicialización:', partial: [{ op: 'set', var: 'sacos', expr: 0 }, A('llega_carro'), { op: 'add', var: 'sacos', expr: 4 }, A('llega_carro'), { op: 'add', var: 'sacos', expr: 4 }, A('llega_carro'), { op: 'add', var: 'sacos', expr: 4 }] }]
 };
 const CFG_VALLE_MOLINO = {
   kind: 'seq', title: 'Molino dormido', tags: ['SECUENCIA', 'EÓLICA'], concepts: ['sequence', 'wind'], codex: 'eolica', label: 'MOLINO',
@@ -259,10 +259,11 @@ const CFG_SOL_FLOW = {
   kind: 'flow', main: true, title: 'El controlador solar', tags: ['SI / SINO', 'VARIABLES', 'SOLAR'], concepts: ['conditions', 'variables', 'solar'], codex: 'condicional', music: 'solaria',
   world: W_solar({ weather: SOL_WEATHER, demand: SOL_DEMAND, panels: 6, soc0: 60, K: 3, okMsg: '¡Ni un solo apagón en todo el día!' }),
   hours: 16, threshold0: 300,
-  start: [{ id: 1, type: 'start', c: 1, r: 0 }, { id: 2, type: 'end', c: 1, r: 5 }],
-  palette: ['start', 'read', 'dec', 'charge', 'use', 'end'],
-  intro: 'Cada hora: SI radiación > umbral → cargar_bateria (la ciudad usa el sol) SINO → usar_bateria. Construye el diagrama y ajusta el umbral.',
-  hints: ['Necesitas: INICIO → rombo de decisión → dos acciones (una por rama) → FIN.', { text: 'Si el umbral es muy bajo, "cargas" cuando el sol no alcanza para la ciudad. Si es muy alto, la batería nunca se carga. Prueba entre 700 y 900.' }, { text: 'Te armo el esqueleto: conecta los puertos que faltan.', apply: sc => { sc.nodes = [{ id: 1, type: 'start', c: 1, r: 0, next: 3 }, { id: 3, type: 'dec', c: 1, r: 2 }, { id: 4, type: 'charge', c: 0, r: 3 }, { id: 5, type: 'use', c: 2, r: 3 }, { id: 2, type: 'end', c: 1, r: 5 }]; } }],
+  // el diagrama viene armado, con las acciones cambiadas y un umbral demasiado bajo
+  start: [{ id: 1, type: 'start', c: 1, r: 0, next: 2 }, { id: 2, type: 'read', c: 1, r: 1, next: 3 }, { id: 3, type: 'dec', c: 1, r: 2, yes: 4, no: 5 }, { id: 4, type: 'use', c: 0, r: 3, next: 6 }, { id: 5, type: 'charge', c: 2, r: 3, next: 6 }, { id: 6, type: 'end', c: 1, r: 5 }],
+  actTypes: ['charge', 'use'],
+  intro: 'Cada hora: SI radiación > umbral → cargar_bateria SINO → usar_bateria. El diagrama ya está, pero las acciones están cambiadas y el umbral es muy bajo: tócalas y ajusta el umbral.',
+  hints: ['Con mucho sol (SÍ), la ciudad debe usar el sol y guardar el sobrante: ¿qué acción va en la rama SÍ?', { text: 'Si el umbral es muy bajo, "cargas" cuando el sol no alcanza para la ciudad. Si es muy alto, la batería nunca se carga. Prueba entre 700 y 900.' }, { text: 'Te coloco las acciones: SÍ → cargar_bateria, NO → usar_bateria. Solo falta el umbral.', apply: sc => { sc.nodes.forEach(n => { if (n.id === 4) n.type = 'charge'; if (n.id === 5) n.type = 'use'; }); } }],
   xp: 60
 };
 const CFG_SOL_FLORES = {
@@ -270,7 +271,8 @@ const CFG_SOL_FLORES = {
   palette: ['ifelse', 'act:abrir_flores', 'act:cerrar_flores'], actions: { abrir_flores: { label: 'abrir_flores' }, cerrar_flores: { label: 'cerrar_flores' } },
   sensors: ['radiacion', 'hora'], condRight: [100, 200, 300, 400, 500, 600, 700, 800, 900], defaults: { cond: { l: 'radiacion', op: '>', r: 100 } },
   world: W_flowers({ weather: ['sol', 'sol', 'sol', 'nube', 'sol', 'lluvia', 'sol', 'sol'] }),
-  intro: 'Las flores-panel de Suri deben abrirse con sol fuerte y cerrarse con poca luz (¡y con lluvia!). El programa se ejecuta cada 2 horas.',
+  start: [{ op: 'if', cond: { l: 'radiacion', op: '>', r: 100 }, body: [A('cerrar_flores')], else: [A('abrir_flores')] }],
+  intro: 'Las flores-panel de Suri deben abrirse con sol fuerte y cerrarse con poca luz (¡y con lluvia!). La regla ya está, pero al revés y con un umbral muy bajo: arréglala.',
   hints: ['¿Qué variable dice cuánto sol hay?', { text: 'SI radiacion > ... ENTONCES abrir_flores SINO cerrar_flores.', highlight: 'palette:ifelse' }, { text: 'Estructura lista; ajusta el número.', partial: [{ op: 'if', cond: { l: 'radiacion', op: '>', r: 100 }, body: [A('abrir_flores')], else: [A('cerrar_flores')] }] }]
 };
 const CFG_SOL_SENSOR = {
@@ -288,7 +290,8 @@ const CFG_SOL_MATRIZ = {
   palette: ['set:total', 'add:total'], exprOptions: { set: [0, 10], add: ['fila1', 'fila2', 'fila3', 1] },
   world: W_accum({ data: [12, 18, 9], var: 'total', unit: 'kW por fila', color: PAL.sun, check: (st, env) => env.vars.total === 39 ? { ok: true, msg: 'total = 39 kW. ¡La matriz está bien sumada!' } : { ok: false, msg: `total = ${env.vars.total}. Debe ser la suma de las tres filas.` } }),
   vars: { fila1: 12, fila2: 18, fila3: 9 },
-  intro: 'Suma la potencia de las tres filas de paneles en la variable "total". Empieza en 0 y ve acumulando.',
+  start: [{ op: 'add', var: 'total', expr: 'fila1' }, { op: 'add', var: 'total', expr: 'fila1' }, { op: 'add', var: 'total', expr: 'fila1' }, { op: 'set', var: 'total', expr: 10 }],
+  intro: 'Suma la potencia de las tres filas en "total": debe empezar en 0 (primera línea) y sumar fila1, fila2 y fila3. Ordena las líneas y toca los valores para cambiarlos.',
   hints: ['¿Con qué valor debe empezar "total"?', 'total ← 0, luego total ← total + fila1...', { text: 'Te dejo el inicio.', partial: [{ op: 'set', var: 'total', expr: 0 }, { op: 'add', var: 'total', expr: 'fila1' }] }]
 };
 const CFG_SOL_NUBE = {

@@ -58,7 +58,8 @@ const Game = {
     FX.drawFlash(ctx);
     if (!(Scenes.top() && Scenes.top().hideToasts)) Toast.draw(ctx);
     TouchPad.draw(ctx);
-    if (G.save.settings.captions && AudioSys.captions.length) {
+    // en puzzles y menús los resultados ya se leen en pantalla: los subtítulos de sonido no tapan la interfaz
+    if (G.save.settings.captions && AudioSys.captions.length && !(Scenes.top() && Scenes.top().hideToasts)) {
       AudioSys.captions.forEach((c, i) => { const w = textW(c.text) + 8; ctx.globalAlpha = Math.min(1, c.t * 2); rect(ctx, W / 2 - w / 2, 24 + i * 12, w, 11, 'rgba(0,0,0,0.6)'); drawText(ctx, c.text, W / 2, 26 + i * 12, '#C9D2F0', { align: 'center' }); ctx.globalAlpha = 1; });
     }
     if (Save.flash > 0) { ctx.globalAlpha = Math.min(1, Save.flash); icon(ctx, 'star', W - 12, H - 12); ctx.globalAlpha = 1; }

@@ -58,9 +58,9 @@ Cada habilidad es un concepto que se *juega* además de programarse: el **If Shi
 
 ### Tipos de puzzle
 
-- **CodeLab**: editor de bloques (arrastrar y soltar, o tocar un bloque y después tocar la línea bajo la que va; cada línea se borra con su **✗**) con intérprete real: `SI/SINO`, `REPETIR`, `MIENTRAS`, `PARA CADA`, variables, funciones con parámetros y retorno. Tiene ejecución paso a paso, puntos de interrupción, traza, vista de variables, detección de bucles infinitos y **vista de diagrama de flujo** del mismo programa.
-- **Secuencias**: ordenar tarjetas de procesos energéticos (y detectar la tarjeta intrusa).
-- **Diagrama de flujo**: construir el controlador solar con nodos y decisiones.
+- **CodeLab**: editor de bloques **sin arrastrar**. Cada reto trae las instrucciones necesarias ya armadas: el estudiante las **ordena** (toca una línea y la mueve con ▲ ▼), **ajusta los números** con − + y **toca los valores** para cambiarlos. Tocar un bloque de la izquierda lo añade bajo la línea marcada y ✗ borra. Tiene intérprete real: `SI/SINO`, `REPETIR`, `MIENTRAS`, `PARA CADA`, variables, funciones con parámetros y retorno. Tiene ejecución paso a paso, puntos de interrupción, traza, vista de variables, detección de bucles infinitos y **vista de diagrama de flujo** del mismo programa.
+- **Secuencias**: tocar las tarjetas de procesos energéticos en orden (cada una va a la siguiente casilla; tocar una casilla la vacía) y detectar la tarjeta intrusa.
+- **Diagrama de flujo**: el controlador solar viene armado; se tocan los nodos de acción para cambiarlos, ⇄ intercambia las salidas SÍ/NO y el umbral se ajusta con − +.
 - **Máquina de estados**: dibujar transiciones válidas de una planta geotérmica.
 - **Ordenar y buscar**: burbuja con conteo de comparaciones, búsqueda binaria.
 - **Microred**: reglas priorizadas que se simulan hora a hora en varios escenarios (día típico, festival nocturno, día sin sol, tormenta).
@@ -149,6 +149,7 @@ Requieren [Playwright](https://playwright.dev/) (local o global) con Chromium:
 node tools/tests/glyphs.js    # comprueba que las flechas de la fuente apuntan bien (sin navegador)
 node tools/tests/levels.js    # carga los 14 niveles y guarda capturas
 node tools/tests/puzzles.js   # resuelve los puzzles principales y construye los 115 retos
+node tools/tests/presets.js   # cada reto de código empieza armado pero sin resolver, y su solución funciona
 node tools/tests/walk.js      # recorre la campaña completa hasta el epílogo
 node tools/tests/menus.js     # abre todas las pantallas de menú
 ```

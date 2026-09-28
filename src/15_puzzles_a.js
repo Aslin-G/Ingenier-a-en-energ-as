@@ -137,10 +137,13 @@ class SeqScene extends PuzzleBase {
     for (let i = 0; i < n; i++) {
       const x = sx0 + i * (sw + 6), y = 132;
       const id = this.slots[i];
-      const st = UI.register('slot' + i, x, y, sw, 36, { drop: true, drag: id ? { id, from: 'slot', slot: i } : undefined });
+      // tocar una casilla llena devuelve su tarjeta al montón
+      const st = UI.register('slot' + i, x, y, sw, 36, {});
+      if (UI.clicked('slot' + i) && id && this.state !== 'running') { if (this.state !== 'edit') { this.state = 'edit'; this.marks = []; } this.slots[i] = null; this.pool.push(id); AudioSys.sfx('remove'); }
       const mk = this.marks[i];
       rect(g, x, y, sw, 36, st.hover || st.focus ? '#2A3570' : '#1A2248');
-      strokeRect(g, x, y, sw, 36, mk === true ? PAL.lime : mk === false ? PAL.coral : this.stepI === i && this.state === 'running' ? PAL.sun : UI.held || UI.dragging ? PAL.sun : '#3E4C8A');
+      strokeRect(g, x, y, sw, 36, mk === true ? PAL.lime : mk === false ? PAL.coral : this.stepI === i && this.state === 'running' ? PAL.sun : !id && this.slots.indexOf(null) === i ? PAL.sun : '#3E4C8A');
+      if (id && (st.hover || st.focus) && this.state !== 'running') drawText(g, '✗', x + sw - 8, y + 26, PAL.coral);
       drawText(g, (i + 1) + '', x + 3, y + 3, '#8C93B8');
       if (id) this.drawCard(g, this.card(id), x + 2, y + 10, sw - 4, st.held);
       if (mk != null) drawText(g, mk ? '✓' : '✗', x + sw - 8, y + 3, mk ? PAL.lime : PAL.coral);
@@ -150,19 +153,24 @@ class SeqScene extends PuzzleBase {
     // tarjetas disponibles
     const pst = UI.register('pool', 6, 172, W - 12, 52, { drop: true, nav: false });
     rect(g, 6, 172, W - 12, 52, pst.hover && UI.dragging ? '#1A2A50' : '#10162B');
-    drawText(g, 'TARJETAS', 10, 175, '#8C93B8');
+    drawText(g, 'TARJETAS · toca una para ponerla en la siguiente casilla; toca una casilla para quitarla', 10, 175, '#8C93B8');
     // una fila si caben (hasta 5 tarjetas), si no dos filas; tarjetas tan anchas como permita el panel
     const total = this.cfg.cards.length, cols = total <= 5 ? total : Math.ceil(total / 2);
     const pw = Math.min(150, Math.floor((W - 20) / Math.max(1, cols)) - 4);
     this.pool.forEach((id, k) => {
       const col = k % cols, row = Math.floor(k / cols);
       const x = 10 + col * (pw + 4), y = 184 + row * 20;
-      const st = UI.register('card' + id, x, y, pw, 18, { drag: { id, from: 'pool' } });
+      // tocar una tarjeta la coloca en la primera casilla libre
+      const st = UI.register('card' + id, x, y, pw, 18, {});
+      if (UI.clicked('card' + id) && this.state !== 'running') {
+        const free = this.slots.indexOf(null);
+        if (free < 0) { this.say('Todas las casillas están llenas: toca una casilla para devolver su tarjeta.', PAL.sun); AudioSys.sfx('error'); }
+        else { if (this.state !== 'edit') { this.state = 'edit'; this.marks = []; } this.slots[free] = id; this.pool = this.pool.filter(x2 => x2 !== id); AudioSys.sfx('place'); }
+      }
       this.drawCard(g, this.card(id), x, y, pw, st.held, st.hover || st.focus);
       if (st.hover && this.card(id).desc) UI.tooltip = this.card(id).desc;
       if (st.focus && Input.lastDevice === 'keyboard') UI.focusRing(g, x, y, pw, 18);
     });
-    if (UI.dragging) { const c = this.card(UI.dragging.id); if (c) { g.globalAlpha = 0.85; this.drawCard(g, c, Input.pointer.x - 20, Input.pointer.y - 8, pw, true); g.globalAlpha = 1; } }
     this.drawFooter(g, [
       this.result ? null : { id: 'run', w: 70, label: '▶ EJECUTAR', primary: true, color: PAL.lime, fn: () => this.run(), disabled: this.state === 'running' }
     ]);
@@ -306,28 +314,20 @@ class FlowScene extends PuzzleBase {
   }
   draw(g) {
     this.drawHeader(g, 'FLOWCHART');
-    // paleta
+    // panel izquierdo: instrucciones y umbral (el diagrama ya viene armado: nada que arrastrar)
     panel(g, 4, 20, 92, 204, { border: '#2A3570' });
-    drawText(g, 'NODOS', 10, 25, PAL.sun);
-    (this.cfg.palette || ['start', 'read', 'dec', 'charge', 'use', 'end']).forEach((tp, i) => {
-      const y = 36 + i * 17, T = FLOW_TYPES[tp];
-      const st = UI.register('fp:' + tp, 8, y, 84, 14, { drag: { newType: tp } });
-      rect(g, 8, y, 84, 14, st.held ? '#5A4A1A' : st.hover || st.focus ? '#2A3570' : '#1A2248'); rect(g, 8, y, 3, 14, T.color);
-      drawText(g, tp === 'dec' ? '¿rad > U?' : T.label, 14, y + 4, st.held ? PAL.sun : PAL.cream);
-      if (st.focus && Input.lastDevice === 'keyboard') UI.focusRing(g, 8, y, 84, 14);
-    });
-    // umbral
+    drawText(g, 'CÓMO SE EDITA', 10, 25, PAL.sun);
+    drawPara(g, 'Toca un nodo de {c}acción{/} para cambiarlo.\n\nToca {y}⇄{/} junto al rombo para intercambiar SÍ y NO.\n\nAbajo: umbral con − +.', 10, 38, 80, '#C9D2F0');
     drawText(g, 'UMBRAL U', 10, 150, PAL.orange);
     drawText(g, this.threshold + ' W/m²', 50, 162, PAL.sun, { align: 'center' });
-    if (UI.btn(g, 'thDn', 8, 158, 14, 13, '−', { color: PAL.orange })) { this.threshold = Math.max(0, this.threshold - 100); AudioSys.sfx('click'); }
-    if (UI.btn(g, 'thUp', 78, 158, 14, 13, '+', { color: PAL.orange })) { this.threshold = Math.min(1000, this.threshold + 100); AudioSys.sfx('click'); }
-    const tr = UI.register('trash', 8, 200, 84, 18, { drop: true });
-    rect(g, 8, 200, 84, 18, UI.dragging && UI.dragging.move ? '#4A1A2A' : '#1A1F38'); drawText(g, '✗ papelera', 50, 206, '#8C93B8', { align: 'center' });
+    const edit = () => { if (this.state !== 'edit') this.state = 'edit'; };
+    if (UI.btn(g, 'thDn', 8, 158, 14, 13, '−', { color: PAL.orange, disabled: this.running })) { edit(); this.threshold = Math.max(0, this.threshold - 100); AudioSys.sfx('click'); }
+    if (UI.btn(g, 'thUp', 78, 158, 14, 13, '+', { color: PAL.orange, disabled: this.running })) { edit(); this.threshold = Math.min(1000, this.threshold + 100); AudioSys.sfx('click'); }
     // cuadrícula
     panel(g, this.OX - 4, 20, this.COLS * this.CW + 8, 204, { border: '#2A3570', bg: '#0B1020' });
     for (let r = 0; r < this.ROWS; r++) for (let c = 0; c < this.COLS; c++) {
       const x = this.OX + c * this.CW, y = this.OY + r * this.CH;
-      if (!this.nodeAt(c, r)) { const st = UI.register('cell:' + c + ',' + r, x + 2, y + 2, this.CW - 4, this.CH - 4, { drop: true, nav: !!(UI.held || UI.dragging) }); if (UI.held || UI.dragging) strokeRect(g, x + 2, y + 2, this.CW - 4, this.CH - 4, st.hover || st.focus ? PAL.sun : '#1E2748'); else px(g, x + this.CW / 2, y + this.CH / 2, '#2A3570'); }
+      if (!this.nodeAt(c, r)) { g.globalAlpha = 0.25; px(g, x + this.CW / 2, y + this.CH / 2, '#5A6090'); g.globalAlpha = 1; }
     }
     // conexiones
     for (const n of this.nodes) for (const o of FLOW_TYPES[n.type].outs) {
@@ -342,8 +342,11 @@ class FlowScene extends PuzzleBase {
     // nodos
     for (const n of this.nodes) {
       const R = this.nodeRect(n), T = FLOW_TYPES[n.type];
-      const st = UI.register('node:' + n.id, R.x, R.y, R.w, R.h, { drag: this.running ? undefined : { move: n.id }, drop: !!this.conn });
-      if (UI.clicked('node:' + n.id) && this.conn && this.conn.id !== n.id) { const from = this.byId(this.conn.id); from[this.conn.o] = n.id; this.conn = null; UI.cancelHeld(); AudioSys.sfx('place'); }
+      const acts = this.cfg.actTypes || ['charge', 'use'];
+      const isAct = acts.includes(n.type);
+      const st = UI.register('node:' + n.id, R.x, R.y, R.w, R.h, { nav: isAct && !this.running });
+      if (UI.clicked('node:' + n.id) && isAct && !this.running) { this.state = 'edit'; n.type = acts[(acts.indexOf(n.type) + 1) % acts.length]; AudioSys.sfx('place'); }
+      if (isAct && st.hover && !this.running) UI.tooltip = 'Toca para cambiar la acción';
       const active = this.tokenAt === n.id && this.running, err = this.errNode === n.id;
       const bg = active ? '#5A4A1A' : err ? '#5A1A2A' : '#1A2248';
       if (n.type === 'dec' || n.type === 'dec2') { for (let k = 0; k < R.h; k++) { const ww = Math.round((R.w / 2) * (1 - Math.abs(k - R.h / 2) / (R.h / 2 + 2))); rect(g, R.x + R.w / 2 - ww, R.y + k, ww * 2, 1, bg); } }
@@ -353,8 +356,10 @@ class FlowScene extends PuzzleBase {
       const lbl = n.type === 'dec' ? 'rad > ' + this.threshold + '?' : T.label;
       drawText(g, lbl.length > 11 ? lbl.slice(0, 10) + '…' : lbl, R.x + R.w / 2, R.y + 5, active ? PAL.sun : PAL.cream, { align: 'center' });
       if (this.lastDec && this.lastDec.id === n.id && this.running) drawText(g, this.lastDec.v ? 'SÍ' : 'NO', R.x + R.w + 1, R.y + 5, this.lastDec.v ? PAL.lime : PAL.coral);
-      // puertos
-      if (!this.running) for (const o of T.outs) {
+      if ((n.type === 'dec' || n.type === 'dec2') && !this.running && UI.btn(g, 'swap:' + n.id, R.x + R.w + 2, R.y + 3, 12, 11, '⇄', { color: PAL.orange, tip: 'Intercambiar las salidas SÍ y NO' })) { this.state = 'edit'; [n.yes, n.no] = [n.no, n.yes]; AudioSys.sfx('swap'); }
+      // etiquetas de las salidas del rombo (sin puertos que conectar)
+      if (n.type === 'dec' || n.type === 'dec2') { const py = R.y + R.h + 3; drawText(g, 'SÍ', R.x + 2, py - 3, PAL.lime); drawText(g, 'NO', R.x + R.w - 12, py - 3, PAL.coral); }
+      if (this.cfg.editPorts) for (const o of T.outs) {
         const p = this.portPos(n, o);
         const pid = 'port:' + n.id + ':' + o;
         const pst = UI.register(pid, p.x - 5, p.y - 4, 10, 8);
@@ -376,7 +381,6 @@ class FlowScene extends PuzzleBase {
     const rows = [['hora', S.hora(this.st) + ':00'], ['radiación', S.radiacion(this.st)], ['batería', S.bateria(this.st) + '%'], ['apagones', this.st.blackout]];
     rows.forEach((r, i) => { drawText(g, r[0], 364, 148 + i * 11, i === 3 && this.st.blackout ? PAL.coral : PAL.aqua); drawText(g, String(r[1]), 470, 148 + i * 11, PAL.cream, { align: 'right' }); });
     drawPara(g, 'El diagrama decide qué hacer {y}cada hora{/}.', 364, 196, 108, '#8C93B8');
-    if (UI.dragging) { const lbl = UI.dragging.newType ? FLOW_TYPES[UI.dragging.newType].label : 'mover'; drawText(g, lbl, Input.pointer.x, Input.pointer.y - 8, PAL.sun, { outline: PAL.ink }); }
     this.drawFooter(g, [this.result ? null : { id: 'run', w: 70, label: this.running ? '...' : '▶ EJECUTAR', primary: true, color: PAL.lime, fn: () => { if (!this.running) this.run(); } },
       this.result || !this.running ? null : { id: 'stop', w: 44, label: '■ PARAR', color: PAL.coral, fn: () => { this.running = false; this.state = 'edit'; this.say('Detenido.'); } },
       this.result ? null : { id: 'fast', w: 50, label: this.cfg.fast ? 'RÁPIDO' : 'NORMAL', color: PAL.sun, fn: () => { this.cfg.fast = !this.cfg.fast; } }]);

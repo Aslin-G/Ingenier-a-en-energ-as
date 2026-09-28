@@ -145,7 +145,7 @@ function* execStmt(b, env, path, fnName) {
   if (env.steps > env.maxSteps) throw new ExecError(path, 'Demasiados pasos: el programa parece no terminar nunca.', 'infinite');
   yield { t: 'line', path, fn: fnName, b };
   switch (b.op) {
-    case 'blank': throw new ExecError(path, 'Hay un hueco ▢ sin completar. Arrastra un bloque sobre él.', 'blank');
+    case 'blank': throw new ExecError(path, 'Hay un hueco ▢ sin completar: tócalo y elige qué instrucción va ahí.', 'blank');
     case 'act': {
       const arg = b.arg != null ? evalExpr(b.arg, env) : undefined;
       const r = env.world.act(b.name, arg, env.st, env) || { ok: true };
@@ -549,35 +549,93 @@ class CodeLabScene {
     Particles.draw(g, 0, 0, true);
     UI.drawTooltip(g);
   }
+  // ---------- edición sencilla (sin arrastrar) ----------
+  // Tocar un bloque de la izquierda lo AÑADE debajo de la línea marcada (o al final).
+  canEdit() { return !this.locked && this.state !== 'running' && this.state !== 'paused'; }
+  touchEdit() { if (this.state !== 'edit') { this.state = 'edit'; this.resetWorld(); } }
+  addBlock(tpl) {
+    if (!this.canEdit()) { if (this.locked) this.msg = 'Este es un ejemplo: obsérvalo y pulsa EJECUTAR.'; return; }
+    if (this.cfg.maxBlocks && countBlocks(this.curList) >= this.cfg.maxBlocks) { this.msg = 'Máximo ' + this.cfg.maxBlocks + ' bloques. Borra uno con ✗ o reutiliza los que tienes.'; AudioSys.sfx('error'); return; }
+    this.touchEdit();
+    const block = makeFromTemplate(tpl, this.cfg);
+    const sel = this.sel && getBlock(this.curList, this.sel) ? this.sel : null;
+    let list = this.curList, idx = list.length, path = [list.length];
+    if (sel) {
+      const cur = getBlock(this.curList, sel);
+      if (cur.op === 'blank') { Object.keys(cur).forEach(k => delete cur[k]); Object.assign(cur, block); this.sel = sel; this.flashLine(sel); AudioSys.sfx('place'); return; }
+      if (hasBody(cur) && !cur.body.length) { list = cur.body; idx = 0; path = sel.concat('body', 0); }
+      else { list = getList(this.curList, sel.slice(0, -1)); idx = sel[sel.length - 1] + 1; path = sel.slice(0, -1).concat(idx); }
+    }
+    list.splice(idx, 0, block);
+    this.sel = path; this.flashLine(path);
+    AudioSys.sfx('place');
+  }
+  flashLine(path) { this.flash = { key: this.tab + ':' + pathKey(path), t: 0.7 }; }
+  // ▲ / ▼: la línea sube o baja UNA fila del programa; al cruzar un SI/REPETIR/MIENTRAS entra o sale de él
+  moveLine(path, dir) {
+    if (!this.canEdit()) return;
+    const root = this.curList, lp = path.slice(0, -1), list = getList(root, lp), i = path[path.length - 1], b = list[i];
+    if (!b || b.locked) { this.msg = 'Esa línea está fija en este reto.'; return; }
+    this.touchEdit();
+    let np = null;
+    const into = t => t.op === 'if' && t.else ? 'else' : 'body';
+    if (dir < 0) {
+      if (i > 0) {
+        const prev = list[i - 1];
+        if (hasBody(prev) && !prev.locked) { list.splice(i, 1); const k = into(prev); prev[k].push(b); np = lp.concat(i - 1, k, prev[k].length - 1); }
+        else { list[i] = prev; list[i - 1] = b; np = lp.concat(i - 1); }
+      } else if (lp.length) {
+        const key = lp[lp.length - 1], op = lp.slice(0, -1), owner = getBlock(root, op);
+        list.splice(0, 1);
+        if (key === 'else') { owner.body.push(b); np = op.concat('body', owner.body.length - 1); }
+        else { const ol = getList(root, op.slice(0, -1)), oi = op[op.length - 1]; ol.splice(oi, 0, b); np = op.slice(0, -1).concat(oi); }
+      }
+    } else {
+      if (i < list.length - 1) {
+        const next = list[i + 1];
+        if (hasBody(next) && !next.locked) { list.splice(i, 1); next.body.unshift(b); np = lp.concat(i, 'body', 0); }
+        else { list[i] = next; list[i + 1] = b; np = lp.concat(i + 1); }
+      } else if (lp.length) {
+        const key = lp[lp.length - 1], op = lp.slice(0, -1), owner = getBlock(root, op);
+        list.splice(i, 1);
+        if (key === 'body' && owner.op === 'if' && owner.else) { owner.else.unshift(b); np = op.concat('else', 0); }
+        else { const ol = getList(root, op.slice(0, -1)), oi = op[op.length - 1]; ol.splice(oi + 1, 0, b); np = op.slice(0, -1).concat(oi + 1); }
+      }
+    }
+    if (!np) { AudioSys.sfx('error'); return; }
+    this.sel = np; this.flashLine(np); AudioSys.sfx('swap');
+  }
   drawPalette(g) {
     const x = 4, y = 20, w = 92;
     panel(g, x, y, w, 204, { border: '#2A3570' });
     drawText(g, 'BLOQUES', x + 6, y + 5, PAL.sun);
     const pal = this.cfg.palette || [];
     let yy = y + 17;
-    pal.forEach((tpl, i) => {
+    const can = this.canEdit();
+    pal.forEach(tpl => {
       if (this.hiddenTpl && this.hiddenTpl.includes(tpl)) return;
       const cat = BLOCK_CAT[templateCat(tpl)] || BLOCK_CAT.act;
       const label = templateLabel(tpl, this.cfg);
       const id = 'pal:' + tpl;
-      const st = UI.register(id, x + 4, yy, w - 8, 13, { drag: { tpl } });
+      const st = UI.register(id, x + 4, yy, w - 8, 13, {});
       const hl = this.hintHighlight && this.hintHighlight.what === 'palette:' + tpl && Math.floor(this.t * 4) % 2;
-      rect(g, x + 4, yy, w - 8, 13, st.held ? shade(cat.color, 0.2) : st.hover || st.focus ? shade(cat.dark, 0.25) : cat.dark);
+      rect(g, x + 4, yy, w - 8, 13, st.pressed ? shade(cat.color, 0.2) : st.hover || st.focus ? shade(cat.dark, 0.25) : cat.dark);
       rect(g, x + 4, yy, 3, 13, cat.color);
-      if (hl || st.held) strokeRect(g, x + 3, yy - 1, w - 6, 15, PAL.sun);
-      drawText(g, fitText(label, w - 18), x + 10, yy + 3, st.held ? PAL.ink : PAL.cream);
+      if (hl) strokeRect(g, x + 3, yy - 1, w - 6, 15, PAL.sun);
+      drawText(g, fitText(label, w - 22), x + 10, yy + 3, can ? PAL.cream : '#8C93B8');
+      if (can) drawText(g, '+', x + w - 9, yy + 3, cat.color);
       if (st.focus && Input.lastDevice === 'keyboard') UI.focusRing(g, x + 4, yy, w - 8, 13);
       const actDesc = tpl.startsWith('act:') && this.cfg.actions && this.cfg.actions[tpl.slice(4)] && this.cfg.actions[tpl.slice(4)].desc;
       if (st.hover) UI.tooltip = (this.cfg.tips && this.cfg.tips[tpl]) || actDesc || (cat.name[0].toUpperCase() + cat.name.slice(1) + ': ' + label);
+      if (UI.clicked(id)) this.addBlock(tpl);
       yy += 15;
     });
-    // papelera
-    const tr = UI.register('trash', x + 4, 200, w - 8, 18, { drop: true });
-    const dragging = UI.dragging && UI.dragging.move || UI.held && UI.held.move;
-    rect(g, x + 4, 200, w - 8, 18, dragging ? (tr.hover || tr.focus ? '#7A2A3A' : '#4A1A2A') : '#1A1F38');
-    drawText(g, dragging ? '✗ SOLTAR AQUÍ: BORRAR' : '✗ papelera', x + w / 2, 206, dragging ? PAL.coral : '#5A6090', { align: 'center' });
-    if (this.sel && UI.held == null && !UI.dragging && this.state === 'edit') {
-      if (UI.btn(g, 'delsel', x + 4, 184, w - 8, 13, 'BORRAR LÍNEA', { color: PAL.coral })) this.deleteSel();
+    // leyenda de controles (en lugar de la papelera)
+    if (!this.locked) {
+      const lines = [['Toca un bloque:', 0], ['se añade bajo', 0], ['la línea marcada', 0], ['', 0], ['▲ ▼  mover', 1], ['−  +  números', 1], ['✗  borrar', 1], ['toca un valor', 0], ['para cambiarlo', 0]];
+      const ly = Math.max(yy + 6, 221 - lines.length * 9);
+      rect(g, x + 4, ly - 3, w - 8, lines.length * 9 + 4, '#10162B');
+      lines.forEach(([t, k], i) => drawText(g, fitText(t, w - 14), x + 7, ly + i * 9, k ? PAL.sun : '#8C93B8'));
     }
   }
   drawCode(g) {
@@ -598,53 +656,34 @@ class CodeLabScene {
       ty += 15;
       if (this.tab !== 'main') { const f = this.functions[this.tab]; drawText(g, 'FUNCIÓN ' + this.tab + '(' + f.params.join(', ') + ')', x + 6, ty, PAL.lilac); ty += 11; }
     } else drawText(g, 'PROGRAMA', x + 6, ty + 1, PAL.sun), ty += 11;
-    const lines = this.buildLines(this.curList);
-    const holding = UI.held != null || UI.dragging != null;
-    const showSlots = !this.locked && holding && this.state !== 'running';
-    const editable = !this.locked && this.state !== 'running' && this.state !== 'paused';
-    const LH = 11;
-    const visible = lines.filter(l => l.kind !== 'slot' || showSlots);
-    const areaTop = ty + 1;
-    let areaBot = y + h - 4;
-    const listKey = lp => lp.join('.');
-    const slotId = l => 'slot:' + listKey(l.listPath) + ':' + l.idx;
-    // los huecos de inserción son finos (5 px) y solo crecen bajo el cursor: el programa no se duplica de largo
-    const rowH = l => l.kind !== 'slot' ? LH : (UI.hover === slotId(l) || UI.focus === slotId(l) ? 13 : 5);
-    // fila inferior reservada para el aviso «bloque en la mano» o el indicador de desplazamiento
-    { let tot = 0; for (const l of visible) tot += rowH(l); if (UI.held != null && !this.locked || tot > areaBot - areaTop) areaBot -= 12; }
-    const fitFrom = s0 => { let hh = 0, n = 0; for (let i = s0; i < visible.length; i++) { hh += rowH(visible[i]); if (hh > areaBot - areaTop) break; n++; } return Math.max(1, n); };
-    let maxScroll = 0; { let hh = 0; for (let i = visible.length - 1; i >= 0; i--) { hh += rowH(visible[i]); if (hh > areaBot - areaTop) { maxScroll = i + 1; break; } } }
-    // auto-scroll a la línea activa
-    if (this.highlight && this.state === 'running') { const hi = visible.findIndex(l => l.kind === 'head' && pathKey(l.path) === pathKey(this.highlight.path)); if (hi >= 0) { const fit = fitFrom(this.scroll); if (hi - this.scroll >= fit - 1) this.scroll = hi - fit + 2; if (hi < this.scroll) this.scroll = hi; } }
+    const lines = this.buildLines(this.curList).filter(l => l.kind !== 'slot');
+    const editable = this.canEdit();
+    const LH = 12;
+    const areaTop = ty + 1, areaBot = y + h - 16; // fila inferior: ayuda de la línea marcada
+    const maxLines = Math.floor((areaBot - areaTop) / LH);
+    if (this.sel && !getBlock(this.curList, this.sel)) this.sel = null;
+    // mantener visible la línea activa o la marcada
+    const focusKey = this.highlight && this.state === 'running' ? pathKey(this.highlight.path) : this.sel && this.selMoved ? pathKey(this.sel) : null;
+    if (focusKey != null) { const hi = lines.findIndex(l => l.kind === 'head' && pathKey(l.path) === focusKey); if (hi >= 0) { if (hi - this.scroll >= maxLines - 1) this.scroll = hi - maxLines + 2; if (hi < this.scroll) this.scroll = hi; } }
+    this.selMoved = false;
     if (Input.pointer.wheel && inRect(Input.pointer.x, Input.pointer.y, { x, y, w, h })) this.scroll += Input.pointer.wheel;
-    this.scroll = clamp(this.scroll, 0, maxScroll);
-    const maxLines = fitFrom(this.scroll);
+    this.scroll = clamp(this.scroll, 0, Math.max(0, lines.length - maxLines));
     let lineNo = 0;
-    const nums = new Map(); lines.forEach(l => { if (l.kind !== 'slot') { lineNo++; nums.set(l, lineNo); } });
+    const nums = new Map(); lines.forEach(l => { lineNo++; nums.set(l, lineNo); });
+    // tocar el fondo vacío quita la marca
+    const bgId = 'codebg:' + this.tab;
+    UI.register(bgId, x + 2, areaTop, w - 4, areaBot - areaTop, { nav: false });
+    if (UI.clicked(bgId)) this.sel = null;
     let yy = areaTop;
-    // aviso claro (abajo) cuando hay un bloque «en la mano»
-    if (UI.held != null && !this.locked) {
-      const lbl = UI.held.tpl ? templateLabel(UI.held.tpl, this.cfg) : 'la línea';
-      rect(g, x + 2, areaBot + 1, w - 4, 11, '#4A3A10');
-      drawText(g, fitText('¿Dónde va «' + lbl + '»?', w - 64), x + 6, areaBot + 3, PAL.sun);
-      if (UI.btn(g, 'heldCancel', x + w - 56, areaBot + 1, 52, 11, 'CANCELAR', { color: PAL.coral })) UI.cancelHeld();
-    }
-    visible.slice(this.scroll, this.scroll + maxLines).forEach(l => {
+    let selRow = null;
+    lines.slice(this.scroll, this.scroll + maxLines).forEach(l => {
       const ind = x + 20 + l.depth * 9;
-      if (l.kind === 'slot') {
-        const id = slotId(l), rh = rowH(l);
-        const st = UI.register(id, ind, yy, x + w - 6 - ind, rh, { drop: true });
-        if (rh > 5) {
-          rect(g, ind, yy + 1, x + w - 8 - ind, rh - 2, 'rgba(255,216,74,0.18)'); strokeRect(g, ind, yy + 1, x + w - 8 - ind, rh - 2, PAL.sun);
-          drawText(g, '+ PONER AQUÍ', ind + 5, yy + 3, PAL.sun);
-        } else rect(g, ind + 2, yy + 2, x + w - 12 - ind, 1, st.hover ? PAL.sun : 'rgba(255,216,74,0.45)');
-        yy += rh; return;
-      }
       const b = l.b, cat = BLOCK_CAT[b.op] || BLOCK_CAT.act;
       const n = nums.get(l);
       const active = this.highlight && l.kind === 'head' && pathKey(this.highlight.path) === pathKey(l.path) && (this.highlight.fn || 'main') === this.tab;
       const isErr = this.state === 'error' && this.errPath && l.kind === 'head' && pathKey(this.errPath) === pathKey(l.path) && (this.errFn || 'main') === this.tab;
       const selected = this.sel && l.kind === 'head' && pathKey(this.sel) === pathKey(l.path);
+      const flashing = this.flash && this.flash.t > 0 && l.kind === 'head' && this.flash.key === this.tab + ':' + pathKey(l.path);
       // gutter: número de línea + punto de interrupción
       const bpk = this.bpKey(l.path, this.tab === 'main' ? null : this.tab);
       if (l.kind === 'head') {
@@ -656,23 +695,25 @@ class CodeLabScene {
       if (active) { rect(g, ind - 2, yy, x + w - 4 - ind, LH - 1, 'rgba(255,216,74,0.25)'); drawText(g, '▶', ind - 8, yy + 2, PAL.sun); }
       if (isErr) { rect(g, ind - 2, yy, x + w - 4 - ind, LH - 1, 'rgba(255,107,107,0.35)'); drawText(g, '✗', ind - 8, yy + 2, PAL.coral); }
       if (l.kind === 'head') {
-        const canDel = editable && !b.locked && !holding && b.op !== 'blank';
-        const lw = x + w - 6 - ind - (canDel ? 13 : 0);
+        const ctl = selected && editable && !b.locked;
+        const lw = x + w - 6 - ind - (ctl ? 36 : 0);
         const lid = 'line:' + this.tab + ':' + pathKey(l.path);
-        // con un bloque en la mano, tocar una línea lo coloca justo debajo
-        const st = UI.register(lid, ind, yy, lw, LH - 1, { drag: b.locked || this.locked ? undefined : { move: l.path }, drop: b.op === 'blank' || (showSlots && !(UI.held && UI.held.move && pathKey(UI.held.move) === pathKey(l.path))) });
-        if (b.op === 'blank') { UI.items[UI.items.length - 1].id = 'blank:' + pathKey(l.path); }
-        if (UI.clicked(lid)) { this.sel = l.path; }
+        const st = UI.register(lid, ind, yy, lw, LH - 1, {});
+        if (UI.clicked(lid)) { this.sel = selected ? null : l.path; AudioSys.sfx('select'); }
+        if (selected) rect(g, ind - 1, yy - 1, x + w - 5 - ind, LH + 1, 'rgba(255,216,74,0.14)');
+        if (flashing) rect(g, ind - 1, yy - 1, x + w - 5 - ind, LH + 1, `rgba(255,216,74,${0.35 * this.flash.t})`);
         rect(g, ind, yy, 3, LH - 1, cat.color);
-        if (selected) strokeRect(g, ind - 1, yy - 1, lw + 2, LH + 1, PAL.sun);
-        if (showSlots && st.hover && b.op !== 'blank') rect(g, ind, yy + LH - 2, lw, 2, PAL.sun);
+        if (selected) strokeRect(g, ind - 1, yy - 1, x + w - 5 - ind, LH + 1, PAL.sun);
         if (b.locked) drawText(g, '■', x + w - 12, yy + 2, '#5A6090');
         this.drawBlockLine(g, b, ind + 5, yy + 2, l.path, st.hover || st.focus, lw - 8 - (b.locked ? 10 : 0));
         if (st.focus && Input.lastDevice === 'keyboard') UI.focusRing(g, ind, yy, lw, LH - 1);
-        // borrar con un toque: ✗ al final de cada línea editable
-        if (canDel && UI.btn(g, 'del:' + this.tab + ':' + pathKey(l.path), x + w - 17, yy, 11, LH - 1, '✗', { color: PAL.coral, tip: 'Borrar esta línea' })) {
-          if (this.state !== 'edit') { this.state = 'edit'; this.resetWorld(); }
-          this.removeAt(l.path); AudioSys.sfx('remove');
+        // controles de la línea marcada: subir, bajar, borrar
+        if (ctl) {
+          const bx = x + w - 40, pk = this.tab + ':' + pathKey(l.path);
+          if (UI.btn(g, 'up:' + pk, bx, yy, 11, LH - 1, '▲', { color: PAL.sky, tip: 'Subir una fila' })) { this.moveLine(l.path, -1); this.selMoved = true; }
+          if (UI.btn(g, 'dn:' + pk, bx + 12, yy, 11, LH - 1, '▼', { color: PAL.sky, tip: 'Bajar una fila' })) { this.moveLine(l.path, 1); this.selMoved = true; }
+          if (UI.btn(g, 'del:' + pk, bx + 24, yy, 11, LH - 1, '✗', { color: PAL.coral, tip: 'Borrar esta línea' })) { this.touchEdit(); this.removeAt(l.path); AudioSys.sfx('remove'); }
+          selRow = n;
         }
         // burbuja de condición e iteración
         if (active && this.condBubble && (b.op === 'if' || b.op === 'while')) {
@@ -692,43 +733,63 @@ class CodeLabScene {
       }
       yy += LH;
     });
-    // espacio libre bajo el programa: tocarlo con un bloque en la mano lo añade al final
-    if (showSlots && areaBot - yy > 12 && this.scroll + maxLines >= visible.length) {
-      const id = 'slot::' + this.curList.length, st = UI.register(id, x + 20, yy + 1, w - 26, areaBot - yy - 2, { drop: true });
-      rect(g, x + 20, yy + 2, w - 26, Math.min(14, areaBot - yy - 3), st.hover ? 'rgba(255,216,74,0.18)' : 'rgba(255,216,74,0.06)');
-      drawText(g, '+ poner al final', x + 26, yy + 5, st.hover ? PAL.sun : 'rgba(255,216,74,0.7)');
-    }
-    if (!visible.some(l => l.kind === 'head')) drawPara(g, this.locked ? '' : 'Arrastra bloques desde la izquierda (o tócalos y luego toca aquí).', x + 10, areaTop + 22, w - 20, '#5A6090');
-    if (visible.length > maxLines) {
-      if (!(UI.held != null && !this.locked)) drawText(g, 'filas ' + (this.scroll + 1) + '-' + Math.min(visible.length, this.scroll + maxLines) + ' de ' + visible.length, x + w - 6, areaBot + 3, '#5A6090', { align: 'right' });
-      if (UI.btn(g, 'scrUp', x + w - 30, y + 4, 12, 11, '▲')) this.scroll--; if (UI.btn(g, 'scrDn', x + w - 16, y + 4, 12, 11, '▼')) this.scroll++;
+    if (this.flash) { this.flash.t -= 1 / 60; if (this.flash.t <= 0) this.flash = null; }
+    if (!lines.length) drawPara(g, this.locked ? '' : 'Toca un bloque de la izquierda para añadirlo aquí.', x + 10, areaTop + 16, w - 20, '#5A6090');
+    // fila de ayuda inferior
+    rect(g, x + 2, areaBot + 1, w - 4, 11, '#10162B');
+    let help;
+    if (this.locked) help = 'Ejemplo: pulsa EJECUTAR y observa.';
+    else if (!editable) help = 'Ejecutando… (PARAR para editar)';
+    else if (selRow) help = 'Línea ' + selRow + ' marcada: ▲▼ mover · ✗ borrar';
+    else help = 'Toca una línea para moverla o borrarla';
+    drawText(g, fitText(help, w - (lines.length > maxLines ? 44 : 10)), x + 6, areaBot + 3, selRow ? PAL.sun : '#8C93B8');
+    if (lines.length > maxLines) {
+      if (UI.btn(g, 'scrUp', x + w - 30, areaBot + 1, 12, 11, '▲')) this.scroll--;
+      if (UI.btn(g, 'scrDn', x + w - 16, areaBot + 1, 12, 11, '▼')) this.scroll++;
     }
     // animación de llamada / retorno
     if (this.callAnim) {
       const a = this.callAnim, k = 1 - a.t / 0.8;
       const txt = a.dir > 0 ? '→ LLAMANDO ' + a.fn + '()' : '↩ ' + a.fn + ' DEVUELVE ' + (a.value === undefined ? '' : fmtVal(a.value));
       const bw = textW(txt) + 10;
-      rect(g, x + w / 2 - bw / 2, y + h - 22 - k * 6, bw, 12, a.dir > 0 ? '#4A2A7A' : '#2A5A1A'); drawText(g, txt, x + w / 2, y + h - 20 - k * 6, PAL.white, { align: 'center' });
+      rect(g, x + w / 2 - bw / 2, y + h - 34 - k * 6, bw, 12, a.dir > 0 ? '#4A2A7A' : '#2A5A1A'); drawText(g, txt, x + w / 2, y + h - 32 - k * 6, PAL.white, { align: 'center' });
     }
   }
-  // dibuja una línea de bloque con parámetros editables como "chips"
   drawBlockLine(g, b, x, y, path, hover, maxW = 999) {
     let parts = this.blockParts(b);
+    const editable = !this.locked && !b.locked && this.state !== 'running' && this.state !== 'paused';
+    // números con − y +: se ajustan sin abrir listas
+    const isNum = p => editable && p.options && p.options.length > 1 && p.options.every(o => typeof o.value === 'number');
+    const chipW = p => textW(p.text) + 6 + (isNum(p) ? 18 : 0);
     // si la línea no cabe: primero se compacta el texto fijo, luego se juntan las piezas
-    const widthOf = (ps, gap) => ps.reduce((s, p) => s + (typeof p === 'string' ? textW(p) + gap : textW(p.text) + 6 + gap - 1), 0);
+    const widthOf = (ps, gap) => ps.reduce((s, p) => s + (typeof p === 'string' ? textW(p) + gap : chipW(p) + gap - 1), 0);
     let gap = 4;
     if (widthOf(parts, gap) > maxW) parts = parts.map(p => typeof p === 'string' ? p.replace(/^LLAMAR /, '').replace('ENTONCES', '→') : p);
     if (widthOf(parts, gap) > maxW) gap = 2;
     let cx = x;
-    const editable = !this.locked && !b.locked && this.state !== 'running';
     for (const p of parts) {
       if (typeof p === 'string') { drawText(g, p, cx, y, hover ? PAL.white : PAL.cream); cx += textW(p) + gap; continue; }
       const txt = p.text; const w = textW(txt) + 6;
       const id = 'chip:' + this.tab + ':' + pathKey(path) + ':' + p.key;
+      if (isNum(p)) {
+        const opts = p.options, cur = opts.findIndex(o => o.value === p.value);
+        const step = d => { const k = clamp((cur < 0 ? 0 : cur) + d, 0, opts.length - 1); if (k !== cur) { this.touchEdit(); p.set(opts[k].value); AudioSys.sfx('click'); } else AudioSys.sfx('error'); };
+        if (UI.btn(g, id + ':m', cx - 1, y - 2, 8, 11, '−', { color: PAL.sky, disabled: cur === 0, tip: 'Menos' })) step(-1);
+        cx += 8;
+        const st = UI.register(id, cx, y - 2, w, 11);
+        rect(g, cx, y - 2, w, 11, st.hover || st.focus ? '#3A4A8A' : '#22306B'); rect(g, cx, y + 8, w, 1, p.color || PAL.sun);
+        drawText(g, txt, cx + 3, y, p.color || PAL.sun);
+        if (UI.clicked(id)) this.openChip(p, cx, y + 10);
+        cx += w;
+        if (UI.btn(g, id + ':p', cx + 1, y - 2, 8, 11, '+', { color: PAL.sky, disabled: cur === opts.length - 1, tip: 'Más' })) step(1);
+        cx += 10 + gap - 1;
+        continue;
+      }
       if (editable && p.options) {
         const st = UI.register(id, cx - 1, y - 2, w, 11);
-        rect(g, cx - 1, y - 2, w, 11, st.hover || st.focus ? '#3A4A8A' : '#22306B');
+        rect(g, cx - 1, y - 2, w, 11, st.hover || st.focus ? '#3A4A8A' : p.blank ? '#4A3A10' : '#22306B');
         rect(g, cx - 1, y + 8, w, 1, p.color || PAL.sun);
+        if (p.blank && Math.floor(this.t * 2) % 2) strokeRect(g, cx - 1, y - 2, w, 11, PAL.sun);
         if (UI.clicked(id)) this.openChip(p, cx, y + 10);
       } else rect(g, cx - 1, y - 2, w, 11, '#1A2248');
       drawText(g, txt, cx + 2, y, p.color || PAL.sun);
@@ -747,9 +808,9 @@ class CodeLabScene {
     const condParts = (c, pre) => {
       const lopts = (cfg.condLeft || cfg.sensors || []).concat(cfg.varNames || []).map(v => ({ label: v, value: v }));
       const r = [
-        { key: pre + 'l', text: exprText(c.l), options: lopts, set: v => c.l = v, color: PAL.aqua },
+        { key: pre + 'l', text: exprText(c.l), value: c.l, options: lopts, set: v => c.l = v, color: PAL.aqua },
         { key: pre + 'op', text: OP_TXT[c.op], options: (cfg.ops || OPS).map(o => ({ label: OP_TXT[o], value: o })), set: v => c.op = v, color: PAL.orange },
-        { key: pre + 'r', text: exprText(c.r), options: (cfg.condRight ? cfg.condRight.map(v => ({ label: exprText(v), value: v })) : exprOpts('cond')), set: v => c.r = v, color: PAL.sun }
+        { key: pre + 'r', text: exprText(c.r), value: c.r, options: (cfg.condRight ? cfg.condRight.map(v => ({ label: exprText(v), value: v })) : exprOpts('cond')), set: v => c.r = v, color: PAL.sun }
       ];
       if (cfg.allowJoin) {
         r.push({ key: pre + 'join', text: c.join ? c.join : '+', options: [{ label: '(ninguna)', value: null }, { label: 'Y', value: 'Y' }, { label: 'O', value: 'O' }], set: v => { c.join = v; if (v && !c.c2) c.c2 = { l: (cfg.condLeft || cfg.sensors || ['x'])[1] || (cfg.sensors || ['x'])[0], op: '<', r: 0 }; if (!v) delete c.c2; }, color: PAL.pink });
@@ -760,26 +821,33 @@ class CodeLabScene {
     switch (b.op) {
       case 'act': {
         const a = (cfg.actions || {})[b.name] || {};
-        if (b.arg !== undefined && a.options) return [a.label || b.name, { key: 'arg', text: exprText(b.arg), options: a.options.map(v => ({ label: exprText(v), value: v })), set: v => b.arg = v, color: PAL.sun }];
-        return [a.label || b.name];
+        // el nombre de la instrucción se puede cambiar por otra de la paleta con un toque
+        const alts = (cfg.palette || []).filter(t => t.startsWith('act:')).map(t => t.slice(4));
+        const name = alts.length > 1 ? { key: 'name', text: a.label || b.name, color: PAL.cream, value: b.name, options: alts.map(nm => ({ label: ((cfg.actions || {})[nm] || {}).label || nm, value: nm })), set: v => { const na = (cfg.actions || {})[v] || {}; b.name = v; b.arg = na.arg != null ? (b.arg != null && na.options && na.options.includes(b.arg) ? b.arg : na.arg) : undefined; } } : a.label || b.name;
+        if (b.arg !== undefined && a.options) return [name, { key: 'arg', text: exprText(b.arg), value: b.arg, options: a.options.map(v => ({ label: exprText(v), value: v })), set: v => b.arg = v, color: PAL.sun }];
+        return [name];
       }
       case 'if': return ['SI'].concat(condParts(b.cond, 'c')).concat(['ENTONCES']);
       case 'while': return ['MIENTRAS'].concat(condParts(b.cond, 'c'));
-      case 'repeat': return ['REPETIR', { key: 'n', text: exprText(b.n), options: numOpts('repeat').concat(cfg.repeatVars || []).map(v => ({ label: exprText(v), value: v })), set: v => b.n = v, color: PAL.sun }, 'VECES'];
+      case 'repeat': return ['REPETIR', { key: 'n', text: exprText(b.n), value: b.n, options: numOpts('repeat').concat(cfg.repeatVars || []).map(v => ({ label: exprText(v), value: v })), set: v => b.n = v, color: PAL.sun }, 'VECES'];
       case 'foreach': return ['PARA CADA', { key: 'var', text: b.var, color: PAL.lime }, 'EN', { key: 'list', text: b.list, color: PAL.aqua }];
-      case 'set': return [{ key: 'var', text: b.var, color: PAL.lime }, '←', { key: 'expr', text: exprText(b.expr), options: exprOpts('set:' + b.var).length ? exprOpts('set:' + b.var) : exprOpts('set'), set: v => b.expr = v, color: PAL.sun }];
-      case 'add': return [{ key: 'var', text: b.var, color: PAL.lime }, '← ' + b.var + ' +', { key: 'expr', text: exprText(b.expr), options: exprOpts('add:' + b.var).length ? exprOpts('add:' + b.var) : exprOpts('add'), set: v => b.expr = v, color: PAL.sun }];
+      case 'set': return [{ key: 'var', text: b.var, color: PAL.lime }, '←', { key: 'expr', text: exprText(b.expr), value: b.expr, options: exprOpts('set:' + b.var).length ? exprOpts('set:' + b.var) : exprOpts('set'), set: v => b.expr = v, color: PAL.sun }];
+      case 'add': return [{ key: 'var', text: b.var, color: PAL.lime }, '← ' + b.var + ' +', { key: 'expr', text: exprText(b.expr), value: b.expr, options: exprOpts('add:' + b.var).length ? exprOpts('add:' + b.var) : exprOpts('add'), set: v => b.expr = v, color: PAL.sun }];
       case 'call': {
         const f = cfg.functions && cfg.functions[b.fn];
         const parts = [];
         if (b.into) parts.push({ key: 'into', text: b.into, color: PAL.lime, options: (cfg.intoOptions || [b.into]).map(v => ({ label: v, value: v })), set: v => b.into = v }, '←');
         parts.push('LLAMAR ' + b.fn + '(');
-        (b.args || []).forEach((a, i) => { parts.push({ key: 'a' + i, text: exprText(a), options: exprOpts('arg:' + b.fn + ':' + i).length ? exprOpts('arg:' + b.fn + ':' + i) : exprOpts('arg'), set: v => b.args[i] = v, color: PAL.sun }); });
+        (b.args || []).forEach((a, i) => { parts.push({ key: 'a' + i, text: exprText(a), value: a, options: exprOpts('arg:' + b.fn + ':' + i).length ? exprOpts('arg:' + b.fn + ':' + i) : exprOpts('arg'), set: v => b.args[i] = v, color: PAL.sun }); });
         parts.push(')');
         return parts;
       }
-      case 'ret': return ['DEVOLVER', { key: 'expr', text: exprText(b.expr), options: exprOpts('ret'), set: v => b.expr = v, color: PAL.sun }];
-      case 'blank': return ['▢ ' + (b.hint || 'completa aquí')];
+      case 'ret': return ['DEVOLVER', { key: 'expr', text: exprText(b.expr), value: b.expr, options: exprOpts('ret'), set: v => b.expr = v, color: PAL.sun }];
+      case 'blank': {
+        // hueco: al tocarlo se elige qué instrucción va ahí
+        const opts = (cfg.palette || []).map(t => ({ label: templateLabel(t, cfg), value: t }));
+        return [{ key: 'blank', blank: true, text: '▢ ' + (b.hint || 'toca para elegir'), color: PAL.sun, options: opts, set: v => { const nb = makeFromTemplate(v, cfg); Object.keys(b).forEach(k => delete b[k]); Object.assign(b, nb); } }];
+      }
     }
     return ['?'];
   }

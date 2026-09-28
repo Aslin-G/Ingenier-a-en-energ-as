@@ -37,9 +37,35 @@ function genGrid(seed) {
   }
   return ['#######', '#S.k.T#', '#######'];
 }
+// Solución de una ruta: recoger la pieza (k) y entregarla en la ★ (T); PÍX empieza mirando →
+function gridSolution(map) {
+  const find = ch => { for (let y = 0; y < map.length; y++) { const x = map[y].indexOf(ch); if (x >= 0) return [x, y]; } return null; };
+  const D = [[1, 0], [0, 1], [-1, 0], [0, -1]];
+  const path = (a, b) => {
+    const key = p => p[0] + ',' + p[1], prev = new Map([[key(a), null]]), q = [a];
+    while (q.length) { const c = q.shift(); if (c[0] === b[0] && c[1] === b[1]) break; for (const [dx, dy] of D) { const n = [c[0] + dx, c[1] + dy], ch = map[n[1]] && map[n[1]][n[0]]; if (!ch || ch === '#' || ch === 'c' || prev.has(key(n))) continue; prev.set(key(n), c); q.push(n); } }
+    const out = []; let c = b; while (c) { out.unshift(c); c = prev.get(key(c)); } return out;
+  };
+  const prog = []; let dir = 0;
+  const walk = cells => {
+    for (let i = 1; i < cells.length;) {
+      const nd = D.findIndex(([dx, dy]) => dx === cells[i][0] - cells[i - 1][0] && dy === cells[i][1] - cells[i - 1][1]);
+      const turn = (nd - dir + 4) % 4;
+      if (turn === 1) prog.push(A('girar_der')); else if (turn === 3) prog.push(A('girar_izq')); else if (turn === 2) prog.push(A('girar_der'), A('girar_der'));
+      dir = nd; let n = 0;
+      while (i < cells.length && cells[i][0] - cells[i - 1][0] === D[dir][0] && cells[i][1] - cells[i - 1][1] === D[dir][1]) { n++; i++; }
+      prog.push(A('avanzar', n));
+    }
+  };
+  walk(path(find('S'), find('k'))); prog.push(A('recoger'));
+  walk(path(find('k'), find('T'))); prog.push(A('entregar'));
+  return prog;
+}
+// punto de partida: mismas instrucciones, pero los «avanzar» con un número que hay que ajustar
+const resetNums = prog => { const same = prog.every(b => b.name !== 'avanzar' || b.arg === 1); return prog.map(b => b.name === 'avanzar' ? A('avanzar', same ? 2 : 1) : b); };
 for (let i = 1; i <= 12; i++) addCh({
   title: 'Ruta de PÍX #' + i, type: 'construir', prog: ['sequence', i > 8 ? 'debugging' : 'sequence'], energy: ['storage'],
-  make: () => ({ kind: 'code', tags: ['SECUENCIA'], concepts: ['sequence'], codex: 'secuencia', palette: ['act:avanzar', 'act:girar_izq', 'act:girar_der', 'act:recoger', 'act:entregar'], actions: GRID_ACTS, world: W_grid({ map: genGrid(i), need: { deliver: 1 } }), intro: 'Lleva la pieza amarilla hasta la ★. PÍX empieza mirando →.', hints: ['Planifica la ruta antes de escribir.', 'Usa avanzar(n) para ahorrar líneas.'] })
+  make: () => ({ kind: 'code', tags: ['SECUENCIA'], concepts: ['sequence'], codex: 'secuencia', palette: ['act:avanzar', 'act:girar_izq', 'act:girar_der', 'act:recoger', 'act:entregar'], actions: GRID_ACTS, world: W_grid({ map: genGrid(i), need: { deliver: 1 } }), solution: gridSolution(genGrid(i)), start: resetNums(gridSolution(genGrid(i))), intro: 'Las instrucciones ya están en orden: ajusta con − + cuántas casillas avanza PÍX en cada «avanzar». Lleva la pieza amarilla hasta la ★. PÍX empieza mirando →.', hints: ['Planifica la ruta antes de escribir.', 'Usa avanzar(n) para ahorrar líneas.'] })
 });
 
 // ---------- 3. Umbral solar (simular) ----------
@@ -55,7 +81,7 @@ const SOLAR_DAYS = [
 ];
 SOLAR_DAYS.forEach((wx, i) => addCh({
   title: 'Controlador solar · día ' + (i + 1), type: 'simular', prog: ['conditions', 'variables'], energy: ['solar'],
-  make: () => ({ kind: 'code', tags: ['SI / SINO', 'SOLAR'], concepts: ['conditions', 'solar'], codex: 'condicional', ticks: 16, tickLabel: t => (6 + Math.min(15, t)) + ':00', palette: ['ifelse', 'act:cargar_bateria', 'act:usar_bateria'], actions: { cargar_bateria: { label: 'cargar_bateria' }, usar_bateria: { label: 'usar_bateria' } }, sensors: ['radiacion', 'bateria', 'hora'], condRight: [300, 500, 600, 700, 800, 900, 1000], world: W_solar({ weather: wx, demand: SOL_DEMAND, panels: 6, soc0: 60, K: 3 }), intro: 'Escribe la regla que decide cada hora. Ningún apagón.', hints: ['SI radiacion > umbral → cargar SINO usar.', 'Si el umbral es bajo, "cargas" cuando el sol no alcanza.'] })
+  make: () => ({ kind: 'code', tags: ['SI / SINO', 'SOLAR'], concepts: ['conditions', 'solar'], codex: 'condicional', ticks: 16, tickLabel: t => (6 + Math.min(15, t)) + ':00', palette: ['ifelse', 'act:cargar_bateria', 'act:usar_bateria'], actions: { cargar_bateria: { label: 'cargar_bateria' }, usar_bateria: { label: 'usar_bateria' } }, sensors: ['radiacion', 'bateria', 'hora'], condRight: [300, 500, 600, 700, 800, 900, 1000], world: W_solar({ weather: wx, demand: SOL_DEMAND, panels: 6, soc0: 60, K: 3 }), start: [{ op: 'if', cond: { l: 'radiacion', op: '>', r: 300 }, body: [A('usar_bateria')], else: [A('cargar_bateria')] }], solution: [{ op: 'if', cond: { l: 'radiacion', op: '>', r: 800 }, body: [A('cargar_bateria')], else: [A('usar_bateria')] }], intro: 'La regla ya está, pero con las acciones cambiadas y un umbral bajo. Corrígela (toca los valores): ningún apagón.', hints: ['SI radiacion > umbral → cargar SINO usar.', 'Si el umbral es bajo, "cargas" cuando el sol no alcanza.'] })
 }));
 
 // ---------- 4. Depurar condiciones invertidas (depurar) ----------
@@ -63,18 +89,18 @@ const DEBUG_SETS = [
   ['Sensor loco del mercado', 'solar', () => ({ world: W_solar({ weather: SOLAR_DAYS[1], demand: SOL_DEMAND, panels: 6, soc0: 60, K: 3 }), ticks: 16, sensors: ['radiacion', 'bateria'], condRight: [500, 700, 800, 900], palette: ['ifelse', 'act:cargar_bateria', 'act:usar_bateria'], actions: { cargar_bateria: { label: 'cargar_bateria' }, usar_bateria: { label: 'usar_bateria' } }, start: [{ op: 'if', cond: { l: 'radiacion', op: '<', r: 800 }, body: [A('cargar_bateria')], else: [A('usar_bateria')] }] })],
   ['Flores al revés', 'solar', () => ({ world: W_flowers({ weather: ['sol', 'sol', 'sol', 'sol', 'nube', 'lluvia', 'sol', 'sol'] }), ticks: 8, sensors: ['radiacion'], condRight: [100, 300, 500], palette: ['ifelse', 'act:abrir_flores', 'act:cerrar_flores'], actions: { abrir_flores: { label: 'abrir_flores' }, cerrar_flores: { label: 'cerrar_flores' } }, start: [{ op: 'if', cond: { l: 'radiacion', op: '<', r: 300 }, body: [A('abrir_flores')], else: [A('cerrar_flores')] }] })],
   ['Prioridad invertida', 'storage', () => ({ world: W_dispatch({ bats: [{ name: 'A', soc: 90, eff: 0.9 }, { name: 'B', soc: 80, eff: 0.95 }], demand: [2, 2, 2, 2, 2, 2] }), ticks: 6, sensors: ['soc_A', 'soc_B'], condRight: ['soc_A', 'soc_B'], palette: ['ifelse', 'act:usar_A', 'act:usar_B'], actions: { usar_A: { label: 'usar_A' }, usar_B: { label: 'usar_B' } }, start: [{ op: 'if', cond: { l: 'soc_A', op: '<', r: 'soc_B' }, body: [A('usar_A')], else: [A('usar_B')] }] })],
-  ['Viento sin medir', 'wind', () => ({ world: W_turbine({ wind0: 8, gusts: [8, 7, 6, 5, 4, 3, 2], heat: 2, check: st => st.gen > 0 ? { ok: true, msg: '¡Bucle con salida!' } : { ok: false, msg: 'No generó.' } }), loopLimit: 25, sensors: ['viento'], condRight: [2, 3, 4], palette: ['while', 'act:medir_viento', 'act:generar'], actions: TURB_ACTS, start: [A('medir_viento'), { op: 'while', cond: { l: 'viento', op: '>', r: 3 }, body: [A('generar')] }] })],
-  ['Hora que no avanza', 'wind', () => ({ world: W_accum({ data: [1, 4, 6, 3], var: 'total', check: (st, env) => env.vars.total === 14 ? { ok: true, msg: '¡14 kWh!' } : { ok: false, msg: 'total debería ser 14.' } }), loopLimit: 20, sensors: ['hora', 'produccion'], condRight: [3, 4, 5], exprOptions: { set: [0], add: ['produccion'] }, palette: ['while', 'set:total', 'add:total', 'act:siguiente_hora'], actions: { siguiente_hora: { label: 'siguiente_hora' } }, start: [{ op: 'set', var: 'total', expr: 0 }, { op: 'while', cond: { l: 'hora', op: '<', r: 4 }, body: [{ op: 'add', var: 'total', expr: 'produccion' }] }] })],
-  ['Contador sin inicializar', 'biomass', () => ({ world: W_counter({ items: [{ name: 'hojas', type: 'organico' }, { name: 'lata', type: 'metal' }, { name: 'fruta', type: 'organico' }] }), sensors: ['tipo'], ops: ['==', '!='], condRight: ['organico', 'metal'], defaults: { itemVar: 'residuo' }, exprOptions: { set: [0], add: [1] }, palette: ['set:organicos', 'foreach:residuos', 'if', 'add:organicos'], start: [{ op: 'foreach', var: 'residuo', list: 'residuos', body: [{ op: 'if', cond: { l: 'tipo', op: '==', r: 'organico' }, body: [{ op: 'add', var: 'organicos', expr: 1 }], else: null }] }] })],
+  ['Viento sin medir', 'wind', () => ({ world: W_turbine({ wind0: 8, gusts: [8, 7, 6, 5, 4, 3, 2], heat: 2, check: st => st.gen > 0 ? { ok: true, msg: '¡Bucle con salida!' } : { ok: false, msg: 'No generó.' } }), loopLimit: 25, sensors: ['viento'], condRight: [2, 3, 4], palette: ['while', 'act:medir_viento', 'act:generar'], actions: TURB_ACTS, start: [A('medir_viento'), { op: 'while', cond: { l: 'viento', op: '>', r: 3 }, body: [A('generar')] }, A('medir_viento')] })],
+  ['Hora que no avanza', 'wind', () => ({ world: W_accum({ data: [1, 4, 6, 3], var: 'total', check: (st, env) => env.vars.total === 14 ? { ok: true, msg: '¡14 kWh!' } : { ok: false, msg: 'total debería ser 14.' } }), loopLimit: 20, sensors: ['hora', 'produccion'], condRight: [3, 4, 5], exprOptions: { set: [0], add: ['produccion'] }, palette: ['while', 'set:total', 'add:total', 'act:siguiente_hora'], actions: { siguiente_hora: { label: 'siguiente_hora' } }, start: [{ op: 'set', var: 'total', expr: 0 }, { op: 'while', cond: { l: 'hora', op: '<', r: 4 }, body: [{ op: 'add', var: 'total', expr: 'produccion' }] }, A('siguiente_hora')] })],
+  ['Contador sin inicializar', 'biomass', () => ({ world: W_counter({ items: [{ name: 'hojas', type: 'organico' }, { name: 'lata', type: 'metal' }, { name: 'fruta', type: 'organico' }] }), sensors: ['tipo'], ops: ['==', '!='], condRight: ['organico', 'metal'], defaults: { itemVar: 'residuo' }, exprOptions: { set: [0], add: [1] }, palette: ['set:organicos', 'foreach:residuos', 'if', 'add:organicos'], start: [{ op: 'foreach', var: 'residuo', list: 'residuos', body: [{ op: 'if', cond: { l: 'tipo', op: '==', r: 'organico' }, body: [{ op: 'add', var: 'organicos', expr: 1 }], else: null }] }, { op: 'set', var: 'organicos', expr: 0 }] })],
   ['Plástico en el biodigestor', 'biomass', () => ({ world: W_sorter({ items: [{ name: 'bolsa', type: 'plastico' }, { name: 'cáscara', type: 'organico' }, { name: 'botella', type: 'plastico' }], bins: ['biodigestor', 'reciclaje'], rule: t => t === 'organico' ? 'biodigestor' : 'reciclaje' }), sensors: ['tipo'], ops: ['==', '!='], condRight: ['organico', 'plastico'], defaults: { itemVar: 'residuo' }, palette: ['foreach:residuos', 'ifelse', 'act:a_biodigestor', 'act:a_reciclaje'], actions: BIO_ACTS, start: [{ op: 'foreach', var: 'residuo', list: 'residuos', body: [{ op: 'if', cond: { l: 'tipo', op: '!=', r: 'organico' }, body: [A('a_biodigestor')], else: [A('a_reciclaje')] }] }] })],
   ['Robot que riega de más', 'storage', () => ({ world: W_grid({ map: ['#######', '#S.p.p#', '#######'], bot: 'robot', floor: '#A0643C', wall: '#3FA85A', need: { plants: true } }), palette: ['act:avanzar', 'act:regar'], actions: GRID_ACTS, start: [A('avanzar', 2), A('regar'), A('regar'), A('avanzar', 2), A('regar')] })]
 ];
-DEBUG_SETS.forEach(([t, e, mk]) => addCh({ title: 'Depurar: ' + t, type: 'depurar', prog: ['debugging', 'conditions'], energy: [e], make: () => Object.assign({ kind: 'code', tags: ['DEPURACIÓN', MASTERY_LABELS[e]], concepts: ['debugging', e], codex: 'depuracion', intro: 'Este programa tiene un error. Ejecútalo, observa la traza y corrígelo.', hints: ['Usa PASO para ir línea a línea.', 'Revisa operadores, orden y valores iniciales.'] }, mk()) }));
+DEBUG_SETS.forEach(([t, e, mk]) => addCh({ title: 'Depurar: ' + t, type: 'depurar', prog: ['debugging', 'conditions'], energy: [e], make: () => Object.assign({ kind: 'code', tags: ['DEPURACIÓN', MASTERY_LABELS[e]], concepts: ['debugging', e], codex: 'depuracion', intro: 'Este programa tiene un error. Ejecútalo, observa la traza y corrígelo: toca los valores para cambiarlos, o toca una línea y muévela con ▲▼ (✗ la borra).', hints: ['Usa PASO para ir línea a línea.', 'Revisa operadores, orden y valores iniciales.'] }, mk()) }));
 
 // ---------- 5. Bucles con turbina (completar) ----------
 [[6, 60, 'temperatura'], [8, 80, 'temperatura'], [5, 50, 'rpm'], [7, 90, 'rpm'], [4, 40, 'temperatura'], [6, 100, 'rpm'], [9, 70, 'temperatura'], [3, 45, 'rpm']].forEach(([heat, target, key], i) => addCh({
   title: `Turbina #${i + 1}: ≥ ${target} rpm`, type: 'completar', prog: ['loops'], energy: ['wind'],
-  make: () => ({ kind: 'code', tags: ['BUCLES', 'EÓLICA'], concepts: ['loops', 'wind'], codex: key === 'rpm' ? 'repetir' : 'mientras', palette: ['repeat', 'while', 'act:ajustar_aspas', 'act:medir_viento'], actions: TURB_ACTS, sensors: ['temperatura', 'rpm', 'viento'], condRight: [30, 40, 50, 60, 70, 80, 90, 100], values: { repeat: [1, 2, 3, 4, 5, 6, 8, 10] }, defaults: { wcond: { l: key, op: '<', r: key === 'rpm' ? target : 70 }, n: 3 }, world: W_turbine({ heat, check: st => st.broken ? { ok: false, msg: 'Sobrecalentada.' } : st.rpm < target ? { ok: false, msg: `Solo ${Math.round(st.rpm)} rpm; necesita ${target}.` } : { ok: true, msg: `${Math.round(st.rpm)} rpm a ${Math.round(st.temp)}°.` } }), intro: `Cada ajuste suma rpm y calienta +${heat}°. Llega a ${target} rpm sin pasar de 90°.`, hints: ['REPETIR n VECES o MIENTRAS con una condición que termine.', 'Calcula: ¿cuántos ajustes hacen falta?'] })
+  make: () => ({ kind: 'code', tags: ['BUCLES', 'EÓLICA'], concepts: ['loops', 'wind'], codex: key === 'rpm' ? 'repetir' : 'mientras', palette: ['repeat', 'while', 'act:ajustar_aspas', 'act:medir_viento'], actions: TURB_ACTS, sensors: ['temperatura', 'rpm', 'viento'], condRight: [30, 40, 50, 60, 70, 80, 90, 100], values: { repeat: [1, 2, 3, 4, 5, 6, 8, 10] }, defaults: { wcond: { l: key, op: '<', r: key === 'rpm' ? target : 70 }, n: 3 }, start: [{ op: 'repeat', n: 1, body: [A('ajustar_aspas')] }], solution: [{ op: 'repeat', n: Math.ceil(target / 18), body: [A('ajustar_aspas')] }], world: W_turbine({ heat, check: st => st.broken ? { ok: false, msg: 'Sobrecalentada.' } : st.rpm < target ? { ok: false, msg: `Solo ${Math.round(st.rpm)} rpm; necesita ${target}.` } : { ok: true, msg: `${Math.round(st.rpm)} rpm a ${Math.round(st.temp)}°.` } }), intro: `Cada ajuste suma 18 rpm y calienta +${heat}°. Llega a ${target} rpm sin pasar de 90°: ajusta cuántas veces se repite (− +).`, hints: ['REPETIR n VECES o MIENTRAS con una condición que termine.', 'Calcula: ¿cuántos ajustes hacen falta?'] })
 }));
 
 // ---------- 6. Predicción (opción múltiple) ----------
@@ -96,7 +122,10 @@ CHALLENGES.filter(c => c.type === 'predecir').forEach(c => { const mk = c.make; 
 // ---------- 7. Funciones hidráulicas (construir) ----------
 [[[2, 10], [3, 5], [1, 20]], [[4, 5], [2, 8], [5, 4]], [[3, 6], [3, 8], [2, 12]], [[1, 15], [4, 6], [2, 5]], [[5, 5], [2, 10], [3, 12]], [[2, 6], [2, 15], [4, 8]]].forEach((gs, i) => addCh({
   title: 'Forja de funciones #' + (i + 1), type: 'construir', prog: ['functions'], energy: ['hydro'],
-  make: () => Object.assign({}, CFG_HYD_FORJA, { main: false, stages: null, start: [], functions: { generarEnergia: { params: ['caudal', 'altura'], body: [], returns: 'p1', defaults: { caudal: 1, altura: 5 } } }, exprOptions: Object.assign({}, CFG_HYD_FORJA.exprOptions, { 'arg:generarEnergia:0': [1, 2, 3, 4, 5], 'arg:generarEnergia:1': [4, 5, 6, 8, 10, 12, 15, 20] }), world: W_hydro({ gates: gs.map(([c, h]) => ({ caudal: c, altura: h })), check: CFG_HYD_FORJA.world.check }), intro: 'Define generarEnergia(caudal, altura) y llámala una vez por turbina (3 líneas en PRINCIPAL).' })
+  make: () => Object.assign({}, CFG_HYD_FORJA, { main: false, stages: null,
+    start: [0, 1, 2].map(k => ({ op: 'call', fn: 'generarEnergia', args: [1, 5], into: 'p' + (k + 1) })),
+    solution: gs.map(([c, h], k) => ({ op: 'call', fn: 'generarEnergia', args: [c, h], into: 'p' + (k + 1) })),
+    functions: { generarEnergia: { params: ['caudal', 'altura'], body: [{ op: 'ret', expr: { bin: '+', a: 'caudal', b: 'altura' } }], returns: 'p1', defaults: { caudal: 1, altura: 5 } } }, exprOptions: Object.assign({}, CFG_HYD_FORJA.exprOptions, { 'arg:generarEnergia:0': [1, 2, 3, 4, 5], 'arg:generarEnergia:1': [4, 5, 6, 8, 10, 12, 15, 20] }), world: W_hydro({ gates: gs.map(([c, h]) => ({ caudal: c, altura: h })), check: CFG_HYD_FORJA.world.check }), intro: 'En «f: generarEnergia» toca la fórmula de DEVOLVER y elige la correcta. En PRINCIPAL ajusta caudal y altura de cada turbina (− +).' })
 }));
 
 // ---------- 8. Clasificar listas (clasificar) ----------
@@ -104,7 +133,11 @@ for (let i = 0; i < 8; i++) {
   const rng = mulberry32(900 + i);
   const items = []; const n = 4 + (i % 4);
   for (let k = 0; k < n; k++) items.push(Object.assign({}, WASTE_ITEMS[Math.floor(rng() * WASTE_ITEMS.length)]));
-  addCh({ title: 'Clasificador #' + (i + 1), type: 'clasificar', prog: ['arrays', 'conditions'], energy: ['biomass'], make: () => { const c = cfgBioSorter(); c.main = false; c.stages = null; c.world = W_sorter({ items: items.map(x => ({ name: x.name, type: x.type })), bins: ['biodigestor', 'reciclaje', 'secado'], rule: BIO_RULE }); c.intro = 'Orgánico → biodigestor, madera → secado, lo demás → reciclaje.'; return c; } });
+  addCh({ title: 'Clasificador #' + (i + 1), type: 'clasificar', prog: ['arrays', 'conditions'], energy: ['biomass'], make: () => { const c = cfgBioSorter(); c.main = false; c.stages = null; c.world = W_sorter({ items: items.map(x => ({ name: x.name, type: x.type })), bins: ['biodigestor', 'reciclaje', 'secado'], rule: BIO_RULE });
+    // estructura armada con las preguntas cambiadas: hay que corregir los valores (o las acciones)
+    const sorter = (a, b2) => [{ op: 'foreach', var: 'residuo', list: 'residuos', body: [{ op: 'if', cond: { l: 'tipo', op: '==', r: a }, body: [A('a_biodigestor')], else: [{ op: 'if', cond: { l: 'tipo', op: '==', r: b2 }, body: [A('a_secado')], else: [A('a_reciclaje')] }] }] }];
+    c.start = sorter(i % 2 ? 'madera' : 'plastico', i % 2 ? 'organico' : 'vidrio'); c.solution = sorter('organico', 'madera');
+    c.intro = 'Orgánico → biodigestor, madera → secado, lo demás → reciclaje. La estructura ya está: toca los valores de las preguntas para corregirlas.'; return c; } });
 }
 
 // ---------- 9. Máquinas de estados (diagnosticar) ----------
@@ -147,5 +180,7 @@ addCh({ title: 'Microred: semana completa', type: 'optimizar', prog: ['optimizat
 // ---------- 15. Acumuladores (completar) ----------
 [[3, 5, 2, 6], [4, 4, 4, 4, 4], [1, 2, 3, 4, 5, 6], [7, 0, 3, 5], [2, 9, 1], [6, 6, 2, 2, 8]].forEach((data, i) => {
   const sum = data.reduce((a, b) => a + b, 0);
-  addCh({ title: `Energía del día #${i + 1}`, type: 'completar', prog: ['loops', 'variables'], energy: ['solar'], make: () => ({ kind: 'code', tags: ['ACUMULADOR', 'SOLAR'], concepts: ['loops', 'variables', 'solar'], codex: 'acumulador', palette: ['set:total', 'foreach:produccion_dia', 'add:total'], defaults: { itemVar: 'p' }, exprOptions: { set: [0, 1], add: ['p', 1] }, world: W_accum({ data, var: 'total', color: PAL.sun, check: (st, env) => env.vars.total === sum ? { ok: true, msg: `total = ${sum} kWh.` } : { ok: false, msg: `total = ${env.vars.total}; debería ser ${sum}.` } }), intro: 'Suma la producción de todas las horas con un PARA CADA.', hints: ['total ← 0 antes del bucle.', 'Dentro: total ← total + p.'] }) });
+  addCh({ title: `Energía del día #${i + 1}`, type: 'completar', prog: ['loops', 'variables'], energy: ['solar'], make: () => ({ kind: 'code', tags: ['ACUMULADOR', 'SOLAR'], concepts: ['loops', 'variables', 'solar'], codex: 'acumulador', palette: ['set:total', 'foreach:produccion_dia', 'add:total'], defaults: { itemVar: 'p' }, exprOptions: { set: [0, 1], add: ['p', 1] },
+    start: [{ op: 'set', var: 'total', expr: 1 }, { op: 'foreach', var: 'p', list: 'produccion_dia', body: [{ op: 'add', var: 'total', expr: 1 }] }],
+    solution: [{ op: 'set', var: 'total', expr: 0 }, { op: 'foreach', var: 'p', list: 'produccion_dia', body: [{ op: 'add', var: 'total', expr: 'p' }] }], world: W_accum({ data, var: 'total', color: PAL.sun, check: (st, env) => env.vars.total === sum ? { ok: true, msg: `total = ${sum} kWh.` } : { ok: false, msg: `total = ${env.vars.total}; debería ser ${sum}.` } }), intro: 'Suma la producción de todas las horas con un PARA CADA. El programa ya está armado: corrige los dos valores (tócalos).', hints: ['total ← 0 antes del bucle.', 'Dentro: total ← total + p.'] }) });
 });

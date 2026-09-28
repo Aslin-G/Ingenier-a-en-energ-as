@@ -10,7 +10,7 @@ const CFG_AERIS_MOLINO = {
   world: W_turbine({ heat: 6, check: (st, env) => st.broken ? { ok: false, msg: 'La turbina se rompió por sobrecalentamiento.' } : st.rpm < 60 ? { ok: false, msg: `Solo ${Math.round(st.rpm)} rpm: la turbina gira demasiado lento para producir. Necesita al menos 60.` } : st.temp > 90 ? { ok: false, msg: 'Está a más de 90°. Peligroso.' } : { ok: true, msg: `${Math.round(st.rpm)} rpm y ${Math.round(st.temp)}°: produce energía sin quemarse.` } }),
   stages: [
     { mode: 'demo', label: 'YO TE MUESTRO', text: 'Un bucle REPETIR hace lo mismo varias veces. Mira el contador ↻ junto a la línea. Pulsa EJECUTAR.', program: [{ op: 'repeat', n: 3, body: [A('ajustar_aspas', undefined, 1), A('medir_viento', undefined, 1)], locked: true }], world: W_turbine({ heat: 6, check: st => ({ ok: true, msg: 'Tres vueltas, contadas una por una. ¿Viste el ↻ 1/3, 2/3, 3/3?' }) }) },
-    { mode: 'solo', label: 'LO HACES TÚ', text: 'Este es el programa real del molino. Ejecútalo... y luego arréglalo: necesita ≥ 60 rpm sin pasar de 90°.', program: [{ op: 'while', cond: { l: 'rpm', op: '>=', r: 0 }, body: [A('girar')] }] }
+    { mode: 'solo', label: 'LO HACES TÚ', text: 'Programa real del molino: gira MIENTRAS rpm ≥ 0… para siempre. Ejecútalo y luego toca las partes de la condición para darle una salida: ≥ 60 rpm sin pasar de 90°.', program: [{ op: 'while', cond: { l: 'rpm', op: '>=', r: 0 }, body: [A('girar'), A('medir_viento')] }] }
   ],
   hints: ['¿Cuándo deja de ser verdadera la condición "rpm ≥ 0"? ¿Alguna vez?', { text: 'La condición de salida debería depender de algo que CAMBIE dentro del bucle y que importe: la temperatura, por ejemplo.', highlight: 'palette:while' }, { text: 'Una posible solución:', partial: [{ op: 'while', cond: { l: 'temperatura', op: '<', r: 70 }, body: [A('ajustar_aspas'), A('medir_viento')] }] }],
   deep: 'Un bucle MIENTRAS necesita que algo dentro de él haga falsa la condición algún día. Si no, es un LOOPLING.',
@@ -20,18 +20,18 @@ const CFG_AERIS_VIENTO = {
   kind: 'code', title: 'Viento caprichoso', tags: ['MIENTRAS', 'EÓLICA'], concepts: ['loops', 'debugging', 'wind'], codex: 'mientras', loopLimit: 30,
   palette: ['while', 'act:medir_viento', 'act:generar'], actions: TURB_ACTS, sensors: ['viento', 'temperatura'], condRight: [1, 2, 3, 4, 5, 6],
   world: W_turbine({ wind0: 8, gusts: [8, 7, 7, 6, 5, 4, 3, 2, 2, 1], heat: 2, check: (st) => st.gen > 0 ? { ok: true, msg: 'Genera mientras hay viento y para cuando se calma. ¡No estaba embrujado!' } : { ok: false, msg: 'No generó nada.' } }),
-  start: [A('medir_viento'), { op: 'while', cond: { l: 'viento', op: '>', r: 3 }, body: [A('generar')] }],
-  intro: 'Don Vento jura que su molino está embrujado: "¡Nunca se detiene aunque el viento pare!".',
-  hints: ['Dentro del bucle, ¿alguien vuelve a mirar el viento?', { text: '"viento" solo cambia cuando se ejecuta medir_viento. ¿Dónde debería estar?', highlight: 'palette:act:medir_viento' }, { text: 'Así:', partial: [A('medir_viento'), { op: 'while', cond: { l: 'viento', op: '>', r: 3 }, body: [A('generar'), A('medir_viento')] }] }]
+  start: [A('medir_viento'), { op: 'while', cond: { l: 'viento', op: '>', r: 3 }, body: [A('generar')] }, A('medir_viento')],
+  intro: 'Don Vento jura que su molino está embrujado: "¡Nunca se detiene aunque el viento pare!". Una línea está en mal sitio.',
+  hints: ['Dentro del bucle, ¿alguien vuelve a mirar el viento?', { text: '"viento" solo cambia con medir_viento. Toca la última línea y súbela (▲) para meterla DENTRO del bucle.' }, { text: 'Así:', partial: [A('medir_viento'), { op: 'while', cond: { l: 'viento', op: '>', r: 3 }, body: [A('generar'), A('medir_viento')] }] }]
 };
 const CFG_AERIS_BUCLE = {
   kind: 'code', title: 'Bucle infinito', tags: ['BUCLES', 'ACUMULADOR', 'EÓLICA'], concepts: ['loops', 'debugging', 'wind'], codex: 'acumulador', loopLimit: 25,
   palette: ['while', 'repeat', 'set:total', 'add:total', 'act:siguiente_hora'], actions: { siguiente_hora: { label: 'siguiente_hora' } },
   sensors: ['hora', 'produccion'], condRight: [3, 4, 5, 6, 7], exprOptions: { set: [0], add: ['produccion', 1] },
   world: W_accum({ data: [2, 3, 5, 4, 3, 1], var: 'total', unit: 'kWh por hora', color: PAL.aqua, check: (st, env) => env.vars.total === 18 ? { ok: true, msg: 'total = 18 kWh. ¡La cometa-generador de Mika sumó bien su día!' } : { ok: false, msg: `total = ${env.vars.total}, debería ser 18 (la suma de las 6 horas).` } }),
-  start: [{ op: 'set', var: 'total', expr: 0 }, { op: 'while', cond: { l: 'hora', op: '<', r: 6 }, body: [{ op: 'add', var: 'total', expr: 'produccion' }] }],
-  intro: 'La cometa de Mika mide energía hora a hora. Su programa se quedó colgado. ¿Por qué?',
-  hints: ['¿Qué valor tiene "hora" en cada vuelta? ¿Cambia?', { text: 'Falta avanzar la hora dentro del bucle.', highlight: 'palette:act:siguiente_hora' }, { text: 'Así:', partial: [{ op: 'set', var: 'total', expr: 0 }, { op: 'while', cond: { l: 'hora', op: '<', r: 6 }, body: [{ op: 'add', var: 'total', expr: 'produccion' }, A('siguiente_hora')] }] }]
+  start: [{ op: 'set', var: 'total', expr: 0 }, { op: 'while', cond: { l: 'hora', op: '<', r: 6 }, body: [{ op: 'add', var: 'total', expr: 'produccion' }] }, A('siguiente_hora')],
+  intro: 'La cometa de Mika mide energía hora a hora. Su programa se quedó colgado. ¿Por qué? Una línea está en mal sitio.',
+  hints: ['¿Qué valor tiene "hora" en cada vuelta? ¿Cambia?', { text: 'siguiente_hora debe ir DENTRO del bucle: toca la última línea y súbela (▲).' }, { text: 'Así:', partial: [{ op: 'set', var: 'total', expr: 0 }, { op: 'while', cond: { l: 'hora', op: '<', r: 6 }, body: [{ op: 'add', var: 'total', expr: 'produccion' }, A('siguiente_hora')] }] }]
 };
 
 (function () {
@@ -139,7 +139,7 @@ const CFG_HYD_FORJA = {
   maxBlocks: 3,
   world: W_hydro({ gates: HYD_GATES, check: (st) => { for (let i = 0; i < st.gates.length; i++) { const g = st.gates[i], want = g.caudal * g.altura * 8; if (!g.called) return { ok: false, msg: `La turbina ${i + 1} (caudal ${g.caudal}, altura ${g.altura}) no recibió ninguna llamada.` }; if (Math.round(g.power) !== want) return { ok: false, msg: `La turbina ${i + 1} dio ${Math.round(g.power)} kW; con caudal ${g.caudal} y altura ${g.altura} deberían ser ${want} kW. Revisa lo que DEVUELVE la función.` }; } return { ok: true, msg: `¡Tres turbinas, una sola función! Total: ${Math.round(st.total)} kW.` }; } }),
   stages: [
-    { mode: 'guided', label: 'LO HACEMOS JUNTOS', text: 'Pestaña "f: generarEnergia": arrastra DEVOLVER al cuerpo y elige la fórmula. Luego llama a la función en PRINCIPAL para cada turbina.', program: [{ op: 'call', fn: 'generarEnergia', args: [3, 10], into: 'p1', locked: true }], functions: { generarEnergia: [] } },
+    { mode: 'guided', label: 'LO HACEMOS JUNTOS', text: 'En la pestaña «f: generarEnergia» toca la fórmula de DEVOLVER y elige la correcta. En PRINCIPAL ajusta caudal y altura de las turbinas 2 y 3 con − +.', program: [{ op: 'call', fn: 'generarEnergia', args: [3, 10], into: 'p1', locked: true }, { op: 'call', fn: 'generarEnergia', args: [1, 5], into: 'p2' }, { op: 'call', fn: 'generarEnergia', args: [1, 5], into: 'p3' }], functions: { generarEnergia: [{ op: 'ret', expr: { bin: '+', a: 'caudal', b: 'altura' } }] } },
   ],
   hints: ['Potencia hidráulica ≈ 8 × caudal × altura (en kW). ¿Qué debe DEVOLVER la función?', { text: 'En PRINCIPAL: tres LLAMAR, uno por turbina, con su caudal y su altura.', highlight: 'palette:call:generarEnergia' }, { text: 'Función lista; faltan las llamadas 2 y 3.', partialFn: { generarEnergia: [{ op: 'ret', expr: { bin: '*', a: { bin: '*', a: 'caudal', b: 'altura' }, b: 8 } }] } }],
   deep: 'Una función es una mini-máquina: recibe caudal y altura, calcula, y DEVUELVE el resultado a quien la llamó.',
@@ -180,13 +180,15 @@ const CFG_HYD_RIO = {
     };
     return w;
   })(),
+  start: [{ op: 'call', fn: 'abrirCompuerta', args: [1] }, { op: 'call', fn: 'abrirCompuerta', args: [2] }, { op: 'call', fn: 'abrirCompuerta', args: [3] }],
   intro: 'La función abrirCompuerta(n) ya existe (está bloqueada). Tú decides con qué número y en qué orden llamarla. El pueblo está río abajo, junto a la 3.',
   hints: ['El agua baja de la 1 a la 3. ¿Qué pasa si abres arriba con abajo cerrado?', 'Abre primero la compuerta más cercana al pueblo.', { text: 'Orden: 3, 2, 1.', partial: [{ op: 'call', fn: 'abrirCompuerta', args: [3] }] }]
 };
 const CFG_HYD_DUP = {
   kind: 'code', title: 'Función duplicada', tags: ['FUNCIONES', 'REFACTORIZAR'], concepts: ['functions', 'debugging'], codex: 'funcion',
   palette: ['call:revisarTurbina', 'act:cerrar_valvula', 'act:limpiar_rejilla', 'act:abrir_valvula'],
-  functions: { revisarTurbina: { params: ['n'], body: [], defaults: { n: 1 } } },
+  // la función ya tiene sus 3 pasos, pero desordenados
+  functions: { revisarTurbina: { params: ['n'], body: [A('abrir_valvula'), A('cerrar_valvula'), A('limpiar_rejilla')], defaults: { n: 1 } } },
   actions: { cerrar_valvula: { label: 'cerrar_valvula(n)' }, limpiar_rejilla: { label: 'limpiar_rejilla(n)' }, abrir_valvula: { label: 'abrir_valvula(n)' } },
   exprOptions: { 'arg:revisarTurbina:0': [1, 2, 3] },
   world: (() => ({
@@ -209,10 +211,10 @@ const CFG_HYD_DUP = {
       for (let n = 1; n <= 3; n++) { const cx = x + 30 + (n - 1) * 60, L = st.log[n] || []; pcircle(g, cx, y + 50, 16, L.length === 3 ? PAL.lime : '#565E8C'); drawText(g, 'T' + n, cx, y + 47, PAL.ink, { align: 'center' }); L.forEach((s, i) => drawText(g, '✓ ' + s.split('_')[0], cx - 24, y + 76 + i * 10, PAL.lime)); }
     }
   }))(),
-  start: [A('cerrar_valvula'), A('limpiar_rejilla'), A('abrir_valvula'), { op: 'call', fn: 'revisarTurbina', args: [2] }, { op: 'call', fn: 'revisarTurbina', args: [3] }],
+  start: [{ op: 'call', fn: 'revisarTurbina', args: [1] }, { op: 'call', fn: 'revisarTurbina', args: [2] }, { op: 'call', fn: 'revisarTurbina', args: [2] }],
   vars: { n: 1 },
-  intro: 'El programa de mantenimiento copia los mismos 3 pasos para cada turbina. La función revisarTurbina(n) está vacía. Arréglalo: PRINCIPAL con 3 líneas como máximo.',
-  hints: ['Abre la pestaña de la función: ¿qué pasos deberían ir ahí dentro?', 'Mueve cerrar → limpiar → abrir a la función. En PRINCIPAL, tres LLAMAR con n = 1, 2, 3.', { text: 'Función completada:', partialFn: { revisarTurbina: [A('cerrar_valvula'), A('limpiar_rejilla'), A('abrir_valvula')] } }]
+  intro: 'En vez de copiar 3 pasos por turbina, usamos UNA función: revisarTurbina(n). Sus pasos están desordenados (pestaña «f:») y una llamada revisa la turbina equivocada.',
+  hints: ['Abre la pestaña de la función: el mantenimiento es cerrar → limpiar → abrir.', 'En PRINCIPAL, las tres llamadas deben ser para las turbinas 1, 2 y 3 (usa − +).', { text: 'Función completada:', partialFn: { revisarTurbina: [A('cerrar_valvula'), A('limpiar_rejilla'), A('abrir_valvula')] } }]
 };
 
 (function () {

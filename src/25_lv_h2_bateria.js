@@ -216,8 +216,8 @@ const CFG_BAT_BETA = {
   palette: ['ifelse', 'act:usar_A', 'act:usar_B'], actions: { usar_A: { label: 'usar_A' }, usar_B: { label: 'usar_B' } },
   sensors: ['soc_A', 'soc_B', 'demanda'], condRight: ['soc_A', 'soc_B', 20, 40, 60], defaults: { cond: { l: 'soc_A', op: '>', r: 'soc_B' } },
   world: W_dispatch({ bats: [{ name: 'A', soc: 90, eff: 0.9 }, { name: 'B', soc: 80, eff: 0.95 }], demand: [2, 2, 2, 2, 2, 2], okMsg: 'El barrio tiene luz 6 horas y ninguna torre bajó del 5%.' }),
-  start: [A('usar_A')],
-  intro: 'El barrio de BETA siempre descarga la torre A, hasta agotarla. Haz que cada hora use la torre con MÁS carga.',
+  start: [{ op: 'if', cond: { l: 'soc_A', op: '>', r: 'soc_B' }, body: [A('usar_B')], else: [A('usar_A')] }],
+  intro: 'El barrio de BETA agota siempre la torre equivocada. Cada hora debe usar la torre con MÁS carga: la pregunta está bien, pero las acciones están cambiadas (tócalas o muévelas con ▲▼).',
   hints: ['¿Qué pregunta harías cada hora para elegir la torre?', { text: 'SI soc_A > soc_B ENTONCES usar_A SINO usar_B', highlight: 'palette:ifelse' }, { text: 'Estructura:', partial: [{ op: 'if', cond: { l: 'soc_A', op: '>', r: 'soc_B' }, body: [A('usar_A')], else: [A('usar_B')] }] }]
 };
 const CFG_BAT_BUG = {

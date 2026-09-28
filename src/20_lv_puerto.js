@@ -6,7 +6,7 @@ C.during = (t, fn) => { let e = 0; return { update(dt) { e += dt * (G.autoDialog
 // ---------- Puzzle de arranque (primer algoritmo: una secuencia) ----------
 const CFG_FEST_BOOT = {
   kind: 'seq', title: 'Secuencia de arranque de LUMINA LOOP', tags: ['ALGORITMO', 'SECUENCIA'], concepts: ['sequence'], codex: 'algoritmo', label: 'ARRANQUE',
-  intro: 'Arrastra las tarjetas a las casillas en orden (o tócalas y luego toca la casilla). Después: EJECUTAR.',
+  intro: 'Toca las tarjetas en el orden correcto: cada una va a la siguiente casilla libre. Después: EJECUTAR.',
   slotLabel: 'LUMINA LOOP · pasos de arranque:',
   cards: [
     { id: 'ini', label: 'iniciar LUMINA LOOP', icon: 'chip', color: PAL.teal, desc: 'Carga el algoritmo de Lía en memoria.' },
@@ -193,10 +193,11 @@ const CFG_PUERTO_ROUTE = {
   world: W_grid({ map: ['########', '#S.c...#', '#....k.#', '#T.....#', '########'], need: { deliver: 1 }, okMsg: '¡El fusible llegó! PÍX lo entregó en la casilla ★.' }),
   stages: [
     { mode: 'demo', label: 'YO TE MUESTRO', text: 'Mira: PÍX ejecuta cada línea EN ORDEN, de arriba abajo. Pulsa EJECUTAR.', world: W_grid({ map: ['#######', '#S.k.T#', '#######'], need: { deliver: 1 }, okMsg: 'Así funciona una secuencia: un paso detrás de otro.' }), program: [A('avanzar', 2, 1), A('recoger', undefined, 1), A('avanzar', 2, 1), A('entregar', undefined, 1)] },
-    { mode: 'guided', label: 'LO HACEMOS JUNTOS', text: 'Completa los huecos ▢: arrastra un bloque ENCIMA de cada hueco.', world: W_grid({ map: ['#######', '#S.k..#', '#####.#', '#####T#', '#######'], need: { deliver: 1 }, okMsg: '¡Juntos lo logramos! Ahora te toca sola/solo.' }), program: [A('avanzar', 2, 1), A('recoger', undefined, 1), { op: 'blank', hint: '¿avanzar cuánto?' }, A('girar_der', undefined, 1), A('avanzar', 2, 1), { op: 'blank', hint: '¿y al llegar?' }] },
-    { mode: 'solo', label: 'LO HACES TÚ', text: 'Ahora tú. Ojo: la caja bloquea el camino recto. PÍX empieza mirando →.', program: [] }
+    { mode: 'guided', label: 'LO HACEMOS JUNTOS', text: 'Completa: en la línea 3 ajusta cuánto avanza con − +, y toca el hueco ▢ de la última línea para elegir qué hace al llegar.', world: W_grid({ map: ['#######', '#S.k..#', '#####.#', '#####T#', '#######'], need: { deliver: 1 }, okMsg: '¡Juntos lo logramos! Ahora te toca sola/solo.' }), program: [A('avanzar', 2, 1), A('recoger', undefined, 1), A('avanzar', 1), A('girar_der', undefined, 1), A('avanzar', 2, 1), { op: 'blank', hint: '¿y al llegar? (toca)' }] },
+    // todas las instrucciones ya están: solo hay que ordenarlas (▲▼) y ajustar los números (− +)
+    { mode: 'solo', label: 'LO HACES TÚ', text: 'Ahora tú: las instrucciones ya están. Toca una línea y muévela con ▲▼ hasta ordenarlas, y ajusta los números con − +. La caja bloquea el camino recto.', program: [A('girar_der'), A('avanzar', 1), A('girar_izq'), A('recoger'), A('avanzar', 1), A('girar_der'), A('avanzar', 1), A('girar_der'), A('avanzar', 1), A('entregar')] }
   ],
-  hints: ['¿Hacia dónde mira PÍX al empezar? La flecha amarilla lo indica. ¿Qué hay delante?', { text: 'Primero baja una fila para esquivar la caja: girar_der y avanzar.', highlight: 'palette:act:girar_der' }, { text: 'Te dejo el principio: bajar, girar, avanzar hasta la pieza.', partial: [A('girar_der'), A('avanzar', 1), A('girar_izq'), A('avanzar', 4)] }],
+  hints: ['¿Hacia dónde mira PÍX al empezar? La flecha amarilla lo indica. ¿Qué hay delante?', { text: 'Primero baja una fila para esquivar la caja: girar_der y avanzar.', highlight: 'palette:act:girar_der' }, { text: 'recoger va DESPUÉS de llegar a la pieza: bájalo una fila. Hasta la pieza hay 4 casillas.' }, { text: 'Así queda:', partial: [A('girar_der'), A('avanzar', 1), A('girar_izq'), A('avanzar', 4), A('recoger'), A('girar_der'), A('avanzar', 1), A('girar_der'), A('avanzar', 4), A('entregar')] }],
   deep: 'Otra forma de verlo: el diagrama de flujo muestra que cada caja ocurre solo si la anterior terminó bien.',
   intro: 'PÍX llevará el fusible de la casilla amarilla a la ★. Dile EXACTAMENTE qué hacer.', xp: 50
 };

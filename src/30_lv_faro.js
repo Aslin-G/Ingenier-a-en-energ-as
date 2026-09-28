@@ -96,7 +96,7 @@ function pzPhaseCfg(i) {
       intro: 'Perfect Zero convirtió el controlador solar en una regla extrema. Reescríbelo (¿recuerdas Solaria?).',
       hints: ['Ninguna rama debería apagarlo todo.', 'SI radiacion > 800 → cargar_bateria SINO → usar_bateria.', { text: 'Así:', partial: [{ op: 'if', cond: { l: 'radiacion', op: '>', r: 800 }, body: [A('cargar_bateria')], else: [A('usar_bateria')] }] }]
     };
-    case 2: return Object.assign({}, CFG_AERIS_MOLINO, { title: 'Fase 3 · Bucles', main: false, music: 'boss', stages: [{ mode: 'solo', text: 'Perfect Zero puso la red en un bucle eterno. Dale una salida.', program: [{ op: 'while', cond: { l: 'rpm', op: '>=', r: 0 }, body: [A('girar')] }] }], intro: 'MIENTRAS VERDADERO: optimizar. Dale una condición de salida.' });
+    case 2: return Object.assign({}, CFG_AERIS_MOLINO, { title: 'Fase 3 · Bucles', main: false, music: 'boss', stages: [{ mode: 'solo', text: 'Perfect Zero puso la red en un bucle eterno. Toca las partes de la condición para darle una salida.', program: [{ op: 'while', cond: { l: 'rpm', op: '>=', r: 0 }, body: [A('girar'), A('medir_viento')] }] }], intro: 'MIENTRAS VERDADERO: optimizar. Dale una condición de salida.' });
     case 3: return Object.assign({}, CFG_HYD_DUP, { title: 'Fase 4 · Funciones', music: 'boss', intro: 'Perfect Zero copió el mismo código en cada turbina. Modularízalo: 3 líneas en PRINCIPAL.' });
     case 4: {
       const isl = [{ name: 'Puerto', type: 'baja' }, { name: 'Solaria', type: 'alta' }, { name: 'Aeris', type: 'baja' }, { name: 'Hydria', type: 'alta' }, { name: 'Gea', type: 'baja' }, { name: 'Batería', type: 'alta' }];
@@ -105,7 +105,8 @@ function pzPhaseCfg(i) {
         palette: ['foreach:islas', 'ifelse', 'act:a_prioridad', 'act:a_normal'], actions: { a_prioridad: { label: 'a_prioridad' }, a_normal: { label: 'a_normal' } },
         defaults: { itemVar: 'isla', cond: { l: 'tipo', op: '==', r: 'baja' } }, sensors: ['tipo'], ops: ['==', '!='], condRight: ['baja', 'alta'],
         world: Object.assign(W_sorter({ items: isl, bins: [], itemVar: 'isla', binDefs: [['prioridad', PAL.pink], ['normal', PAL.teal]], actMap: { a_prioridad: 'prioridad', a_normal: 'normal' }, rule: t => t === 'baja' ? 'prioridad' : 'normal', wrongMsg: (it, bin, right) => `${it.name} tiene energía ${it.type}: debía ir a ${right}.`, itemDraw: (g, it, x, y) => { pcircle(g, x + 4, y + 4, 4, it.type === 'baja' ? PAL.coral : PAL.lime); }, okMsg: 'Las islas con energía baja reciben prioridad. Nadie se queda atrás.' }), { lists: () => ({ islas: isl.map(i => ({ name: i.name, type: i.type })) }), sensors: { tipo: (st, env) => env && env.vars && env.vars.isla ? env.vars.isla.type : '-' } }),
-        intro: 'Perfect Zero dejó a las islas débiles al final de la lista. Recórrela y da prioridad a las que tienen energía baja.',
+        start: [{ op: 'foreach', var: 'isla', list: 'islas', body: [{ op: 'if', cond: { l: 'tipo', op: '==', r: 'alta' }, body: [A('a_prioridad')], else: [A('a_normal')] }] }],
+        intro: 'Perfect Zero dejó a las islas débiles al final de la lista: su programa da prioridad a las de energía ALTA. Toca el valor de la pregunta para corregirlo.',
         hints: ['PARA CADA isla EN islas...', 'SI tipo = baja → a_prioridad SINO → a_normal', { text: 'Estructura:', partial: [{ op: 'foreach', var: 'isla', list: 'islas', body: [{ op: 'if', cond: { l: 'tipo', op: '==', r: 'baja' }, body: [A('a_prioridad')], else: [A('a_normal')] }] }] }]
       };
     }

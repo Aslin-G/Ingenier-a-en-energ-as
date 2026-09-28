@@ -9,8 +9,9 @@
     "test:puzzles": "node tools/tests/puzzles.js",
     "test:walk": "node tools/tests/walk.js",
     "test:menus": "node tools/tests/menus.js",
-    "test": "node tools/tests/glyphs.js && node tools/tests/levels.js && node tools/tests/puzzles.js && node tools/tests/walk.js && node tools/tests/menus.js",
-    "test:glyphs": "node tools/tests/glyphs.js"
+    "test": "node tools/tests/glyphs.js && node tools/tests/levels.js && node tools/tests/puzzles.js && node tools/tests/presets.js && node tools/tests/walk.js && node tools/tests/menus.js",
+    "test:glyphs": "node tools/tests/glyphs.js",
+    "test:presets": "node tools/tests/presets.js"
   },
   "license": "UNLICENSED"
 }

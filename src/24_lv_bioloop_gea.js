@@ -17,7 +17,7 @@ function cfgBioSorter() {
     world: W_sorter({ items, bins: ['biodigestor', 'reciclaje', 'secado'], rule: BIO_RULE, okMsg: '¡Todo clasificado en su sitio! El biodigestor produce biogás limpio.' }),
     stages: [
       { mode: 'demo', label: 'YO TE MUESTRO', text: 'Una LISTA guarda varios elementos en orden: [0], [1], [2]... PARA CADA los visita uno a uno. Mira el ▼.', world: W_sorter({ items: [{ name: 'botella', type: 'plastico' }, { name: 'lata', type: 'metal' }, { name: 'frasco', type: 'vidrio' }], bins: ['biodigestor', 'reciclaje', 'secado'], rule: BIO_RULE, okMsg: 'Tres elementos, tres vueltas. Todos eran reciclables.' }), program: [{ op: 'foreach', var: 'residuo', list: 'residuos', body: [A('a_reciclaje', undefined, 1)], locked: true }] },
-      { mode: 'solo', label: 'LO HACES TÚ', text: 'Ahora TU mochila: orgánico → biodigestor, madera → secado, lo demás → reciclaje. (Puedes poner un SI dentro de un SINO.)', program: [] }
+      { mode: 'solo', label: 'LO HACES TÚ', text: 'Ahora TU mochila: orgánico → biodigestor, madera → secado, lo demás → reciclaje. La estructura ya está: toca los valores de las preguntas para corregirlas.', program: [{ op: 'foreach', var: 'residuo', list: 'residuos', body: [{ op: 'if', cond: { l: 'tipo', op: '==', r: 'plastico' }, body: [A('a_biodigestor')], else: [{ op: 'if', cond: { l: 'tipo', op: '==', r: 'organico' }, body: [A('a_secado')], else: [A('a_reciclaje')] }] }] }] }
     ],
     hints: ['Dentro del PARA CADA, cada residuo debe ir a UN solo contenedor. ¿Qué pregunta harías primero?', { text: 'SI tipo = organico → a_biodigestor. SINO → otra pregunta: SI tipo = madera...', highlight: 'palette:ifelse' }, { text: 'Estructura casi completa:', partial: [{ op: 'foreach', var: 'residuo', list: 'residuos', body: [{ op: 'if', cond: { l: 'tipo', op: '==', r: 'organico' }, body: [A('a_biodigestor')], else: [{ op: 'if', cond: { l: 'tipo', op: '==', r: 'madera' }, body: [A('a_secado')], else: [A('a_reciclaje')] }] }] }] }],
     deep: 'Piensa en la lista como una fila de cajas numeradas: el PARA CADA pasa por todas, y el SI decide para cada una por separado.',
@@ -45,7 +45,8 @@ const CFG_BIO_LISTA = {
   palette: ['set:organicos', 'foreach:residuos', 'if', 'add:organicos'], sensors: ['tipo'], ops: ['==', '!='], condRight: ['organico', 'madera', 'plastico'],
   defaults: { itemVar: 'residuo', cond: { l: 'tipo', op: '==', r: 'organico' } }, exprOptions: { set: [0, 1], add: [1, 2] },
   world: W_counter({ items: [{ name: 'hojas', type: 'organico' }, { name: 'bolsa', type: 'plastico' }, { name: 'cáscara', type: 'organico' }, { name: 'rama', type: 'madera' }, { name: 'fruta', type: 'organico' }, { name: 'semillas', type: 'organico' }, { name: 'lata', type: 'metal' }] }),
-  intro: 'El mercado quiere saber cuántos residuos orgánicos hay en la lista para planificar el biogás. Usa un CONTADOR.',
+  start: [{ op: 'set', var: 'organicos', expr: 1 }, { op: 'foreach', var: 'residuo', list: 'residuos', body: [{ op: 'if', cond: { l: 'tipo', op: '==', r: 'plastico' }, body: [{ op: 'add', var: 'organicos', expr: 1 }], else: null }] }],
+  intro: 'El mercado quiere saber cuántos residuos orgánicos hay en la lista. El CONTADOR ya está armado, pero con dos valores mal: tócalos para corregirlos.',
   hints: ['Un contador empieza en 0 y suma 1 cuando se cumple algo.', 'organicos ← 0; PARA CADA...; SI tipo = organico: organicos ← organicos + 1', { text: 'Estructura:', partial: [{ op: 'set', var: 'organicos', expr: 0 }, { op: 'foreach', var: 'residuo', list: 'residuos', body: [] }] }]
 };
 const CFG_BIO_MERCADO = {
@@ -67,7 +68,8 @@ const CFG_BIO_MERCADO = {
       if (st.decision) drawText(g, st.decision, x + 6, y + 96, st.decision === 'pedir_energia' ? PAL.lime : PAL.coral);
     }
   }))(),
-  intro: 'Cada puesto del mercado necesita energía. ¿Alcanza el biogás (18 kWh)? Suma las demandas y decide.',
+  start: [{ op: 'set', var: 'total', expr: 0 }, { op: 'foreach', var: 'd', list: 'demandas', body: [{ op: 'add', var: 'total', expr: 1 }] }, { op: 'if', cond: { l: 'total', op: '>', r: 'biogas' }, body: [A('abrir_mercado')], else: [A('pedir_energia')] }],
+  intro: 'Cada puesto del mercado necesita energía. ¿Alcanza el biogás (18 kWh)? El programa suma mal y decide al revés: toca los valores y las acciones para corregirlo.',
   hints: ['Primero suma todas las demandas en "total".', 'Después: SI total > biogas ENTONCES pedir_energia SINO abrir_mercado.', { text: 'Suma lista:', partial: [{ op: 'set', var: 'total', expr: 0 }, { op: 'foreach', var: 'd', list: 'demandas', body: [{ op: 'add', var: 'total', expr: 'd' }] }] }]
 };
 
