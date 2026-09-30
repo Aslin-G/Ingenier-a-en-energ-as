@@ -178,49 +178,99 @@ const BGP = {
     for (let i = 0; i < 90; i++) { const y = o.y + 3 + Math.floor(Math.pow(rng(), 1.5) * (h - o.y)); rect(g, rng() * w, y, 4 + rng() * 14, 1, rgba(o.c2, 0.35)); }
   },
   mountains(g, w, h, rng, o) {
-    const n = periodicNoise(rng, w, 5);
-    const ys = [];
-    for (let x = 0; x < w; x++) ys.push(o.base - (n(x) * 0.5 + 0.5) * o.amp - Math.abs(Math.sin(x / w * Math.PI * 6)) * o.amp * 0.25);
+    // perfil con crestas afiladas: ruido suave + «ridged noise»
+    const n = periodicNoise(rng, w, 5), r2 = periodicNoise(rng, w, 3);
+    const ys = new Float32Array(w);
     for (let x = 0; x < w; x++) {
-      const y = Math.round(ys[x]);
-      // ladera iluminada según la pendiente media (sin rayas verticales)
-      const lit = ys[(x + 4) % w] - ys[(x - 4 + w) % w] > 0.6;
-      rect(g, x, y, 1, h - y, lit ? (o.color2 || o.color) : o.color);
-      if (o.snow && y < o.base - o.amp * 0.75) rect(g, x, y, 1, 3, o.snow);
+      const base = n(x) * 0.5 + 0.5, ridge = 1 - Math.abs(r2(x));
+      ys[x] = o.base - (base * 0.6 + ridge * ridge * 0.45) * o.amp - Math.abs(Math.sin(x / w * Math.PI * 6)) * o.amp * 0.1;
     }
+    const lx = BGP.lx || -1;
+    const T = { lit: hexRgb(o.color2 || shade(o.color, 0.14)), mid: hexRgb(o.color), dark: hexRgb(shade(o.color, -0.1)), deep: hexRgb(shade(o.color, -0.18)) };
+    const snow = o.snow ? hexRgb(o.snow) : null, snowS = o.snow ? hexRgb(mix(o.snow, o.color, 0.45)) : null;
+    const img = g.getImageData(0, 0, w, h), d = img.data;
+    const wrap = x => ((x % w) + w) % w;
+    const slope = x => (ys[wrap(x + 3)] - ys[wrap(x - 3)]) / 6;
+    const put = (x, y, c) => { const i = (y * w + x) * 4; d[i] = c[0]; d[i + 1] = c[1]; d[i + 2] = c[2]; d[i + 3] = 255; };
+    const snowLine = o.base - o.amp * 0.74;
+    for (let x = 0; x < w; x++) {
+      const y0 = Math.max(0, Math.round(ys[x]));
+      for (let y = y0; y < h; y++) {
+        const k = y - y0;
+        // la frontera luz/sombra baja en diagonal desde cada cresta (caras facetadas)
+        const s = slope(Math.round(x - k * lx * 0.45)) * lx;
+        let c = s > 0.12 ? (k < 70 ? T.lit : T.mid) : s < -0.12 ? (k > 34 ? T.deep : T.dark) : T.mid;
+        if (Math.abs(Math.abs(s) - 0.12) < 0.05 && BAYER[(y & 3) * 4 + (x & 3)] < 8) c = T.mid;
+        if (snow && y < snowLine + Math.sin(x * 0.37) * 3 + Math.sin(x * 0.11) * 4) c = s > -0.12 ? snow : snowS;
+        put(x, y, c);
+      }
+    }
+    g.putImageData(img, 0, 0);
   },
   hills(g, w, h, rng, o) {
-    const n = periodicNoise(rng, w, 3);
+    const n = periodicNoise(rng, w, 3), lx = BGP.lx || -1;
+    const img = g.getImageData(0, 0, w, h), d = img.data;
+    const C = hexRgb(o.color), HI = hexRgb(o.hi), DK = hexRgb(shade(o.color, -0.1)), LT = hexRgb(mix(o.color, o.hi, 0.5));
+    const put = (x, y, c) => { if (y < 0 || y >= h) return; const i = (y * w + x) * 4; d[i] = c[0]; d[i + 1] = c[1]; d[i + 2] = c[2]; d[i + 3] = 255; };
+    const ys = []; for (let x = 0; x < w; x++) ys.push(o.base - (n(x) * 0.5 + 0.5) * o.amp);
     for (let x = 0; x < w; x++) {
-      const y = Math.round(o.base - (n(x) * 0.5 + 0.5) * o.amp);
-      rect(g, x, y, 1, h - y, o.color); rect(g, x, y, 1, 2, o.hi);
-      if (o.flowers && rng() < 0.12) rect(g, x, y + 3 + rng() * 20, 1, 1, choice(o.flowers));
+      const y0 = Math.round(ys[x]), sl = (ys[(x + 5) % w] - ys[(x - 5 + w) % w]) * lx;
+      for (let y = Math.max(0, y0); y < h; y++) {
+        const k = y - y0, b = BAYER[(y & 3) * 4 + (x & 3)];
+        let c = C;
+        if (k < 2) c = HI;
+        else if (k < 7 && sl > 0.6 && b < 10) c = LT;
+        else if (k > 12 && b < clamp((k - 12) / 26, 0, 1) * 9) c = DK;
+        put(x, y, c);
+      }
     }
+    // matorrales redondos sombreados sobre la loma
+    const bush = [shade(o.color, -0.14), o.color, mix(o.color, o.hi, 0.6), o.hi];
+    for (let i = 0; i < w / 40; i++) {
+      const x = Math.floor(rng() * w), r = 2.5 + rng() * 3;
+      shadeBlob(img, [[x, ys[x] + r * 0.5, r], [x + r * 1.1, ys[x] + r * 0.7, r * 0.8]], bush, lx);
+    }
+    if (o.flowers) for (let x = 0; x < w; x++) if (rng() < 0.12) { const c = hexRgb(choice(o.flowers)); put(x, Math.round(ys[x] + 3 + rng() * 20), c); }
+    g.putImageData(img, 0, 0);
   },
   trees(g, w, h, rng, o) {
-    const n = o.count || 6;
-    for (let i = 0; i < n * 2; i++) {
-      const x = (i / (n * 2)) * w + rng() * 30, s = 0.7 + rng() * 0.6;
-      const base = o.base + rng() * 6;
-      const c = o.color, c2 = o.color2 || shade(o.color, 0.12);
-      const draw = (xx) => {
-        if (o.type === 'palm') {
-          rect(g, xx, base - 40 * s, 3, 40 * s, shade(c, -0.1));
-          for (let k = 0; k < 5; k++) { const a = -2.6 + k * 0.55; for (let r = 0; r < 18 * s; r++) rect(g, xx + 1 + Math.cos(a) * r, base - 40 * s + Math.sin(a) * r * 0.6 + r * r * 0.02, 3, 2, c); }
-        } else if (o.type === 'pine') {
-          for (let y = 0; y < 40 * s; y++) { const ww = y * 0.35; rect(g, xx - ww, base - 44 * s + y, ww * 2 + 1, 1, y % 6 < 3 ? c : c2); }
-          rect(g, xx - 1, base - 6, 3, 6, shade(c, -0.2));
-        } else if (o.type === 'tall') {
-          rect(g, xx - 2, base - 120 * s, 5, 130 * s, shade(c, -0.1));
-          pcircle(g, xx, base - 120 * s, 16 * s, c); pcircle(g, xx - 12 * s, base - 105 * s, 12 * s, c); pcircle(g, xx + 12 * s, base - 108 * s, 13 * s, c);
-          for (let v = 0; v < 3; v++) rect(g, xx - 14 * s + v * 12, base - 100 * s, 1, 30 + rng() * 40, shade(c, 0.15));
-        } else {
-          rect(g, xx - 1, base - 18 * s, 3, 18 * s, shade(c, -0.15));
-          pcircle(g, xx, base - 24 * s, 11 * s, c); pcircle(g, xx - 7 * s, base - 18 * s, 8 * s, c); pcircle(g, xx + 7 * s, base - 19 * s, 8 * s, c);
-          pcircle(g, xx - 3 * s, base - 28 * s, 5 * s, c2);
+    const n = o.count || 6, lx = BGP.lx || -1;
+    const c = o.color, c2 = o.color2 || shade(o.color, 0.14);
+    const tones = [shade(c, -0.16), c, c2, shade(c2, 0.2)];
+    const list = [];
+    for (let i = 0; i < n * 2; i++) list.push({ x: (i / (n * 2)) * w + rng() * 30, s: 0.7 + rng() * 0.6, base: o.base + rng() * 6, i });
+    const trunk = (xx, t) => {
+      const s = t.s;
+      if (o.type === 'tall') { rect(g, xx - 2, t.base - 120 * s, 5, 130 * s, shade(c, -0.1)); rect(g, xx - 2 + (lx > 0 ? 3 : 0), t.base - 120 * s, 2, 130 * s, shade(c, 0.02)); }
+      else if (o.type === 'pine') { for (let y = 0; y < 40 * s; y++) { const ww = y * 0.35; rect(g, xx - ww, t.base - 44 * s + y, ww * 2 + 1, 1, y % 6 < 3 ? c : c2); } rect(g, xx - 1, t.base - 6, 3, 6, shade(c, -0.2)); }
+      else if (o.type === 'palm') {
+        // tronco segmentado y algo curvado; hojas en dos tonos que cuelgan
+        const th = 40 * s, lean = (t.i % 2 ? 1 : -1) * 3 * s;
+        let tx = xx, ty = t.base;
+        for (let k = 0; k < th; k++) { tx = xx + Math.sin(k / th * 1.4) * lean; ty = t.base - k; rect(g, tx, ty, 3, 1, k % 4 === 0 ? shade(c, -0.28) : shade(c, -0.1)); }
+        for (let f = 0; f < 6; f++) {
+          const a = -2.9 + f * 0.56, len = (16 + (f % 2) * 4) * s;
+          for (let r = 0; r < len; r++) {
+            const fx = tx + 1 + Math.cos(a) * r, fy = ty + Math.sin(a) * r * 0.6 + r * r * 0.022;
+            rect(g, fx, fy, r > len * 0.7 ? 2 : 3, 2, r < len * 0.45 ? c2 : c);
+          }
         }
-      };
-      draw(x); if (x > w - 60) draw(x - w); if (x < 60) draw(x + w);
+        rect(g, tx, ty + 1, 2, 2, shade(c, -0.3)); rect(g, tx + 2, ty + 2, 2, 2, shade(c, -0.3));
+      } else rect(g, xx - 1, t.base - 18 * t.s, 3, 18 * t.s, shade(c, -0.15));
+    };
+    for (const t of list) { trunk(t.x, t); if (t.x > w - 60) trunk(t.x - w, t); if (t.x < 60) trunk(t.x + w, t); }
+    if (o.type === 'round' || o.type === 'tall') {
+      // copas: esferas unidas con luz del lado del sol y tramado entre tonos
+      const img = g.getImageData(0, 0, w, h);
+      for (const t of list) {
+        const s = t.s, x = t.x, b = t.base;
+        const puffs = o.type === 'tall'
+          ? [[x, b - 120 * s, 16 * s], [x - 12 * s, b - 105 * s, 12 * s], [x + 12 * s, b - 108 * s, 13 * s], [x + 2 * s, b - 132 * s, 10 * s]]
+          : [[x, b - 24 * s, 11 * s], [x - 7 * s, b - 18 * s, 8 * s], [x + 7 * s, b - 19 * s, 8 * s], [x - 2 * s, b - 30 * s, 7 * s]];
+        shadeBlob(img, puffs, tones, lx);
+      }
+      g.putImageData(img, 0, 0);
+      if (o.type === 'tall') for (const t of list) for (let v = 0; v < 3; v++) rect(g, t.x - 14 * t.s + v * 12, t.base - 100 * t.s, 1, 30 + rng() * 40, shade(c, 0.15));
     }
     rect(g, 0, o.base + 4, w, h, o.color);
   },
@@ -270,15 +320,16 @@ const BGP = {
     }
   },
   clouds(g, w, h, rng, o) {
+    // nubes con volumen: esferas unidas iluminadas desde arriba
+    const img = g.getImageData(0, 0, w, h);
+    const tones = [o.shadow, mix(o.shadow, o.color, 0.5), o.color, '#FFFFFF'];
     for (let i = 0; i < o.count; i++) {
       const cx = rng() * w, cy = o.y + rng() * 20, s = o.big ? 1.6 + rng() : 0.8 + rng() * 0.8;
-      for (let k = -1; k <= 1; k++) {
-        const x = cx + k * w;
-        pcircle(g, x, cy + 4, 14 * s, o.shadow); pcircle(g, x - 14 * s, cy + 8, 10 * s, o.shadow); pcircle(g, x + 16 * s, cy + 8, 11 * s, o.shadow);
-        pcircle(g, x, cy, 14 * s, o.color); pcircle(g, x - 14 * s, cy + 5, 10 * s, o.color); pcircle(g, x + 16 * s, cy + 5, 11 * s, o.color);
-      }
+      shadeBlob(img, [[cx, cy + 4, 14 * s], [cx - 14 * s, cy + 8, 10 * s], [cx + 16 * s, cy + 8, 11 * s], [cx - 3 * s, cy - 3 * s, 9 * s]], tones, BGP.lx || -1);
     }
+    g.putImageData(img, 0, 0);
     rect(g, 0, o.y + 18, w, h, o.color);
+    ditherRect(g, 0, o.y + 18, w, 3, o.shadow, 0.5);
   },
   floaters(g, w, h, rng, o) {
     for (let i = 0; i < o.count; i++) {
@@ -350,16 +401,44 @@ const BGP = {
     rect(g, 0, o.base, w, h, '#2A5A3A');
   },
   cave(g, w, h, rng, o) {
+    // techo con estalactitas cónicas y suelo con estalagmitas; el borde recibe el resplandor del magma
     const n = periodicNoise(rng, w, 4), n2 = periodicNoise(rng, w, 4);
+    const img = g.getImageData(0, 0, w, h), d = img.data;
+    const C = hexRgb(o.color), C2 = hexRgb(o.color2), HI = hexRgb(mix(o.color, '#FF9D6B', 0.28)), HI2 = hexRgb(mix(o.color2, '#FF9D6B', 0.22)), DK = hexRgb(shade(o.color, -0.2));
+    const put = (x, y, c) => { if (y < 0 || y >= h) return; x = ((x % w) + w) % w; const i = (y * w + x) * 4; d[i] = c[0]; d[i + 1] = c[1]; d[i + 2] = c[2]; d[i + 3] = 255; };
+    const wd = (a, b) => { const q = Math.abs(a - b) % w; return Math.min(q, w - q); };
+    const stal = [], stag = [];
+    for (let i = 0; i < 46; i++) stal.push({ x: rng() * w, len: 8 + rng() * 36, r: 2 + rng() * 5 });
+    for (let i = 0; i < 30; i++) stag.push({ x: rng() * w, len: 6 + rng() * 22, r: 2 + rng() * 5 });
     for (let x = 0; x < w; x++) {
-      const top = 40 + (n(x) * 0.5 + 0.5) * 50 + (x % 23 < 3 ? 20 : 0);
-      rect(g, x, 0, 1, top, o.color);
-      if (o.lower) { const b = 200 + (n2(x) * 0.5 + 0.5) * 40; rect(g, x, b, 1, h - b, o.color2); }
+      let top = 40 + (n(x) * 0.5 + 0.5) * 50;
+      for (const s of stal) { const q = wd(x, s.x); if (q < s.r) top = Math.max(top, 40 + (n(s.x) * 0.5 + 0.5) * 50 + s.len * Math.pow(1 - q / s.r, 1.4)); }
+      top = Math.round(top);
+      for (let y = 0; y < top; y++) {
+        const k = top - y, b = BAYER[(y & 3) * 4 + (x & 3)];
+        put(x, y, k <= 2 ? HI : (y < 26 && b < (26 - y) * 0.6) ? DK : C);
+      }
+      if (o.lower) {
+        let bt = 200 + (n2(x) * 0.5 + 0.5) * 40;
+        for (const s of stag) { const q = wd(x, s.x); if (q < s.r) bt = Math.min(bt, 200 + (n2(s.x) * 0.5 + 0.5) * 40 - s.len * Math.pow(1 - q / s.r, 1.4)); }
+        bt = Math.round(bt);
+        for (let y = bt; y < h; y++) put(x, y, y - bt < 2 ? HI2 : C2);
+      }
     }
-    for (let i = 0; i < 26; i++) {
-      const x = rng() * w, y = o.lower ? 200 + rng() * 30 : 30 + rng() * 60, c = choice(o.crystals);
-      for (let k = 0; k < 8; k++) rect(g, x - (4 - Math.abs(k - 4)) * 0.5, y - k, (4 - Math.abs(k - 4)) + 1, 1, k < 3 ? '#FFFFFF' : c);
+    // racimos de cristales facetados (cara clara, cara oscura, punta blanca)
+    for (let i = 0; i < 18; i++) {
+      const x0 = Math.floor(rng() * w), up = !!o.lower, col = choice(o.crystals);
+      const base = up ? 212 + Math.floor(rng() * 20) : 34 + Math.floor(rng() * 50);
+      const Lc = hexRgb(shade(col, 0.22)), Dc = hexRgb(shade(col, -0.18)), Tc = hexRgb('#FFFFFF');
+      for (let j = 0; j < 3; j++) {
+        const cx = x0 + (j - 1) * 3, len = 5 + Math.floor(rng() * 7) - (j === 1 ? 0 : 2), hw = 1 + (j === 1 ? 1 : 0);
+        for (let k = 0; k < len; k++) {
+          const ww = Math.max(0, Math.round(hw * (1 - k / len) + 0.4)), y = up ? base - k : base + k;
+          for (let q = -ww; q <= ww; q++) put(cx + q, y, k >= len - 2 ? Tc : q < 0 ? Lc : q > 0 ? Dc : Lc);
+        }
+      }
     }
+    g.putImageData(img, 0, 0);
   },
   pipesBg(g, w, h, rng, o) {
     for (let i = 0; i < 6; i++) {
@@ -430,22 +509,17 @@ function buildBackground(themeKey) {
   const th = THEMES[themeKey];
   const rng = mulberry32(hashStr(themeKey));
   const BW = 960;
-  const sky = makeCanvas(W, H);
-  vGradient(sky.g, 0, 0, W, H, th.sky);
-  if (th.stars) for (let i = 0; i < th.stars; i++) { const y = Math.pow(rng(), 1.6) * H * 0.75; px(sky.g, rng() * W, y, rng() < 0.2 ? PAL.sun : '#FFFFFF'); }
-  if (th.sun) {
-    const s = th.sun, sx = s.x * W, sy = s.y * H;
-    for (let r = s.r * 3; r > s.r; r -= 4) { sky.g.globalAlpha = 0.08; pcircle(sky.g, sx, sy, r, s.glow); }
-    sky.g.globalAlpha = 1;
-    pcircle(sky.g, sx, sy, s.r, s.c);
-    if (s.moon) { pcircle(sky.g, sx + 4, sy - 3, s.r - 2, shade(th.sky[0][1], 0)); pcircle(sky.g, sx + 4, sy - 3, s.r - 3, mix(th.sky[0][1], th.sky[1][1], 0.2)); }
-  }
+  // cielo a doble resolución (degradado fino, halo y estrellas de medio píxel)
+  const skyHD = buildSkyHD(th, rng);
+  BGP.lx = themeLight(th);
   const layers = th.layers.map(L => {
     const c = makeCanvas(BW, H);
     const meta = BGP[L.fn](c.g, BW, H, rng, L.o) || null;
+    // perspectiva aérea: velo del color del cielo, borde iluminado y niebla baja
+    finishLayer(c, th, L);
     return { c, p: L.p, meta };
   });
-  return { sky, layers, theme: th };
+  return { sky: skyHD.c, twinkles: skyHD.twinkles, sunImg: skyHD.sunImg, layers, theme: th };
 }
 
 // ---------- Decoraciones pequeñas sobre el terreno ----------

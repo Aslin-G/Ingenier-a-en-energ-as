@@ -67,6 +67,7 @@ const Game = {
     }
     if (Save.flash > 0) { ctx.globalAlpha = Math.min(1, Save.flash); icon(ctx, 'star', W - 12, H - 12); ctx.globalAlpha = 1; }
     Trans.draw(ctx);
+    HD.present();
   },
   newGame() {
     const settings = G.save.settings, teacher = G.save.teacherUnlocked, lab = G.save.labUnlocked;
@@ -225,7 +226,8 @@ class TitleScene {
     if (Math.random() < 0.05) Particles.spawn({ x: rand(0, W), y: -4, vx: rand(-10, 10), vy: rand(20, 40), life: 6, type: 'leaf', color: choice([PAL.pink, PAL.sun, PAL.teal, PAL.lime]), wob: 20, screen: true });
   }
   draw(g) {
-    g.drawImage(this.bg.sky, 0, 0);
+    g.drawImage(this.bg.sky, 0, 0, W, H);
+    drawSkyLive(g, this.bg, this.t);
     this.bg.layers.forEach((L, i) => { const ox = -Math.round((this.t * 8 * L.p * 3) % 960); g.drawImage(L.c, ox, 0); g.drawImage(L.c, ox + 960, 0); });
     // molino, río y sol animados
     rect(g, 0, 214, W, 56, '#2A2560'); rect(g, 0, 214, W, 2, '#6A5AA0');
@@ -357,18 +359,18 @@ class SettingsScene {
     const vol = (key, label) => {
       row(label);
       for (let i = 0; i <= 10; i++) { const id = 'v' + key + i; const on = Math.round(S[key] * 10) >= i && i > 0; if (UI.btn(g, id, 230 + i * 17, y, 15, 12, i === 0 ? '0' : '', { color: on ? PAL.lime : '#3E4C8A', bg: on ? '#2A5A1A' : undefined })) { S[key] = i / 10; AudioSys.applyVolumes(); AudioSys.sfx('click'); } }
-      y += 16;
+      y += 15;
     };
     const tog = (key, label, desc) => {
       row(label);
       if (UI.btn(g, 't' + key, 330, y, 90, 12, S[key] ? 'SÍ' : 'NO', { color: S[key] ? PAL.lime : PAL.coral })) { S[key] = !S[key]; AudioSys.sfx('click'); if (key === 'pixelPerfect') resize(); if (key === 'assist' && G.run.level && G.run.level.player) G.run.level.player.refreshCells(); }
-      y += 16;
+      y += 15;
     };
     const cyc = (key, label, opts, names) => {
       row(label);
       const i = opts.indexOf(S[key]);
       if (UI.btn(g, 'c' + key, 330, y, 90, 12, names[i < 0 ? 0 : i], { color: PAL.sun })) { S[key] = opts[(i + 1) % opts.length]; AudioSys.sfx('click'); }
-      y += 16;
+      y += 15;
     };
     vol('musicVol', 'Música');
     vol('sfxVol', 'Efectos de sonido');
@@ -381,6 +383,12 @@ class SettingsScene {
     tog('noTimer', 'Modo sin tiempo (sin prisas)');
     tog('confidence', 'Preguntar "¿qué tan seguro estás?"');
     tog('pixelPerfect', 'Escalado de píxel entero');
+    // gráficos HD: filtro en la GPU que redondea los bordes con píxeles más finos
+    row('Gráficos HD (bordes y curvas finos)');
+    if (UI.btn(g, 'thd', 330, y, 90, 12, !HD.ok ? 'NO DISPONIBLE' : S.hd !== false && !HD.autoOff ? 'SÍ' : 'NO', { color: !HD.ok ? '#8A8FB0' : S.hd !== false && !HD.autoOff ? PAL.lime : PAL.coral }) && HD.ok) {
+      S.hd = HD.autoOff ? true : S.hd === false; HD.autoOff = false; HD.apply(); AudioSys.sfx('click');
+    }
+    y += 15;
     tog('assist', 'Ayuda de combate (+2 células, jefes lentos)');
     if (UI.btn(g, 'remap', 56, y + 4, 150, 14, 'REMAPEAR TECLAS', { color: PAL.violet })) Scenes.push(new RemapScene());
     if (UI.btn(g, 'sback', 330, y + 4, 90, 14, 'VOLVER', { color: PAL.teal, primary: true })) this.close();

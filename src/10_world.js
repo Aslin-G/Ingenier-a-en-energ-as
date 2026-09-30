@@ -1,8 +1,14 @@
 // =====================================================================
 //  MUNDO: nivel, física de plataformas, jugadora, compañeros, cámara, HUD
 // =====================================================================
-const BG_CACHE = {};
-function getBackground(theme) { return BG_CACHE[theme] || (BG_CACHE[theme] = buildBackground(theme)); }
+// fondos construidos (a doble resolución pesan más): se guardan solo los últimos
+const BG_CACHE = {}, BG_ORDER = [];
+function getBackground(theme) {
+  if (BG_CACHE[theme]) return BG_CACHE[theme];
+  BG_ORDER.push(theme);
+  while (BG_ORDER.length > 3) delete BG_CACHE[BG_ORDER.shift()];
+  return (BG_CACHE[theme] = buildBackground(theme));
+}
 
 const PHYS = {
   grav: 980, gravHold: 560, maxFall: 330, walk: 88, run: 138, accG: 1000, decG: 1500, accA: 720,
@@ -171,6 +177,8 @@ class Level {
       else if (t === 'H') paintLadder(g, x * TILE, y * TILE);
       else if (t === '|') paintRope(g, x * TILE, y * TILE);
     }
+    // volumen: la roca se oscurece hacia el interior (antes de las decoraciones)
+    shadeTerrain(this, c);
     for (const [x, y] of decoSpots) if (rng() < 0.42 && th.ground.deco.length) drawDeco(g, choice(th.ground.deco), x * TILE, y * TILE, rng, th);
     this.staticCv = c;
   }
@@ -318,7 +326,7 @@ class Level {
     switch (type) {
       case 'fireflies': if (r < 0.06) Particles.spawn({ x: cx + rand(0, W), y: cy + rand(40, H - 40), vx: rand(-8, 8), vy: rand(-8, 4), life: rand(2, 4), type: 'star', color: choice([PAL.sun, PAL.lime]), wob: 10, drag: 1 }); break;
       case 'pollen': if (r < 0.08) Particles.spawn({ x: cx + rand(0, W), y: cy + rand(0, H), vx: rand(5, 20), vy: rand(-5, 5), life: 3, type: 'dot', color: choice(['#FFF3A0', '#FFFFFF', '#FFD84A']), wob: 8, drag: 1 }); break;
-      case 'glints': if (r < 0.07) Particles.spawn({ x: cx + rand(0, W), y: cy + rand(0, H), life: 0.6, type: 'spark', color: PAL.sun, drag: 1 }); break;
+      case 'glints': if (r < 0.09) Particles.spawn({ x: cx + rand(0, W), y: cy + rand(0, H), life: 0.7, type: 'glint', color: choice([PAL.sun, '#FFFFFF']), drag: 1 }); break;
       case 'wind': if (r < 0.1) Particles.spawn({ x: cx - 4, y: cy + rand(0, H), vx: rand(60, 140), vy: rand(-6, 6), life: 5, type: 'leaf', color: choice(['#9CF5D8', '#FFFFFF', '#FF7FCF']), wob: 12, drag: 1 }); break;
       case 'mist': if (r < 0.1) Particles.spawn({ x: cx + rand(0, W), y: cy + H + 2, vx: rand(-6, 6), vy: rand(-18, -8), life: 5, type: 'bubble', size: 1, color: '#DFFBFF', wob: 6, drag: 1 }); break;
       case 'leaves': if (r < 0.08) Particles.spawn({ x: cx + rand(0, W), y: cy - 4, vx: rand(-15, 15), vy: rand(14, 28), life: 8, type: 'leaf', color: choice(['#66D66A', '#B6F35B', '#FF9D42']), wob: 20, drag: 1 }); if (r > 0.96) Particles.spawn({ x: cx + rand(0, W), y: cy + rand(60, H - 30), vx: rand(-8, 8), vy: rand(-6, 6), life: 3, type: 'star', color: PAL.lime, wob: 10, drag: 1 }); break;
@@ -351,7 +359,8 @@ class Level {
     const cx = cp.x + FX.ox, cy = cp.y + FX.oy;
     Level.camRef.x = cx; Level.camRef.y = cy;
     const th = this.theme;
-    g.drawImage(this.bg.sky, 0, 0);
+    g.drawImage(this.bg.sky, 0, 0, W, H);
+    drawSkyLive(g, this.bg, this.time);
     if (th.aurora) drawAurora(g, this.time);
     // capas de parallax; los elementos vivos se intercalan según su profundidad
     let prevP = -1;
@@ -371,6 +380,7 @@ class Level {
     this.drawDynamicTiles(g, cx, cy);
     // entidades de fondo
     for (const e of this.entities) if (e.layer === -1 && e.draw && this.onScreen(e, cx, cy)) drawEntity(g, e, cx, cy);
+    this.drawShadows(g, cx, cy);
     for (const e of this.entities) if (!e.layer && e.draw && this.onScreen(e, cx, cy)) drawEntity(g, e, cx, cy);
     if (this.ghost) this.ghost.draw(g, cx, cy);
     if (this.def.extraDraw) this.def.extraDraw(this, g, cx, cy);
@@ -392,12 +402,13 @@ class Level {
     const dk = this.darkness();
     Light.render(g, dk, th.tint || '#0B1030');
     // el sol y la luna no se apagan con el apagón: se redibujan casi con su brillo propio
-    if (th.sun && dk > 0.05 && th.sun.y < 0.35) {
+    if (th.sun && dk > 0.05 && th.sun.y < 0.35 && this.bg.sunImg) {
       const sn = th.sun, sx = sn.x * W, sy = sn.y * H;
-      g.globalAlpha = Math.min(1, dk * 2.2); pcircle(g, sx, sy, sn.r, sn.c);
-      if (sn.moon) { pcircle(g, sx + 4, sy - 3, sn.r - 2, shade(th.sky[0][1], 0)); pcircle(g, sx + 4, sy - 3, sn.r - 3, mix(th.sky[0][1], th.sky[1][1], 0.2)); }
+      g.globalAlpha = Math.min(1, dk * 2.2); g.drawImage(this.bg.sunImg, Math.round(sx - sn.r - 1), Math.round(sy - sn.r - 1));
       g.globalAlpha = 1;
     }
+    // viñeta suave: más marcada de noche y en cuevas
+    g.drawImage(Vignette.get(th.sun && !th.sun.moon ? 0.2 : 0.34), 0, 0);
     Particles.draw(g, cx, cy, true, 1);
     if (this.lensT > 0.01) this.drawLensOverlay(g, cx, cy);
     for (const e of this.entities) if (e.drawOverlay && this.onScreen(e, cx, cy, 40)) e.drawOverlay(g, cx, cy);
@@ -442,18 +453,46 @@ class Level {
       if (d) drawDynTile(g, sx, sy, d, this, x, y);
     }
   }
+  // sombras de contacto bajo Lía, los NPCs y los enemigos que pisan suelo
+  drawShadows(g, cx, cy) {
+    const p = this.player;
+    if (p.onGround && !p.inWater && !p.climbing) groundShadow(g, p.x + p.w / 2 - cx, p.y + p.h - cy, 12);
+    for (const e of this.entities) {
+      if (e.dead || e.hidden || !this.onScreen(e, cx, cy)) continue;
+      if (e instanceof NPC ? !!e.present : e instanceof Enemy && e.onGround) groundShadow(g, e.x + e.w / 2 - cx, e.y + e.h - cy, Math.min(20, e.w + 4));
+    }
+  }
   drawWater(g, cx, cy) {
     const x0 = Math.max(0, Math.floor(cx / TILE)), x1 = Math.min(this.w - 1, Math.floor((cx + W) / TILE));
     const y0 = Math.max(0, Math.floor(cy / TILE)), y1 = Math.min(this.h - 1, Math.floor((cy + H) / TILE));
-    const [c1, c2] = this.theme.water;
+    const [c1, c2] = this.theme.water, t = this.time;
     for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) {
       if (this.tiles[y][x] !== '~') continue;
       const sx = x * TILE - cx, sy = y * TILE - cy;
-      const surface = this.tile(x, y - 1) !== '~';
-      g.globalAlpha = 0.72; rect(g, sx, sy, 16, 16, c1); g.globalAlpha = 1;
+      let depth = 0; while (depth < 4 && this.tile(x, y - depth - 1) === '~') depth++;
+      const surface = depth === 0;
+      // más profundo = más opaco y oscuro
+      g.globalAlpha = 0.66 + depth * 0.06; rect(g, sx, sy, 16, 16, depth ? shade(c1, -0.07 * depth) : c1); g.globalAlpha = 1;
       if (surface) {
-        for (let i = 0; i < 16; i++) { const wy = Math.round(Math.sin((x * 16 + i) * 0.3 + this.time * 3) * 1.2); rect(g, sx + i, sy + 1 + wy, 1, 2, c2); }
-      } else if ((x + y + Math.floor(this.time * 2)) % 7 === 0) px(g, sx + 5, sy + 8, c2);
+        g.globalAlpha = 0.28; rect(g, sx, sy + 3, 16, 3, c2); g.globalAlpha = 1;
+        for (let i = 0; i < 16; i++) { const wy = Math.round(Math.sin((x * 16 + i) * 0.3 + t * 3) * 1.2); rect(g, sx + i, sy + 1 + wy, 1, 2, c2); }
+        // destellos de medio píxel que corren por la superficie
+        g.fillStyle = '#FFFFFF';
+        for (let i = 0; i < 2; i++) {
+          const a = Math.sin(t * 2.6 + x * 1.7 + i * 2.4);
+          if (a < 0.55) continue;
+          g.globalAlpha = (a - 0.55) * 2;
+          const gx = (x * 7 + i * 9 + Math.floor(t * 5)) % 14;
+          g.fillRect(sx + gx, sy + 1.5 + Math.round(Math.sin((x * 16 + gx) * 0.3 + t * 3) * 1.2), 2.5, 0.5);
+        }
+        g.globalAlpha = 1;
+      } else {
+        // cáusticas: líneas de luz que ondulan bajo el agua
+        g.globalAlpha = 0.1 / depth;
+        for (let k = 0; k < 2; k++) rect(g, sx + (k * 7 + Math.floor(t * 6) + x * 3) % 14, sy + (k * 9 + y * 5) % 15, 3, 1, c2);
+        g.globalAlpha = 1;
+        if ((x + y + Math.floor(t * 2)) % 7 === 0) px(g, sx + 5, sy + 8, c2);
+      }
     }
   }
   drawLensOverlay(g, cx, cy) {
@@ -572,13 +611,18 @@ function drawAurora(g, t) {
 function themeHorizon(th) { const sea = (th.layers || []).find(L => L.fn === 'sea'); return sea ? sea.o.y : 190; }
 function wrapX(x, span) { return ((x % span) + span) % span; }
 const LIVE_BG = {
-  sunrays: { p: 0, draw(g, lv, cx, cy, oy, t) { g.globalAlpha = 0.07; for (let i = 0; i < 6; i++) { const x = 60 + i * 80 + Math.sin(t * 0.3 + i) * 20; for (let y = 0; y < 200; y += 2) rect(g, x + y * 0.3, y, 14, 2, '#FFFFFF'); } g.globalAlpha = 1; } },
-  prismrays: { p: 0, draw(g, lv, cx, cy, oy, t) { g.globalAlpha = 0.08; for (let i = 0; i < 7; i++) { const c = hsl(i * 50 + t * 20, 90, 65); const x = 240 + Math.cos(i * 0.9 + t * 0.1) * 30; for (let y = 0; y < 200; y += 3) rect(g, x + (i - 3) * y * 0.4, 40 + y, 6, 3, c); } g.globalAlpha = 1; } },
+  // rayos de luz con degradado real (detalle fino en modo HD)
+  sunrays: { p: 0, draw(g, lv, cx, cy, oy, t) { drawSoftRays(g, t, ['#FFF3C0', '#FFFFFF', '#FFE08A', '#FFFFFF', '#FFF3C0', '#FFE8A0'], 0.09, W * (lv.theme.sun ? lv.theme.sun.x : 0.5) - cx * 0.02 % 40); } },
+  prismrays: { p: 0, draw(g, lv, cx, cy, oy, t) { const cols = []; for (let i = 0; i < 7; i++) cols.push(hsl(i * 50 + t * 20, 90, 65)); drawSoftRays(g, t, cols, 0.1, W * 0.5); } },
   clouds: {
+    // nubes altas con volumen (pre-renderizadas) que derivan despacio
     p: 0.03, draw(g, lv, cx, cy, oy, t) {
+      const th = lv.theme, top = skyColorAt(th, 0.15);
+      const tones = lv._cloudTones || (lv._cloudTones = [mix(top, '#FFFFFF', 0.45), mix(top, '#FFFFFF', 0.7), '#F4F8FF', '#FFFFFF']);
       for (let i = 0; i < 5; i++) {
+        const spr = CloudSprites.get(i + 1, i % 2 ? 0.55 : 0.75, tones);
         const x = wrapX(i * 137 + t * (3 + i) - cx * 0.03, W + 120) - 60, y = 18 + i * 15 + oy;
-        g.globalAlpha = 0.85; pcircle(g, x, y, 8, '#FFFFFF'); pcircle(g, x + 9, y + 2, 6, '#FFFFFF'); pcircle(g, x - 9, y + 3, 5, '#FFFFFF'); rect(g, x - 14, y + 4, 30, 3, '#E8F0FF'); g.globalAlpha = 1;
+        g.globalAlpha = 0.94; g.drawImage(spr, Math.round(x - spr.width / 2), Math.round(y - spr.height * 0.6)); g.globalAlpha = 1;
       }
     }
   },
@@ -622,7 +666,19 @@ const LIVE_BG = {
       }
     }
   },
-  crystalGlow: { p: 0.2, draw(g, lv, cx, cy, oy, t) { for (let i = 0; i < 8; i++) { const x = wrapX(i * 67 - cx * 0.2, W), y = 60 + (i * 37) % 120 + oy + Math.sin(t * 0.6 + i) * 4; g.globalAlpha = 0.18 + Math.sin(t * 1.2 + i) * 0.12; pcircle(g, x, y, 2, i % 2 ? PAL.violet : PAL.pink); g.globalAlpha = 1; } } },
+  crystalGlow: {
+    // resplandores suaves de cristales lejanos (degradado real, detalle fino en HD)
+    p: 0.2, draw(g, lv, cx, cy, oy, t) {
+      g.save(); g.globalCompositeOperation = 'lighter';
+      for (let i = 0; i < 8; i++) {
+        const x = wrapX(i * 67 - cx * 0.2, W), y = 60 + (i * 37) % 120 + oy + Math.sin(t * 0.6 + i) * 4, a = 0.22 + Math.sin(t * 1.2 + i) * 0.12;
+        const grd = g.createRadialGradient(x, y, 0, x, y, 9);
+        grd.addColorStop(0, rgba(i % 2 ? PAL.violet : PAL.pink, a)); grd.addColorStop(1, rgba(i % 2 ? PAL.violet : PAL.pink, 0));
+        g.fillStyle = grd; g.fillRect(x - 9, y - 9, 18, 18);
+      }
+      g.restore();
+    }
+  },
   lanterns: {
     // farolillos del festival que suben lentamente al cielo
     p: 0.35, draw(g, lv, cx, cy, oy, t) {

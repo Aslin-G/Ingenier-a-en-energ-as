@@ -15,6 +15,7 @@
     -webkit-tap-highlight-color: transparent;
   }
   body { display: flex; align-items: center; justify-content: center; }
+  #stage { position: relative; line-height: 0; }
   #game {
     display: block;
     image-rendering: pixelated;
@@ -23,13 +24,23 @@
     background: #10162B;
     box-shadow: 0 0 40px rgba(89, 199, 255, 0.15);
   }
+  /* capa del modo HD: muestra el mismo fotograma con el doble de resolución (no recibe clics) */
+  #hd {
+    display: none; position: absolute; left: 0; top: 0; width: 100%; height: 100%;
+    pointer-events: none;
+    image-rendering: pixelated;
+    image-rendering: crisp-edges;
+  }
   #noscript {
     color: #FFF3D7; font: 16px monospace; text-align: center; padding: 2em;
   }
 </style>
 </head>
 <body>
+<div id="stage">
 <canvas id="game" width="960" height="540" tabindex="0" aria-label="Lumina Loop: El Código de los Elementos. Videojuego educativo en pixel art."></canvas>
+<canvas id="hd" width="960" height="540" aria-hidden="true"></canvas>
+</div>
 <noscript><div id="noscript">Lumina Loop necesita JavaScript activado para funcionar.</div></noscript>
 <script>
 (function(){
@@ -948,7 +959,7 @@ const PROG_KEYS = MASTERY_KEYS.slice(0, 11), ENERGY_KEYS = MASTERY_KEYS.slice(11
 
 const DEFAULT_SETTINGS = () => ({
   musicVol: 0.55, sfxVol: 0.8, textSpeed: 1, highContrast: false, reduceFlash: false, reduceShake: false,
-  touch: 'auto', noTimer: false, captions: true, pixelPerfect: false, bindings: null, confidence: true, assist: false
+  touch: 'auto', noTimer: false, captions: true, pixelPerfect: false, bindings: null, confidence: true, assist: false, hd: true
 });
 
 function newSave() {
@@ -1323,31 +1334,35 @@ const Particles = {
   draw(g, cx, cy, screen = false, layer = 0) {
     for (const p of this.list) {
       if (p.screen !== screen || p.layer !== layer) continue;
-      const x = Math.round(p.x - (screen ? 0 : cx)), y = Math.round(p.y - (screen ? 0 : cy));
+      // posición en medios píxeles: el movimiento de chispas y hojas se ve más suave
+      const hx = Math.round((p.x - (screen ? 0 : cx)) * 2) / 2, hy = Math.round((p.y - (screen ? 0 : cy)) * 2) / 2;
+      const x = Math.round(hx), y = Math.round(hy);
       if (x < -20 || x > W + 20 || y < -20 || y > H + 20) continue;
       const t = p.life / p.max;
       const col = p.color2 ? mix(p.color2, p.color, t) : p.color;
       switch (p.type) {
-        case 'dot': rect(g, x, y, p.size, p.size, col); break;
-        case 'fade': g.globalAlpha = t; rect(g, x, y, p.size, p.size, col); g.globalAlpha = 1; break;
+        case 'dot': g.fillStyle = col; g.fillRect(hx, hy, p.size, p.size); break;
+        case 'fade': g.globalAlpha = t; g.fillStyle = col; g.fillRect(hx, hy, p.size, p.size); g.globalAlpha = 1; break;
+        // destello fino: centro de un píxel y brazos de medio píxel
+        case 'glint': g.globalAlpha = Math.min(1, t * 2); g.fillStyle = col; g.fillRect(hx, hy, 1, 1); g.fillRect(hx - 1, hy + 0.5, 3, 0.5); g.fillRect(hx + 0.5, hy - 1, 0.5, 3); g.globalAlpha = 1; break;
         case 'spark':
           rect(g, x, y, 1, 1, PAL.white);
           if (t > 0.4) { rect(g, x - 1, y, 1, 1, col); rect(g, x + 1, y, 1, 1, col); rect(g, x, y - 1, 1, 1, col); rect(g, x, y + 1, 1, 1, col); }
           break;
-        case 'leaf': rect(g, x, y, 2, 1, col); if (Math.sin(Time.t * 6 + p.ph) > 0) rect(g, x + 1, y - 1, 1, 1, shade(col, 0.2)); break;
+        case 'leaf': g.fillStyle = col; g.fillRect(hx, hy, 2, 1); if (Math.sin(Time.t * 6 + p.ph) > 0) { g.fillStyle = shade(col, 0.2); g.fillRect(hx + 1, hy - 1, 1, 1); } break;
         case 'bubble': pring(g, x, y, p.size, col); px(g, x - 1, y - 1, PAL.white); break;
         case 'ring': g.globalAlpha = t; pring(g, x, y, Math.round((1 - t) * p.size), col); g.globalAlpha = 1; break;
         case 'text': drawText(g, p.text, x, y, col, { align: 'center', outline: '#10162B' }); break;
         case 'bit': drawText(g, p.text || (p.ph > 3 ? '1' : '0'), x, y, col); break;
         case 'star': rect(g, x, y, 1, 1, col); if ((Time.frame >> 3) % 2) { rect(g, x - 1, y, 3, 1, col); rect(g, x, y - 1, 1, 3, col); } break;
-        case 'rain': rect(g, x, y, 1, 4, col); break;
-        case 'snow': rect(g, x, y, p.size, p.size, col); break;
+        case 'rain': g.fillStyle = col; g.fillRect(hx, hy, 0.5, 4); break;
+        case 'snow': g.fillStyle = col; g.fillRect(hx, hy, p.size, p.size); break;
       }
     }
   }
 };
 
-// ---------- iluminación: oscuridad con fuentes de luz (a media resolución = píxeles gruesos) ----------
+// ---------- iluminación: oscuridad con fuentes de luz (a resolución de juego: degradados finos) ----------
 // haz giratorio de un faro: cuña de luz con degradado (se acorta cuando apunta hacia la cámara)
 function drawLightBeam(g, x, y, a, len, spread, color, alpha) {
   const dx = Math.cos(a), L = len * (0.3 + 0.7 * Math.abs(dx));
@@ -1359,7 +1374,7 @@ function drawLightBeam(g, x, y, a, len, spread, color, alpha) {
 }
 const Light = {
   cv: null, lights: [],
-  init() { this.cv = makeCanvas(W / 2, H / 2); },
+  init() { this.cv = makeCanvas(W, H); },
   begin() { this.lights.length = 0; },
   add(x, y, r, a = 1, color = null) { this.lights.push({ x, y, r, a, color }); },
   render(g, darkness, tint = '#0B1030') {
@@ -1370,7 +1385,7 @@ const Light = {
     lg.fillStyle = tint; lg.globalAlpha = darkness; lg.fillRect(0, 0, L.width, L.height); lg.globalAlpha = 1;
     lg.globalCompositeOperation = 'destination-out';
     for (const l of this.lights) {
-      const x = l.x / 2, y = l.y / 2, r = l.r / 2;
+      const x = l.x, y = l.y, r = l.r;
       const grd = lg.createRadialGradient(x, y, 0, x, y, r);
       grd.addColorStop(0, `rgba(0,0,0,${l.a})`); grd.addColorStop(0.55, `rgba(0,0,0,${l.a * 0.7})`); grd.addColorStop(1, 'rgba(0,0,0,0)');
       lg.fillStyle = grd; lg.beginPath(); lg.arc(x, y, r, 0, Math.PI * 2); lg.fill();
@@ -1471,6 +1486,120 @@ const Toast = {
       panel(g, x, Math.round(t.y), w, 15, { border: t.color, accent: t.color });
       drawText(g, t.text, x + 6, Math.round(t.y) + 5, t.color);
       y += 18;
+    }
+  }
+};
+
+
+// ===== 05_hd.js =====
+// =====================================================================
+//  MODO HD: posprocesado en la GPU que duplica la resolución del pixel art
+// =====================================================================
+// El juego se dibuja en «píxeles de juego» (480×270) sobre un lienzo de
+// 960×540: cada píxel de juego es un bloque de 2×2. Este filtro aplica
+// Scale2x (EPX) a esos bloques: las escaleras de los bordes se redondean con
+// píxeles la mitad de grandes, así siluetas, textos, círculos y diagonales
+// ganan resolución sin dejar de ser pixel art. Lo que ya se dibujó con
+// detalle doble (cielos, luces suaves, el mapa ilustrado) pasa intacto.
+// El lienzo 2D sigue recibiendo el dibujo y los clics; la capa HD solo lo muestra.
+const HD_VERT = 'attribute vec2 p; void main(){ gl_Position = vec4(p, 0.0, 1.0); }';
+const HD_FRAG = [
+  '#ifdef GL_FRAGMENT_PRECISION_HIGH',
+  'precision highp float;',
+  '#else',
+  'precision mediump float;',
+  '#endif',
+  'uniform sampler2D tex;',
+  'uniform vec2 size;',
+  'vec3 T(vec2 q){ return texture2D(tex, (clamp(q, vec2(0.0), size - 1.0) + 0.5) / size).rgb; }',
+  // «igual» con tolerancia: los degradados finos del fondo cuentan como un mismo color
+  'bool eq(vec3 a, vec3 b){ vec3 d = abs(a - b); return max(max(d.r, d.g), d.b) < 0.075; }',
+  'bool same(vec3 a, vec3 b){ vec3 d = abs(a - b); return max(max(d.r, d.g), d.b) < 0.03; }',
+  'void main(){',
+  '  vec2 pix = vec2(floor(gl_FragCoord.x), size.y - 1.0 - floor(gl_FragCoord.y));',
+  '  vec2 blk = floor(pix * 0.5) * 2.0;',
+  '  vec2 q = pix - blk;',
+  '  vec3 p00 = T(blk), p10 = T(blk + vec2(1.0, 0.0)), p01 = T(blk + vec2(0.0, 1.0)), p11 = T(blk + vec2(1.0, 1.0));',
+  '  vec3 self = q.y < 0.5 ? (q.x < 0.5 ? p00 : p10) : (q.x < 0.5 ? p01 : p11);',
+  // bloque con detalle doble: se respeta tal cual
+  '  if (!(same(p00, p10) && same(p00, p01) && same(p00, p11))) { gl_FragColor = vec4(self, 1.0); return; }',
+  '  vec3 A = T(blk + vec2(q.x, -1.0));',
+  '  vec3 D = T(blk + vec2(q.x, 2.0));',
+  '  vec3 C = T(blk + vec2(-1.0, q.y));',
+  '  vec3 B = T(blk + vec2(2.0, q.y));',
+  '  vec3 o = p00;',
+  '  if (q.x < 0.5 && q.y < 0.5) { if (eq(C, A) && !eq(C, D) && !eq(A, B)) o = A; }',
+  '  else if (q.y < 0.5) { if (eq(A, B) && !eq(A, C) && !eq(B, D)) o = B; }',
+  '  else if (q.x < 0.5) { if (eq(D, C) && !eq(D, B) && !eq(C, A)) o = C; }',
+  '  else { if (eq(B, D) && !eq(B, A) && !eq(D, C)) o = D; }',
+  '  gl_FragColor = vec4(o, 1.0);',
+  '}'
+].join('\n');
+
+const HD = {
+  ok: false, on: false, gl: null, cv: null, tex: null,
+  // vigilancia de fluidez: si con el filtro el juego va a tirones, se apaga en esta sesión
+  lastT: 0, avg: 0, slowT: 0, autoOff: false,
+  init() {
+    this.cv = document.getElementById('hd');
+    if (!this.cv) return;
+    let gl = null;
+    try { gl = this.cv.getContext('webgl', { alpha: false, antialias: false, depth: false, stencil: false, premultipliedAlpha: false, preserveDrawingBuffer: false }); } catch (e) { gl = null; }
+    if (!gl) return;
+    const sh = (type, src) => { const s = gl.createShader(type); gl.shaderSource(s, src); gl.compileShader(s); return gl.getShaderParameter(s, gl.COMPILE_STATUS) ? s : null; };
+    const vs = sh(gl.VERTEX_SHADER, HD_VERT), fs = sh(gl.FRAGMENT_SHADER, HD_FRAG);
+    if (!vs || !fs) return;
+    const prog = gl.createProgram();
+    gl.attachShader(prog, vs); gl.attachShader(prog, fs); gl.linkProgram(prog);
+    if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) return;
+    gl.useProgram(prog);
+    // un triángulo que cubre toda la pantalla
+    const buf = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 3, -1, -1, 3]), gl.STATIC_DRAW);
+    const loc = gl.getAttribLocation(prog, 'p');
+    gl.enableVertexAttribArray(loc); gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
+    this.tex = gl.createTexture();
+    gl.bindTexture(gl.TEXTURE_2D, this.tex);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    gl.uniform1i(gl.getUniformLocation(prog, 'tex'), 0);
+    gl.uniform2f(gl.getUniformLocation(prog, 'size'), cv.width, cv.height);
+    gl.viewport(0, 0, this.cv.width, this.cv.height);
+    this.cv.addEventListener('webglcontextlost', e => { e.preventDefault(); this.ok = false; this.apply(); });
+    this.gl = gl; this.ok = true;
+    this.apply();
+  },
+  // en las pruebas automáticas (navegador sin pantalla) se usa el dibujo normal salvo que se pida #hd=1
+  wanted() {
+    if (G.save.settings.hd === false || this.autoOff) return false;
+    return !(navigator.webdriver && !/hd=1/.test(location.hash));
+  },
+  apply() {
+    this.on = this.ok && this.wanted();
+    if (this.cv) this.cv.style.display = this.on ? 'block' : 'none';
+    this.avg = 0; this.slowT = 0;
+  },
+  present() {
+    if (!this.on) return;
+    const gl = this.gl;
+    try {
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, cv);
+      gl.drawArrays(gl.TRIANGLES, 0, 3);
+    } catch (e) { this.ok = false; this.apply(); return; }
+    this.watch();
+  },
+  watch() {
+    const now = performance.now(), dt = now - this.lastT; this.lastT = now;
+    if (!(dt > 0 && dt < 200)) return;
+    this.avg = this.avg ? this.avg * 0.95 + dt * 0.05 : dt;
+    // por debajo de ~35 fps durante 6 s seguidos: se vuelve al dibujo normal
+    this.slowT = this.avg > 28 ? this.slowT + dt / 1000 : 0;
+    if (this.slowT > 6 && !navigator.webdriver) {
+      this.autoOff = true; this.apply();
+      Toast.show('Gráficos HD en pausa para ir más fluido (Ajustes)', PAL.sun, 3.5);
     }
   }
 };
@@ -2222,49 +2351,99 @@ const BGP = {
     for (let i = 0; i < 90; i++) { const y = o.y + 3 + Math.floor(Math.pow(rng(), 1.5) * (h - o.y)); rect(g, rng() * w, y, 4 + rng() * 14, 1, rgba(o.c2, 0.35)); }
   },
   mountains(g, w, h, rng, o) {
-    const n = periodicNoise(rng, w, 5);
-    const ys = [];
-    for (let x = 0; x < w; x++) ys.push(o.base - (n(x) * 0.5 + 0.5) * o.amp - Math.abs(Math.sin(x / w * Math.PI * 6)) * o.amp * 0.25);
+    // perfil con crestas afiladas: ruido suave + «ridged noise»
+    const n = periodicNoise(rng, w, 5), r2 = periodicNoise(rng, w, 3);
+    const ys = new Float32Array(w);
     for (let x = 0; x < w; x++) {
-      const y = Math.round(ys[x]);
-      // ladera iluminada según la pendiente media (sin rayas verticales)
-      const lit = ys[(x + 4) % w] - ys[(x - 4 + w) % w] > 0.6;
-      rect(g, x, y, 1, h - y, lit ? (o.color2 || o.color) : o.color);
-      if (o.snow && y < o.base - o.amp * 0.75) rect(g, x, y, 1, 3, o.snow);
+      const base = n(x) * 0.5 + 0.5, ridge = 1 - Math.abs(r2(x));
+      ys[x] = o.base - (base * 0.6 + ridge * ridge * 0.45) * o.amp - Math.abs(Math.sin(x / w * Math.PI * 6)) * o.amp * 0.1;
     }
+    const lx = BGP.lx || -1;
+    const T = { lit: hexRgb(o.color2 || shade(o.color, 0.14)), mid: hexRgb(o.color), dark: hexRgb(shade(o.color, -0.1)), deep: hexRgb(shade(o.color, -0.18)) };
+    const snow = o.snow ? hexRgb(o.snow) : null, snowS = o.snow ? hexRgb(mix(o.snow, o.color, 0.45)) : null;
+    const img = g.getImageData(0, 0, w, h), d = img.data;
+    const wrap = x => ((x % w) + w) % w;
+    const slope = x => (ys[wrap(x + 3)] - ys[wrap(x - 3)]) / 6;
+    const put = (x, y, c) => { const i = (y * w + x) * 4; d[i] = c[0]; d[i + 1] = c[1]; d[i + 2] = c[2]; d[i + 3] = 255; };
+    const snowLine = o.base - o.amp * 0.74;
+    for (let x = 0; x < w; x++) {
+      const y0 = Math.max(0, Math.round(ys[x]));
+      for (let y = y0; y < h; y++) {
+        const k = y - y0;
+        // la frontera luz/sombra baja en diagonal desde cada cresta (caras facetadas)
+        const s = slope(Math.round(x - k * lx * 0.45)) * lx;
+        let c = s > 0.12 ? (k < 70 ? T.lit : T.mid) : s < -0.12 ? (k > 34 ? T.deep : T.dark) : T.mid;
+        if (Math.abs(Math.abs(s) - 0.12) < 0.05 && BAYER[(y & 3) * 4 + (x & 3)] < 8) c = T.mid;
+        if (snow && y < snowLine + Math.sin(x * 0.37) * 3 + Math.sin(x * 0.11) * 4) c = s > -0.12 ? snow : snowS;
+        put(x, y, c);
+      }
+    }
+    g.putImageData(img, 0, 0);
   },
   hills(g, w, h, rng, o) {
-    const n = periodicNoise(rng, w, 3);
+    const n = periodicNoise(rng, w, 3), lx = BGP.lx || -1;
+    const img = g.getImageData(0, 0, w, h), d = img.data;
+    const C = hexRgb(o.color), HI = hexRgb(o.hi), DK = hexRgb(shade(o.color, -0.1)), LT = hexRgb(mix(o.color, o.hi, 0.5));
+    const put = (x, y, c) => { if (y < 0 || y >= h) return; const i = (y * w + x) * 4; d[i] = c[0]; d[i + 1] = c[1]; d[i + 2] = c[2]; d[i + 3] = 255; };
+    const ys = []; for (let x = 0; x < w; x++) ys.push(o.base - (n(x) * 0.5 + 0.5) * o.amp);
     for (let x = 0; x < w; x++) {
-      const y = Math.round(o.base - (n(x) * 0.5 + 0.5) * o.amp);
-      rect(g, x, y, 1, h - y, o.color); rect(g, x, y, 1, 2, o.hi);
-      if (o.flowers && rng() < 0.12) rect(g, x, y + 3 + rng() * 20, 1, 1, choice(o.flowers));
+      const y0 = Math.round(ys[x]), sl = (ys[(x + 5) % w] - ys[(x - 5 + w) % w]) * lx;
+      for (let y = Math.max(0, y0); y < h; y++) {
+        const k = y - y0, b = BAYER[(y & 3) * 4 + (x & 3)];
+        let c = C;
+        if (k < 2) c = HI;
+        else if (k < 7 && sl > 0.6 && b < 10) c = LT;
+        else if (k > 12 && b < clamp((k - 12) / 26, 0, 1) * 9) c = DK;
+        put(x, y, c);
+      }
     }
+    // matorrales redondos sombreados sobre la loma
+    const bush = [shade(o.color, -0.14), o.color, mix(o.color, o.hi, 0.6), o.hi];
+    for (let i = 0; i < w / 40; i++) {
+      const x = Math.floor(rng() * w), r = 2.5 + rng() * 3;
+      shadeBlob(img, [[x, ys[x] + r * 0.5, r], [x + r * 1.1, ys[x] + r * 0.7, r * 0.8]], bush, lx);
+    }
+    if (o.flowers) for (let x = 0; x < w; x++) if (rng() < 0.12) { const c = hexRgb(choice(o.flowers)); put(x, Math.round(ys[x] + 3 + rng() * 20), c); }
+    g.putImageData(img, 0, 0);
   },
   trees(g, w, h, rng, o) {
-    const n = o.count || 6;
-    for (let i = 0; i < n * 2; i++) {
-      const x = (i / (n * 2)) * w + rng() * 30, s = 0.7 + rng() * 0.6;
-      const base = o.base + rng() * 6;
-      const c = o.color, c2 = o.color2 || shade(o.color, 0.12);
-      const draw = (xx) => {
-        if (o.type === 'palm') {
-          rect(g, xx, base - 40 * s, 3, 40 * s, shade(c, -0.1));
-          for (let k = 0; k < 5; k++) { const a = -2.6 + k * 0.55; for (let r = 0; r < 18 * s; r++) rect(g, xx + 1 + Math.cos(a) * r, base - 40 * s + Math.sin(a) * r * 0.6 + r * r * 0.02, 3, 2, c); }
-        } else if (o.type === 'pine') {
-          for (let y = 0; y < 40 * s; y++) { const ww = y * 0.35; rect(g, xx - ww, base - 44 * s + y, ww * 2 + 1, 1, y % 6 < 3 ? c : c2); }
-          rect(g, xx - 1, base - 6, 3, 6, shade(c, -0.2));
-        } else if (o.type === 'tall') {
-          rect(g, xx - 2, base - 120 * s, 5, 130 * s, shade(c, -0.1));
-          pcircle(g, xx, base - 120 * s, 16 * s, c); pcircle(g, xx - 12 * s, base - 105 * s, 12 * s, c); pcircle(g, xx + 12 * s, base - 108 * s, 13 * s, c);
-          for (let v = 0; v < 3; v++) rect(g, xx - 14 * s + v * 12, base - 100 * s, 1, 30 + rng() * 40, shade(c, 0.15));
-        } else {
-          rect(g, xx - 1, base - 18 * s, 3, 18 * s, shade(c, -0.15));
-          pcircle(g, xx, base - 24 * s, 11 * s, c); pcircle(g, xx - 7 * s, base - 18 * s, 8 * s, c); pcircle(g, xx + 7 * s, base - 19 * s, 8 * s, c);
-          pcircle(g, xx - 3 * s, base - 28 * s, 5 * s, c2);
+    const n = o.count || 6, lx = BGP.lx || -1;
+    const c = o.color, c2 = o.color2 || shade(o.color, 0.14);
+    const tones = [shade(c, -0.16), c, c2, shade(c2, 0.2)];
+    const list = [];
+    for (let i = 0; i < n * 2; i++) list.push({ x: (i / (n * 2)) * w + rng() * 30, s: 0.7 + rng() * 0.6, base: o.base + rng() * 6, i });
+    const trunk = (xx, t) => {
+      const s = t.s;
+      if (o.type === 'tall') { rect(g, xx - 2, t.base - 120 * s, 5, 130 * s, shade(c, -0.1)); rect(g, xx - 2 + (lx > 0 ? 3 : 0), t.base - 120 * s, 2, 130 * s, shade(c, 0.02)); }
+      else if (o.type === 'pine') { for (let y = 0; y < 40 * s; y++) { const ww = y * 0.35; rect(g, xx - ww, t.base - 44 * s + y, ww * 2 + 1, 1, y % 6 < 3 ? c : c2); } rect(g, xx - 1, t.base - 6, 3, 6, shade(c, -0.2)); }
+      else if (o.type === 'palm') {
+        // tronco segmentado y algo curvado; hojas en dos tonos que cuelgan
+        const th = 40 * s, lean = (t.i % 2 ? 1 : -1) * 3 * s;
+        let tx = xx, ty = t.base;
+        for (let k = 0; k < th; k++) { tx = xx + Math.sin(k / th * 1.4) * lean; ty = t.base - k; rect(g, tx, ty, 3, 1, k % 4 === 0 ? shade(c, -0.28) : shade(c, -0.1)); }
+        for (let f = 0; f < 6; f++) {
+          const a = -2.9 + f * 0.56, len = (16 + (f % 2) * 4) * s;
+          for (let r = 0; r < len; r++) {
+            const fx = tx + 1 + Math.cos(a) * r, fy = ty + Math.sin(a) * r * 0.6 + r * r * 0.022;
+            rect(g, fx, fy, r > len * 0.7 ? 2 : 3, 2, r < len * 0.45 ? c2 : c);
+          }
         }
-      };
-      draw(x); if (x > w - 60) draw(x - w); if (x < 60) draw(x + w);
+        rect(g, tx, ty + 1, 2, 2, shade(c, -0.3)); rect(g, tx + 2, ty + 2, 2, 2, shade(c, -0.3));
+      } else rect(g, xx - 1, t.base - 18 * t.s, 3, 18 * t.s, shade(c, -0.15));
+    };
+    for (const t of list) { trunk(t.x, t); if (t.x > w - 60) trunk(t.x - w, t); if (t.x < 60) trunk(t.x + w, t); }
+    if (o.type === 'round' || o.type === 'tall') {
+      // copas: esferas unidas con luz del lado del sol y tramado entre tonos
+      const img = g.getImageData(0, 0, w, h);
+      for (const t of list) {
+        const s = t.s, x = t.x, b = t.base;
+        const puffs = o.type === 'tall'
+          ? [[x, b - 120 * s, 16 * s], [x - 12 * s, b - 105 * s, 12 * s], [x + 12 * s, b - 108 * s, 13 * s], [x + 2 * s, b - 132 * s, 10 * s]]
+          : [[x, b - 24 * s, 11 * s], [x - 7 * s, b - 18 * s, 8 * s], [x + 7 * s, b - 19 * s, 8 * s], [x - 2 * s, b - 30 * s, 7 * s]];
+        shadeBlob(img, puffs, tones, lx);
+      }
+      g.putImageData(img, 0, 0);
+      if (o.type === 'tall') for (const t of list) for (let v = 0; v < 3; v++) rect(g, t.x - 14 * t.s + v * 12, t.base - 100 * t.s, 1, 30 + rng() * 40, shade(c, 0.15));
     }
     rect(g, 0, o.base + 4, w, h, o.color);
   },
@@ -2314,15 +2493,16 @@ const BGP = {
     }
   },
   clouds(g, w, h, rng, o) {
+    // nubes con volumen: esferas unidas iluminadas desde arriba
+    const img = g.getImageData(0, 0, w, h);
+    const tones = [o.shadow, mix(o.shadow, o.color, 0.5), o.color, '#FFFFFF'];
     for (let i = 0; i < o.count; i++) {
       const cx = rng() * w, cy = o.y + rng() * 20, s = o.big ? 1.6 + rng() : 0.8 + rng() * 0.8;
-      for (let k = -1; k <= 1; k++) {
-        const x = cx + k * w;
-        pcircle(g, x, cy + 4, 14 * s, o.shadow); pcircle(g, x - 14 * s, cy + 8, 10 * s, o.shadow); pcircle(g, x + 16 * s, cy + 8, 11 * s, o.shadow);
-        pcircle(g, x, cy, 14 * s, o.color); pcircle(g, x - 14 * s, cy + 5, 10 * s, o.color); pcircle(g, x + 16 * s, cy + 5, 11 * s, o.color);
-      }
+      shadeBlob(img, [[cx, cy + 4, 14 * s], [cx - 14 * s, cy + 8, 10 * s], [cx + 16 * s, cy + 8, 11 * s], [cx - 3 * s, cy - 3 * s, 9 * s]], tones, BGP.lx || -1);
     }
+    g.putImageData(img, 0, 0);
     rect(g, 0, o.y + 18, w, h, o.color);
+    ditherRect(g, 0, o.y + 18, w, 3, o.shadow, 0.5);
   },
   floaters(g, w, h, rng, o) {
     for (let i = 0; i < o.count; i++) {
@@ -2394,16 +2574,44 @@ const BGP = {
     rect(g, 0, o.base, w, h, '#2A5A3A');
   },
   cave(g, w, h, rng, o) {
+    // techo con estalactitas cónicas y suelo con estalagmitas; el borde recibe el resplandor del magma
     const n = periodicNoise(rng, w, 4), n2 = periodicNoise(rng, w, 4);
+    const img = g.getImageData(0, 0, w, h), d = img.data;
+    const C = hexRgb(o.color), C2 = hexRgb(o.color2), HI = hexRgb(mix(o.color, '#FF9D6B', 0.28)), HI2 = hexRgb(mix(o.color2, '#FF9D6B', 0.22)), DK = hexRgb(shade(o.color, -0.2));
+    const put = (x, y, c) => { if (y < 0 || y >= h) return; x = ((x % w) + w) % w; const i = (y * w + x) * 4; d[i] = c[0]; d[i + 1] = c[1]; d[i + 2] = c[2]; d[i + 3] = 255; };
+    const wd = (a, b) => { const q = Math.abs(a - b) % w; return Math.min(q, w - q); };
+    const stal = [], stag = [];
+    for (let i = 0; i < 46; i++) stal.push({ x: rng() * w, len: 8 + rng() * 36, r: 2 + rng() * 5 });
+    for (let i = 0; i < 30; i++) stag.push({ x: rng() * w, len: 6 + rng() * 22, r: 2 + rng() * 5 });
     for (let x = 0; x < w; x++) {
-      const top = 40 + (n(x) * 0.5 + 0.5) * 50 + (x % 23 < 3 ? 20 : 0);
-      rect(g, x, 0, 1, top, o.color);
-      if (o.lower) { const b = 200 + (n2(x) * 0.5 + 0.5) * 40; rect(g, x, b, 1, h - b, o.color2); }
+      let top = 40 + (n(x) * 0.5 + 0.5) * 50;
+      for (const s of stal) { const q = wd(x, s.x); if (q < s.r) top = Math.max(top, 40 + (n(s.x) * 0.5 + 0.5) * 50 + s.len * Math.pow(1 - q / s.r, 1.4)); }
+      top = Math.round(top);
+      for (let y = 0; y < top; y++) {
+        const k = top - y, b = BAYER[(y & 3) * 4 + (x & 3)];
+        put(x, y, k <= 2 ? HI : (y < 26 && b < (26 - y) * 0.6) ? DK : C);
+      }
+      if (o.lower) {
+        let bt = 200 + (n2(x) * 0.5 + 0.5) * 40;
+        for (const s of stag) { const q = wd(x, s.x); if (q < s.r) bt = Math.min(bt, 200 + (n2(s.x) * 0.5 + 0.5) * 40 - s.len * Math.pow(1 - q / s.r, 1.4)); }
+        bt = Math.round(bt);
+        for (let y = bt; y < h; y++) put(x, y, y - bt < 2 ? HI2 : C2);
+      }
     }
-    for (let i = 0; i < 26; i++) {
-      const x = rng() * w, y = o.lower ? 200 + rng() * 30 : 30 + rng() * 60, c = choice(o.crystals);
-      for (let k = 0; k < 8; k++) rect(g, x - (4 - Math.abs(k - 4)) * 0.5, y - k, (4 - Math.abs(k - 4)) + 1, 1, k < 3 ? '#FFFFFF' : c);
+    // racimos de cristales facetados (cara clara, cara oscura, punta blanca)
+    for (let i = 0; i < 18; i++) {
+      const x0 = Math.floor(rng() * w), up = !!o.lower, col = choice(o.crystals);
+      const base = up ? 212 + Math.floor(rng() * 20) : 34 + Math.floor(rng() * 50);
+      const Lc = hexRgb(shade(col, 0.22)), Dc = hexRgb(shade(col, -0.18)), Tc = hexRgb('#FFFFFF');
+      for (let j = 0; j < 3; j++) {
+        const cx = x0 + (j - 1) * 3, len = 5 + Math.floor(rng() * 7) - (j === 1 ? 0 : 2), hw = 1 + (j === 1 ? 1 : 0);
+        for (let k = 0; k < len; k++) {
+          const ww = Math.max(0, Math.round(hw * (1 - k / len) + 0.4)), y = up ? base - k : base + k;
+          for (let q = -ww; q <= ww; q++) put(cx + q, y, k >= len - 2 ? Tc : q < 0 ? Lc : q > 0 ? Dc : Lc);
+        }
+      }
     }
+    g.putImageData(img, 0, 0);
   },
   pipesBg(g, w, h, rng, o) {
     for (let i = 0; i < 6; i++) {
@@ -2474,22 +2682,17 @@ function buildBackground(themeKey) {
   const th = THEMES[themeKey];
   const rng = mulberry32(hashStr(themeKey));
   const BW = 960;
-  const sky = makeCanvas(W, H);
-  vGradient(sky.g, 0, 0, W, H, th.sky);
-  if (th.stars) for (let i = 0; i < th.stars; i++) { const y = Math.pow(rng(), 1.6) * H * 0.75; px(sky.g, rng() * W, y, rng() < 0.2 ? PAL.sun : '#FFFFFF'); }
-  if (th.sun) {
-    const s = th.sun, sx = s.x * W, sy = s.y * H;
-    for (let r = s.r * 3; r > s.r; r -= 4) { sky.g.globalAlpha = 0.08; pcircle(sky.g, sx, sy, r, s.glow); }
-    sky.g.globalAlpha = 1;
-    pcircle(sky.g, sx, sy, s.r, s.c);
-    if (s.moon) { pcircle(sky.g, sx + 4, sy - 3, s.r - 2, shade(th.sky[0][1], 0)); pcircle(sky.g, sx + 4, sy - 3, s.r - 3, mix(th.sky[0][1], th.sky[1][1], 0.2)); }
-  }
+  // cielo a doble resolución (degradado fino, halo y estrellas de medio píxel)
+  const skyHD = buildSkyHD(th, rng);
+  BGP.lx = themeLight(th);
   const layers = th.layers.map(L => {
     const c = makeCanvas(BW, H);
     const meta = BGP[L.fn](c.g, BW, H, rng, L.o) || null;
+    // perspectiva aérea: velo del color del cielo, borde iluminado y niebla baja
+    finishLayer(c, th, L);
     return { c, p: L.p, meta };
   });
-  return { sky, layers, theme: th };
+  return { sky: skyHD.c, twinkles: skyHD.twinkles, sunImg: skyHD.sunImg, layers, theme: th };
 }
 
 // ---------- Decoraciones pequeñas sobre el terreno ----------
@@ -2617,6 +2820,262 @@ function paintLadder(g, x, y) {
 }
 function paintRope(g, x, y) {
   for (let i = 0; i < 16; i += 2) rect(g, x + 7 + (i % 4 ? 1 : 0), y + i, 2, 2, '#E8C170');
+}
+
+
+// ===== 07_worldhd.js =====
+// =====================================================================
+//  ARTE DEL MUNDO EN ALTA RESOLUCIÓN
+//  Cielos con degradado fino, sol y luna nítidos, estrellas que titilan,
+//  perspectiva aérea entre capas de fondo, volumen por sombreado en
+//  montañas, árboles y nubes, profundidad del terreno, agua y viñeta.
+//  Todo se calcula una vez (al construir el fondo o el nivel) salvo los
+//  destellos vivos, así el coste por fotograma casi no cambia.
+// =====================================================================
+
+// color del cielo de un tema a una altura relativa t (0 arriba, 1 abajo)
+function skyColorAt(th, t) {
+  const st = th.sky;
+  if (t <= st[0][0]) return st[0][1];
+  for (let i = 0; i < st.length - 1; i++) {
+    const a = st[i], b = st[i + 1];
+    if (t <= b[0]) return mix(a[1], b[1], (t - a[0]) / Math.max(0.0001, b[0] - a[0]));
+  }
+  return st[st.length - 1][1];
+}
+
+// dirección de la luz del tema: 1 si el sol está a la derecha, -1 si a la izquierda
+const themeLight = th => (th.sun && th.sun.x > 0.5 ? 1 : -1);
+
+// disco del sol o de la luna (en píxeles de juego; el modo HD redondea su borde)
+function buildSunSprite(s) {
+  const r = s.r, c = makeCanvas(r * 2 + 3, r * 2 + 3), g = c.g, o = r + 1;
+  pcircle(g, o, o, r, s.c);
+  if (s.moon) {
+    // luna creciente: se recorta un disco desplazado y se marcan dos cráteres suaves
+    g.globalCompositeOperation = 'destination-out';
+    pcircle(g, o + Math.round(r * 0.45), o - Math.round(r * 0.3), r - 1, '#000');
+    g.globalCompositeOperation = 'source-over';
+    g.globalCompositeOperation = 'source-atop';
+    rect(g, o - Math.round(r * 0.55), o - 1, 2, 2, shade(s.c, -0.12));
+    rect(g, o - Math.round(r * 0.25), o + Math.round(r * 0.45), 2, 1, shade(s.c, -0.1));
+    g.globalCompositeOperation = 'source-over';
+  } else {
+    // núcleo más brillante desplazado hacia arriba: el disco parece una esfera luminosa
+    pcircle(g, o - 1, o - 1, Math.max(2, r - 3), shade(s.c, 0.5));
+  }
+  return c;
+}
+
+// cielo a doble resolución: degradado continuo, halo suave y estrellas de medio píxel
+function buildSkyHD(th, rng) {
+  const S = RES, cw = W * S, ch = H * S, c = makeCanvas(cw, ch), g = c.g;
+  for (let y = 0; y < ch; y++) { g.fillStyle = skyColorAt(th, (y + 0.5) / ch); g.fillRect(0, y, cw, 1); }
+  const twinkles = [];
+  if (th.stars) for (let i = 0; i < th.stars; i++) {
+    // mismas tiradas que el cielo anterior: el resto del fondo conserva su diseño
+    const y = Math.pow(rng(), 1.6) * H * 0.75, x = rng() * W, gold = rng() < 0.2;
+    const col = gold ? PAL.sun : '#FFFFFF', big = i % 6 === 0;
+    g.globalAlpha = big ? 0.95 : 0.45 + (i % 5) * 0.11;
+    g.fillStyle = col; g.fillRect(Math.round(x * S), Math.round(y * S), big ? 2 : 1, big ? 2 : 1);
+    g.globalAlpha = 1;
+    if (i % 3 === 0) twinkles.push({ x, y, ph: i * 1.93, c: col, big });
+  }
+  let sunImg = null;
+  if (th.sun) {
+    const s = th.sun, sx = s.x * W, sy = s.y * H;
+    const grd = g.createRadialGradient(sx * S, sy * S, s.r * S * 0.9, sx * S, sy * S, s.r * S * (s.moon ? 3.2 : 4.6));
+    grd.addColorStop(0, rgba(s.glow, s.moon ? 0.3 : 0.45)); grd.addColorStop(0.3, rgba(s.glow, s.moon ? 0.1 : 0.18)); grd.addColorStop(1, rgba(s.glow, 0));
+    g.fillStyle = grd; g.fillRect(0, 0, cw, ch);
+    sunImg = buildSunSprite(s);
+    g.save(); g.scale(S, S);
+    g.drawImage(sunImg, Math.round(sx - s.r - 1), Math.round(sy - s.r - 1));
+    g.restore();
+  }
+  return { c, twinkles, sunImg };
+}
+
+// estrellas que titilan y un leve brillo cruzado en las más grandes (detalle de medio píxel)
+function drawSkyLive(g, bg, t) {
+  const tw = bg.twinkles; if (!tw || !tw.length) return;
+  for (const s of tw) {
+    const a = Math.sin(t * (s.big ? 1.6 : 2.4) + s.ph);
+    if (a < 0.35) continue;
+    g.globalAlpha = (a - 0.35) * 1.4;
+    g.fillStyle = s.c;
+    const x = Math.round(s.x * 2) / 2, y = Math.round(s.y * 2) / 2;
+    g.fillRect(x - 0.5, y, 1.5, 0.5); g.fillRect(x, y - 0.5, 0.5, 1.5);
+    if (s.big && a > 0.8) { g.fillRect(x - 1.5, y, 3.5, 0.5); g.fillRect(x, y - 1.5, 0.5, 3.5); }
+  }
+  g.globalAlpha = 1;
+}
+
+// ---------------------------------------------------------------------
+//  Volumen: esferas unidas sombreadas (copas de árboles, nubes, arbustos)
+// ---------------------------------------------------------------------
+// puffs: [[cx, cy, r], ...] en píxeles de la capa; tones: [sombra, medio, luz, brillo]
+// Se pinta directamente en un ImageData (rápido y con píxeles exactos).
+function shadeBlob(img, puffs, tones, lx, opts = {}) {
+  const w = img.width, h = img.height, d = img.data;
+  let x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9;
+  for (const [cx, cy, r] of puffs) { x0 = Math.min(x0, cx - r); y0 = Math.min(y0, cy - r); x1 = Math.max(x1, cx + r); y1 = Math.max(y1, cy + r); }
+  x0 = Math.floor(x0); y0 = Math.max(0, Math.floor(y0)); x1 = Math.ceil(x1); y1 = Math.min(h - 1, Math.ceil(y1));
+  if (opts.flatBottom != null) y1 = Math.min(y1, Math.floor(opts.flatBottom));
+  const T = tones.map(hexRgb);
+  const L = [lx * 0.45, -0.72, 0.52], ln = Math.hypot(L[0], L[1], L[2]);
+  for (let y = y0; y <= y1; y++) for (let xr = x0; xr <= x1; xr++) {
+    let best = -1, nx = 0, ny = 0, nz = 0;
+    for (const [cx, cy, r] of puffs) {
+      const dx = (xr + 0.5 - cx) / r, dy = (y + 0.5 - cy) / r, q = dx * dx + dy * dy;
+      if (q > 1) continue;
+      const z = Math.sqrt(1 - q), zz = z * r + (opts.front ? (cy - y0) * 0.02 : 0);
+      if (zz > best) { best = zz; nx = dx; ny = dy; nz = z; }
+    }
+    if (best < 0) continue;
+    const dot = (nx * L[0] + ny * L[1] + nz * L[2]) / ln;
+    // tramado ordenado entre tonos: el sombreado sigue siendo pixel art
+    const lv = clamp((dot + 0.15) * 2.4, 0, 3), b = Math.floor(lv), fr = lv - b;
+    const x = ((xr % w) + w) % w;
+    const k = Math.min(3, b + (fr * 16 > BAYER[(y & 3) * 4 + (x & 3)] ? 1 : 0));
+    const i = (y * w + x) * 4, col = T[Math.min(k, T.length - 1)];
+    d[i] = col[0]; d[i + 1] = col[1]; d[i + 2] = col[2]; d[i + 3] = 255;
+  }
+}
+
+// nubes sombreadas pre-renderizadas (en píxeles de juego)
+const CloudSprites = {
+  cache: {},
+  get(seed, s, tones) {
+    const key = seed + ':' + s + ':' + tones.join(',');
+    if (this.cache[key]) return this.cache[key];
+    const rng = mulberry32(seed * 7919 + 3);
+    const w = Math.round(64 * s), h = Math.round(30 * s), c = makeCanvas(w, h);
+    const img = c.g.createImageData(w, h);
+    const n = 4 + Math.floor(rng() * 3), puffs = [];
+    for (let i = 0; i < n; i++) {
+      const k = i / (n - 1), mid = 1 - Math.abs(k - 0.5) * 2;
+      const r = (6 + rng() * 4 + mid * 7) * s;
+      puffs.push([w * 0.16 + w * 0.68 * k + (rng() - 0.5) * 4 * s, h - 5 * s - r * 0.55, r]);
+    }
+    shadeBlob(img, puffs, tones, -1, { flatBottom: h - 4 * s });
+    c.g.putImageData(img, 0, 0);
+    return (this.cache[key] = c);
+  }
+};
+
+// ---------------------------------------------------------------------
+//  Perspectiva aérea: cada capa lejana se funde con el cielo y lleva
+//  un borde iluminado y niebla baja entre cordilleras.
+// ---------------------------------------------------------------------
+function finishLayer(c, th, L) {
+  if (L.fn === 'sea') return;
+  const w = c.width, h = c.height, g = c.g;
+  const img = g.getImageData(0, 0, w, h), d = img.data;
+  const far = clamp(1 - L.p / 0.62, 0, 1);
+  const haze0 = 0.04 + far * 0.24, fog = 0.05 + far * 0.34;
+  const night = !th.sun || th.sun.moon;
+  const rimHex = th.sun ? (th.sun.moon ? mix(th.sun.c, th.sun.glow, 0.5) : mix(th.sun.c, '#FFFFFF', 0.3)) : th.cave ? '#FF9D42' : '#DFFBFF';
+  const rimC = hexRgb(rimHex), rimA = night ? 0.26 : 0.42;
+  const rows = []; for (let y = 0; y < h; y++) rows.push(hexRgb(skyColorAt(th, y / h)));
+  // altura típica de la silueta: por debajo empieza la niebla
+  const tops = [];
+  for (let x = 0; x < w; x += 4) { let y = 0; while (y < h && d[(y * w + x) * 4 + 3] < 10) y++; if (y < h) tops.push(y); }
+  tops.sort((a, b) => a - b);
+  const med = tops.length ? tops[Math.floor(tops.length / 2)] : h * 0.6;
+  const fogTop = med + (h - med) * 0.15;
+  for (let x = 0; x < w; x++) {
+    let run = -1;
+    for (let y = 0; y < h; y++) {
+      const i = (y * w + x) * 4;
+      if (d[i + 3] < 10) { run = -1; continue; }
+      if (run < 0) run = y;
+      let r = d[i], gg = d[i + 1], b = d[i + 2];
+      const k = y - run;
+      if (run > 0 && k < 2) { const a = k === 0 ? rimA : rimA * 0.35; r += (rimC[0] - r) * a; gg += (rimC[1] - gg) * a; b += (rimC[2] - b) * a; }
+      const fy = clamp((y - fogTop) / Math.max(1, h - fogTop), 0, 1);
+      const a = Math.min(0.8, haze0 + fog * fy * fy), sc = rows[y];
+      d[i] = r + (sc[0] - r) * a; d[i + 1] = gg + (sc[1] - gg) * a; d[i + 2] = b + (sc[2] - b) * a;
+    }
+  }
+  g.putImageData(img, 0, 0);
+}
+
+// ---------------------------------------------------------------------
+//  Terreno con volumen: cuanto más adentro de la roca, más oscuro
+//  (con tramado ordenado), y más claro cerca de cada borde expuesto.
+// ---------------------------------------------------------------------
+function shadeTerrain(lv, c) {
+  const tw = lv.w, thh = lv.h, dist = new Int16Array(tw * thh).fill(-1), q = [];
+  for (let y = 0; y < thh; y++) for (let x = 0; x < tw; x++) if (lv.tiles[y][x] !== '#') { dist[y * tw + x] = 0; q.push(x, y); }
+  for (let h = 0; h < q.length; h += 2) {
+    const x = q[h], y = q[h + 1], dd = dist[y * tw + x];
+    for (const [ax, ay] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+      const nx = x + ax, ny = y + ay;
+      if (nx < 0 || ny < 0 || nx >= tw || ny >= thh || dist[ny * tw + nx] >= 0) continue;
+      dist[ny * tw + nx] = dd + 1; q.push(nx, ny);
+    }
+  }
+  // profundidad (px) en el centro de cada baldosa; el aire cuenta como -8
+  const depthAt = (x, y) => { x = clamp(x, 0, tw - 1); y = clamp(y, 0, thh - 1); const v = dist[y * tw + x]; return v === 0 ? -8 : v < 0 ? 200 : v * 16 - 8; };
+  const g = c.g, w = c.width, h = c.height, img = g.getImageData(0, 0, w, h), d = img.data;
+  const dark = hexRgb(lv.theme.ground.edge);
+  const deep = lv.theme.ground.pier ? 0.1 : 0.12;
+  for (let ty = 0; ty < thh; ty++) for (let tx = 0; tx < tw; tx++) {
+    if (lv.tiles[ty][tx] !== '#' || dist[ty * tw + tx] < 1) continue;
+    for (let yy = 0; yy < 16; yy++) {
+      const py = ty * 16 + yy; if (py >= h) break;
+      for (let xx = 0; xx < 16; xx++) {
+        const px0 = tx * 16 + xx;
+        // interpolación bilineal entre centros de baldosa
+        const fx = px0 / 16 - 0.5, fy = py / 16 - 0.5, ix = Math.floor(fx), iy = Math.floor(fy), ax = fx - ix, ay = fy - iy;
+        const dp = lerp(lerp(depthAt(ix, iy), depthAt(ix + 1, iy), ax), lerp(depthAt(ix, iy + 1), depthAt(ix + 1, iy + 1), ax), ay);
+        const s = clamp((dp - 9) / 60, 0, 1);
+        if (s <= 0) continue;
+        const lvq = s * 3, b = Math.floor(lvq), fr = lvq - b;
+        const k = Math.min(3, b + (fr * 16 > BAYER[(py & 3) * 4 + (px0 & 3)] ? 1 : 0));
+        if (!k) continue;
+        const i = (py * w + px0) * 4, f = k * deep;
+        d[i] += (dark[0] - d[i]) * f; d[i + 1] += (dark[1] - d[i + 1]) * f; d[i + 2] += (dark[2] - d[i + 2]) * f;
+      }
+    }
+  }
+  g.putImageData(img, 0, 0);
+}
+
+// sombra redonda bajo los pies (asienta a personajes y enemigos en el suelo)
+function groundShadow(g, x, y, w, a = 0.26) {
+  g.globalAlpha = a; g.fillStyle = '#0A0E1C';
+  const hw = Math.max(3, Math.round(w / 2));
+  g.fillRect(Math.round(x - hw), Math.round(y), hw * 2, 1);
+  g.fillRect(Math.round(x - hw + 2), Math.round(y) + 1, hw * 2 - 4, 1);
+  g.globalAlpha = 1;
+}
+
+// viñeta suave (más marcada de noche): enfoca la mirada en el centro
+const Vignette = {
+  cache: {},
+  get(a) {
+    const k = Math.round(a * 100); if (this.cache[k]) return this.cache[k];
+    const c = makeCanvas(W, H), g = c.g;
+    const grd = g.createRadialGradient(W / 2, H * 0.48, H * 0.42, W / 2, H * 0.48, W * 0.62);
+    grd.addColorStop(0, 'rgba(10,14,28,0)'); grd.addColorStop(1, `rgba(10,14,28,${a})`);
+    g.fillStyle = grd; g.fillRect(0, 0, W, H);
+    return (this.cache[k] = c);
+  }
+};
+
+// rayos de sol suaves (degradado real en lugar de franjas)
+function drawSoftRays(g, t, cols, alpha, originX = W * 0.5) {
+  g.save();
+  g.globalCompositeOperation = 'lighter';
+  for (let i = 0; i < cols.length; i++) {
+    const x = originX + (i - (cols.length - 1) / 2) * 70 + Math.sin(t * 0.3 + i * 1.7) * 18, lean = 0.28 + (i - cols.length / 2) * 0.05;
+    const grd = g.createLinearGradient(x, 0, x + 200 * lean, 210);
+    grd.addColorStop(0, rgba(cols[i], alpha * (0.7 + 0.3 * Math.sin(t * 0.8 + i)))); grd.addColorStop(1, rgba(cols[i], 0));
+    g.fillStyle = grd;
+    g.beginPath(); g.moveTo(x - 6, -2); g.lineTo(x + 8, -2); g.lineTo(x + 210 * lean + 22, 212); g.lineTo(x + 210 * lean - 14, 212); g.closePath(); g.fill();
+  }
+  g.restore();
 }
 
 
@@ -3176,8 +3635,14 @@ class ConceptCardScene {
 // =====================================================================
 //  MUNDO: nivel, física de plataformas, jugadora, compañeros, cámara, HUD
 // =====================================================================
-const BG_CACHE = {};
-function getBackground(theme) { return BG_CACHE[theme] || (BG_CACHE[theme] = buildBackground(theme)); }
+// fondos construidos (a doble resolución pesan más): se guardan solo los últimos
+const BG_CACHE = {}, BG_ORDER = [];
+function getBackground(theme) {
+  if (BG_CACHE[theme]) return BG_CACHE[theme];
+  BG_ORDER.push(theme);
+  while (BG_ORDER.length > 3) delete BG_CACHE[BG_ORDER.shift()];
+  return (BG_CACHE[theme] = buildBackground(theme));
+}
 
 const PHYS = {
   grav: 980, gravHold: 560, maxFall: 330, walk: 88, run: 138, accG: 1000, decG: 1500, accA: 720,
@@ -3346,6 +3811,8 @@ class Level {
       else if (t === 'H') paintLadder(g, x * TILE, y * TILE);
       else if (t === '|') paintRope(g, x * TILE, y * TILE);
     }
+    // volumen: la roca se oscurece hacia el interior (antes de las decoraciones)
+    shadeTerrain(this, c);
     for (const [x, y] of decoSpots) if (rng() < 0.42 && th.ground.deco.length) drawDeco(g, choice(th.ground.deco), x * TILE, y * TILE, rng, th);
     this.staticCv = c;
   }
@@ -3493,7 +3960,7 @@ class Level {
     switch (type) {
       case 'fireflies': if (r < 0.06) Particles.spawn({ x: cx + rand(0, W), y: cy + rand(40, H - 40), vx: rand(-8, 8), vy: rand(-8, 4), life: rand(2, 4), type: 'star', color: choice([PAL.sun, PAL.lime]), wob: 10, drag: 1 }); break;
       case 'pollen': if (r < 0.08) Particles.spawn({ x: cx + rand(0, W), y: cy + rand(0, H), vx: rand(5, 20), vy: rand(-5, 5), life: 3, type: 'dot', color: choice(['#FFF3A0', '#FFFFFF', '#FFD84A']), wob: 8, drag: 1 }); break;
-      case 'glints': if (r < 0.07) Particles.spawn({ x: cx + rand(0, W), y: cy + rand(0, H), life: 0.6, type: 'spark', color: PAL.sun, drag: 1 }); break;
+      case 'glints': if (r < 0.09) Particles.spawn({ x: cx + rand(0, W), y: cy + rand(0, H), life: 0.7, type: 'glint', color: choice([PAL.sun, '#FFFFFF']), drag: 1 }); break;
       case 'wind': if (r < 0.1) Particles.spawn({ x: cx - 4, y: cy + rand(0, H), vx: rand(60, 140), vy: rand(-6, 6), life: 5, type: 'leaf', color: choice(['#9CF5D8', '#FFFFFF', '#FF7FCF']), wob: 12, drag: 1 }); break;
       case 'mist': if (r < 0.1) Particles.spawn({ x: cx + rand(0, W), y: cy + H + 2, vx: rand(-6, 6), vy: rand(-18, -8), life: 5, type: 'bubble', size: 1, color: '#DFFBFF', wob: 6, drag: 1 }); break;
       case 'leaves': if (r < 0.08) Particles.spawn({ x: cx + rand(0, W), y: cy - 4, vx: rand(-15, 15), vy: rand(14, 28), life: 8, type: 'leaf', color: choice(['#66D66A', '#B6F35B', '#FF9D42']), wob: 20, drag: 1 }); if (r > 0.96) Particles.spawn({ x: cx + rand(0, W), y: cy + rand(60, H - 30), vx: rand(-8, 8), vy: rand(-6, 6), life: 3, type: 'star', color: PAL.lime, wob: 10, drag: 1 }); break;
@@ -3526,7 +3993,8 @@ class Level {
     const cx = cp.x + FX.ox, cy = cp.y + FX.oy;
     Level.camRef.x = cx; Level.camRef.y = cy;
     const th = this.theme;
-    g.drawImage(this.bg.sky, 0, 0);
+    g.drawImage(this.bg.sky, 0, 0, W, H);
+    drawSkyLive(g, this.bg, this.time);
     if (th.aurora) drawAurora(g, this.time);
     // capas de parallax; los elementos vivos se intercalan según su profundidad
     let prevP = -1;
@@ -3546,6 +4014,7 @@ class Level {
     this.drawDynamicTiles(g, cx, cy);
     // entidades de fondo
     for (const e of this.entities) if (e.layer === -1 && e.draw && this.onScreen(e, cx, cy)) drawEntity(g, e, cx, cy);
+    this.drawShadows(g, cx, cy);
     for (const e of this.entities) if (!e.layer && e.draw && this.onScreen(e, cx, cy)) drawEntity(g, e, cx, cy);
     if (this.ghost) this.ghost.draw(g, cx, cy);
     if (this.def.extraDraw) this.def.extraDraw(this, g, cx, cy);
@@ -3567,12 +4036,13 @@ class Level {
     const dk = this.darkness();
     Light.render(g, dk, th.tint || '#0B1030');
     // el sol y la luna no se apagan con el apagón: se redibujan casi con su brillo propio
-    if (th.sun && dk > 0.05 && th.sun.y < 0.35) {
+    if (th.sun && dk > 0.05 && th.sun.y < 0.35 && this.bg.sunImg) {
       const sn = th.sun, sx = sn.x * W, sy = sn.y * H;
-      g.globalAlpha = Math.min(1, dk * 2.2); pcircle(g, sx, sy, sn.r, sn.c);
-      if (sn.moon) { pcircle(g, sx + 4, sy - 3, sn.r - 2, shade(th.sky[0][1], 0)); pcircle(g, sx + 4, sy - 3, sn.r - 3, mix(th.sky[0][1], th.sky[1][1], 0.2)); }
+      g.globalAlpha = Math.min(1, dk * 2.2); g.drawImage(this.bg.sunImg, Math.round(sx - sn.r - 1), Math.round(sy - sn.r - 1));
       g.globalAlpha = 1;
     }
+    // viñeta suave: más marcada de noche y en cuevas
+    g.drawImage(Vignette.get(th.sun && !th.sun.moon ? 0.2 : 0.34), 0, 0);
     Particles.draw(g, cx, cy, true, 1);
     if (this.lensT > 0.01) this.drawLensOverlay(g, cx, cy);
     for (const e of this.entities) if (e.drawOverlay && this.onScreen(e, cx, cy, 40)) e.drawOverlay(g, cx, cy);
@@ -3617,18 +4087,46 @@ class Level {
       if (d) drawDynTile(g, sx, sy, d, this, x, y);
     }
   }
+  // sombras de contacto bajo Lía, los NPCs y los enemigos que pisan suelo
+  drawShadows(g, cx, cy) {
+    const p = this.player;
+    if (p.onGround && !p.inWater && !p.climbing) groundShadow(g, p.x + p.w / 2 - cx, p.y + p.h - cy, 12);
+    for (const e of this.entities) {
+      if (e.dead || e.hidden || !this.onScreen(e, cx, cy)) continue;
+      if (e instanceof NPC ? !!e.present : e instanceof Enemy && e.onGround) groundShadow(g, e.x + e.w / 2 - cx, e.y + e.h - cy, Math.min(20, e.w + 4));
+    }
+  }
   drawWater(g, cx, cy) {
     const x0 = Math.max(0, Math.floor(cx / TILE)), x1 = Math.min(this.w - 1, Math.floor((cx + W) / TILE));
     const y0 = Math.max(0, Math.floor(cy / TILE)), y1 = Math.min(this.h - 1, Math.floor((cy + H) / TILE));
-    const [c1, c2] = this.theme.water;
+    const [c1, c2] = this.theme.water, t = this.time;
     for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) {
       if (this.tiles[y][x] !== '~') continue;
       const sx = x * TILE - cx, sy = y * TILE - cy;
-      const surface = this.tile(x, y - 1) !== '~';
-      g.globalAlpha = 0.72; rect(g, sx, sy, 16, 16, c1); g.globalAlpha = 1;
+      let depth = 0; while (depth < 4 && this.tile(x, y - depth - 1) === '~') depth++;
+      const surface = depth === 0;
+      // más profundo = más opaco y oscuro
+      g.globalAlpha = 0.66 + depth * 0.06; rect(g, sx, sy, 16, 16, depth ? shade(c1, -0.07 * depth) : c1); g.globalAlpha = 1;
       if (surface) {
-        for (let i = 0; i < 16; i++) { const wy = Math.round(Math.sin((x * 16 + i) * 0.3 + this.time * 3) * 1.2); rect(g, sx + i, sy + 1 + wy, 1, 2, c2); }
-      } else if ((x + y + Math.floor(this.time * 2)) % 7 === 0) px(g, sx + 5, sy + 8, c2);
+        g.globalAlpha = 0.28; rect(g, sx, sy + 3, 16, 3, c2); g.globalAlpha = 1;
+        for (let i = 0; i < 16; i++) { const wy = Math.round(Math.sin((x * 16 + i) * 0.3 + t * 3) * 1.2); rect(g, sx + i, sy + 1 + wy, 1, 2, c2); }
+        // destellos de medio píxel que corren por la superficie
+        g.fillStyle = '#FFFFFF';
+        for (let i = 0; i < 2; i++) {
+          const a = Math.sin(t * 2.6 + x * 1.7 + i * 2.4);
+          if (a < 0.55) continue;
+          g.globalAlpha = (a - 0.55) * 2;
+          const gx = (x * 7 + i * 9 + Math.floor(t * 5)) % 14;
+          g.fillRect(sx + gx, sy + 1.5 + Math.round(Math.sin((x * 16 + gx) * 0.3 + t * 3) * 1.2), 2.5, 0.5);
+        }
+        g.globalAlpha = 1;
+      } else {
+        // cáusticas: líneas de luz que ondulan bajo el agua
+        g.globalAlpha = 0.1 / depth;
+        for (let k = 0; k < 2; k++) rect(g, sx + (k * 7 + Math.floor(t * 6) + x * 3) % 14, sy + (k * 9 + y * 5) % 15, 3, 1, c2);
+        g.globalAlpha = 1;
+        if ((x + y + Math.floor(t * 2)) % 7 === 0) px(g, sx + 5, sy + 8, c2);
+      }
     }
   }
   drawLensOverlay(g, cx, cy) {
@@ -3747,13 +4245,18 @@ function drawAurora(g, t) {
 function themeHorizon(th) { const sea = (th.layers || []).find(L => L.fn === 'sea'); return sea ? sea.o.y : 190; }
 function wrapX(x, span) { return ((x % span) + span) % span; }
 const LIVE_BG = {
-  sunrays: { p: 0, draw(g, lv, cx, cy, oy, t) { g.globalAlpha = 0.07; for (let i = 0; i < 6; i++) { const x = 60 + i * 80 + Math.sin(t * 0.3 + i) * 20; for (let y = 0; y < 200; y += 2) rect(g, x + y * 0.3, y, 14, 2, '#FFFFFF'); } g.globalAlpha = 1; } },
-  prismrays: { p: 0, draw(g, lv, cx, cy, oy, t) { g.globalAlpha = 0.08; for (let i = 0; i < 7; i++) { const c = hsl(i * 50 + t * 20, 90, 65); const x = 240 + Math.cos(i * 0.9 + t * 0.1) * 30; for (let y = 0; y < 200; y += 3) rect(g, x + (i - 3) * y * 0.4, 40 + y, 6, 3, c); } g.globalAlpha = 1; } },
+  // rayos de luz con degradado real (detalle fino en modo HD)
+  sunrays: { p: 0, draw(g, lv, cx, cy, oy, t) { drawSoftRays(g, t, ['#FFF3C0', '#FFFFFF', '#FFE08A', '#FFFFFF', '#FFF3C0', '#FFE8A0'], 0.09, W * (lv.theme.sun ? lv.theme.sun.x : 0.5) - cx * 0.02 % 40); } },
+  prismrays: { p: 0, draw(g, lv, cx, cy, oy, t) { const cols = []; for (let i = 0; i < 7; i++) cols.push(hsl(i * 50 + t * 20, 90, 65)); drawSoftRays(g, t, cols, 0.1, W * 0.5); } },
   clouds: {
+    // nubes altas con volumen (pre-renderizadas) que derivan despacio
     p: 0.03, draw(g, lv, cx, cy, oy, t) {
+      const th = lv.theme, top = skyColorAt(th, 0.15);
+      const tones = lv._cloudTones || (lv._cloudTones = [mix(top, '#FFFFFF', 0.45), mix(top, '#FFFFFF', 0.7), '#F4F8FF', '#FFFFFF']);
       for (let i = 0; i < 5; i++) {
+        const spr = CloudSprites.get(i + 1, i % 2 ? 0.55 : 0.75, tones);
         const x = wrapX(i * 137 + t * (3 + i) - cx * 0.03, W + 120) - 60, y = 18 + i * 15 + oy;
-        g.globalAlpha = 0.85; pcircle(g, x, y, 8, '#FFFFFF'); pcircle(g, x + 9, y + 2, 6, '#FFFFFF'); pcircle(g, x - 9, y + 3, 5, '#FFFFFF'); rect(g, x - 14, y + 4, 30, 3, '#E8F0FF'); g.globalAlpha = 1;
+        g.globalAlpha = 0.94; g.drawImage(spr, Math.round(x - spr.width / 2), Math.round(y - spr.height * 0.6)); g.globalAlpha = 1;
       }
     }
   },
@@ -3797,7 +4300,19 @@ const LIVE_BG = {
       }
     }
   },
-  crystalGlow: { p: 0.2, draw(g, lv, cx, cy, oy, t) { for (let i = 0; i < 8; i++) { const x = wrapX(i * 67 - cx * 0.2, W), y = 60 + (i * 37) % 120 + oy + Math.sin(t * 0.6 + i) * 4; g.globalAlpha = 0.18 + Math.sin(t * 1.2 + i) * 0.12; pcircle(g, x, y, 2, i % 2 ? PAL.violet : PAL.pink); g.globalAlpha = 1; } } },
+  crystalGlow: {
+    // resplandores suaves de cristales lejanos (degradado real, detalle fino en HD)
+    p: 0.2, draw(g, lv, cx, cy, oy, t) {
+      g.save(); g.globalCompositeOperation = 'lighter';
+      for (let i = 0; i < 8; i++) {
+        const x = wrapX(i * 67 - cx * 0.2, W), y = 60 + (i * 37) % 120 + oy + Math.sin(t * 0.6 + i) * 4, a = 0.22 + Math.sin(t * 1.2 + i) * 0.12;
+        const grd = g.createRadialGradient(x, y, 0, x, y, 9);
+        grd.addColorStop(0, rgba(i % 2 ? PAL.violet : PAL.pink, a)); grd.addColorStop(1, rgba(i % 2 ? PAL.violet : PAL.pink, 0));
+        g.fillStyle = grd; g.fillRect(x - 9, y - 9, 18, 18);
+      }
+      g.restore();
+    }
+  },
   lanterns: {
     // farolillos del festival que suben lentamente al cielo
     p: 0.35, draw(g, lv, cx, cy, oy, t) {
@@ -8663,6 +9178,7 @@ const Game = {
     }
     if (Save.flash > 0) { ctx.globalAlpha = Math.min(1, Save.flash); icon(ctx, 'star', W - 12, H - 12); ctx.globalAlpha = 1; }
     Trans.draw(ctx);
+    HD.present();
   },
   newGame() {
     const settings = G.save.settings, teacher = G.save.teacherUnlocked, lab = G.save.labUnlocked;
@@ -8821,7 +9337,8 @@ class TitleScene {
     if (Math.random() < 0.05) Particles.spawn({ x: rand(0, W), y: -4, vx: rand(-10, 10), vy: rand(20, 40), life: 6, type: 'leaf', color: choice([PAL.pink, PAL.sun, PAL.teal, PAL.lime]), wob: 20, screen: true });
   }
   draw(g) {
-    g.drawImage(this.bg.sky, 0, 0);
+    g.drawImage(this.bg.sky, 0, 0, W, H);
+    drawSkyLive(g, this.bg, this.t);
     this.bg.layers.forEach((L, i) => { const ox = -Math.round((this.t * 8 * L.p * 3) % 960); g.drawImage(L.c, ox, 0); g.drawImage(L.c, ox + 960, 0); });
     // molino, río y sol animados
     rect(g, 0, 214, W, 56, '#2A2560'); rect(g, 0, 214, W, 2, '#6A5AA0');
@@ -8953,18 +9470,18 @@ class SettingsScene {
     const vol = (key, label) => {
       row(label);
       for (let i = 0; i <= 10; i++) { const id = 'v' + key + i; const on = Math.round(S[key] * 10) >= i && i > 0; if (UI.btn(g, id, 230 + i * 17, y, 15, 12, i === 0 ? '0' : '', { color: on ? PAL.lime : '#3E4C8A', bg: on ? '#2A5A1A' : undefined })) { S[key] = i / 10; AudioSys.applyVolumes(); AudioSys.sfx('click'); } }
-      y += 16;
+      y += 15;
     };
     const tog = (key, label, desc) => {
       row(label);
       if (UI.btn(g, 't' + key, 330, y, 90, 12, S[key] ? 'SÍ' : 'NO', { color: S[key] ? PAL.lime : PAL.coral })) { S[key] = !S[key]; AudioSys.sfx('click'); if (key === 'pixelPerfect') resize(); if (key === 'assist' && G.run.level && G.run.level.player) G.run.level.player.refreshCells(); }
-      y += 16;
+      y += 15;
     };
     const cyc = (key, label, opts, names) => {
       row(label);
       const i = opts.indexOf(S[key]);
       if (UI.btn(g, 'c' + key, 330, y, 90, 12, names[i < 0 ? 0 : i], { color: PAL.sun })) { S[key] = opts[(i + 1) % opts.length]; AudioSys.sfx('click'); }
-      y += 16;
+      y += 15;
     };
     vol('musicVol', 'Música');
     vol('sfxVol', 'Efectos de sonido');
@@ -8977,6 +9494,12 @@ class SettingsScene {
     tog('noTimer', 'Modo sin tiempo (sin prisas)');
     tog('confidence', 'Preguntar "¿qué tan seguro estás?"');
     tog('pixelPerfect', 'Escalado de píxel entero');
+    // gráficos HD: filtro en la GPU que redondea los bordes con píxeles más finos
+    row('Gráficos HD (bordes y curvas finos)');
+    if (UI.btn(g, 'thd', 330, y, 90, 12, !HD.ok ? 'NO DISPONIBLE' : S.hd !== false && !HD.autoOff ? 'SÍ' : 'NO', { color: !HD.ok ? '#8A8FB0' : S.hd !== false && !HD.autoOff ? PAL.lime : PAL.coral }) && HD.ok) {
+      S.hd = HD.autoOff ? true : S.hd === false; HD.autoOff = false; HD.apply(); AudioSys.sfx('click');
+    }
+    y += 15;
     tog('assist', 'Ayuda de combate (+2 células, jefes lentos)');
     if (UI.btn(g, 'remap', 56, y + 4, 150, 14, 'REMAPEAR TECLAS', { color: PAL.violet })) Scenes.push(new RemapScene());
     if (UI.btn(g, 'sback', 330, y + 4, 90, 14, 'VOLVER', { color: PAL.teal, primary: true })) this.close();
@@ -14739,6 +15262,7 @@ function frame(now) {
 
 function boot() {
   Save.loadSettingsOnly();
+  HD.init();
   Font.build(); Light.init();
   buildAllSprites();
   resize();
@@ -14754,7 +15278,7 @@ function boot() {
 
 // Interfaz mínima para depuración y pruebas automáticas
 window.LL = {
-  G, Game, Scenes, LEVELS, Save, Input, UI, Cut, flag, setFlag, CODEX, QUESTS, CHALLENGES, REGIONS, makePuzzleScene, Particles, AudioSys, BOSSES, makeEnemy, unlocked, MapArt,
+  G, Game, Scenes, HD, LEVELS, buildLevel: (k, sp) => new Level(k, sp), Save, Input, UI, Cut, flag, setFlag, CODEX, QUESTS, CHALLENGES, REGIONS, makePuzzleScene, Particles, AudioSys, BOSSES, makeEnemy, unlocked, MapArt,
   cfg: { CFG_FEST_BOOT, CFG_PUERTO_ROUTE, CFG_PUERTO_CHAIN, CFG_PUERTO_CARRERA, CFG_VALLE_RUTA, CFG_VALLE_SACOS, CFG_VALLE_MOLINO, CFG_SOL_FLOW, CFG_SOL_FLORES, CFG_SOL_SENSOR, CFG_SOL_MATRIZ, CFG_SOL_NUBE, CFG_AERIS_MOLINO, CFG_AERIS_VIENTO, CFG_AERIS_BUCLE, CFG_HYD_FORJA, CFG_HYD_RIO, CFG_HYD_DUP, cfgBioSorter, CFG_BIO_LISTA, CFG_BIO_MERCADO, CFG_GEA_FSM, CFG_GEA_AISLADA, CFG_GEA_CRISTAL, CFG_H2_PIPE, CFG_H2_BARCO, CFG_BAT_SORT, CFG_BAT_SEARCH, CFG_BAT_BETA, CFG_BAT_BUG, CFG_PRISMA_MG, CFG_PRISMA_FEST, CFG_PRISMA_SINSOL, pzPhaseCfg },
   A,
   S: { TitleScene, PauseScene, SettingsScene, RemapScene, CodexScene, TeacherScene, TallerScene, QuestLogScene, MasteryScene, MapScene, LabScene, ControlsScene, BlueprintScene, ConfirmScene, SparkEditorScene, ShieldRuleScene, Shot, RegionBoss }

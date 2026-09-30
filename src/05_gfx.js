@@ -186,31 +186,35 @@ const Particles = {
   draw(g, cx, cy, screen = false, layer = 0) {
     for (const p of this.list) {
       if (p.screen !== screen || p.layer !== layer) continue;
-      const x = Math.round(p.x - (screen ? 0 : cx)), y = Math.round(p.y - (screen ? 0 : cy));
+      // posición en medios píxeles: el movimiento de chispas y hojas se ve más suave
+      const hx = Math.round((p.x - (screen ? 0 : cx)) * 2) / 2, hy = Math.round((p.y - (screen ? 0 : cy)) * 2) / 2;
+      const x = Math.round(hx), y = Math.round(hy);
       if (x < -20 || x > W + 20 || y < -20 || y > H + 20) continue;
       const t = p.life / p.max;
       const col = p.color2 ? mix(p.color2, p.color, t) : p.color;
       switch (p.type) {
-        case 'dot': rect(g, x, y, p.size, p.size, col); break;
-        case 'fade': g.globalAlpha = t; rect(g, x, y, p.size, p.size, col); g.globalAlpha = 1; break;
+        case 'dot': g.fillStyle = col; g.fillRect(hx, hy, p.size, p.size); break;
+        case 'fade': g.globalAlpha = t; g.fillStyle = col; g.fillRect(hx, hy, p.size, p.size); g.globalAlpha = 1; break;
+        // destello fino: centro de un píxel y brazos de medio píxel
+        case 'glint': g.globalAlpha = Math.min(1, t * 2); g.fillStyle = col; g.fillRect(hx, hy, 1, 1); g.fillRect(hx - 1, hy + 0.5, 3, 0.5); g.fillRect(hx + 0.5, hy - 1, 0.5, 3); g.globalAlpha = 1; break;
         case 'spark':
           rect(g, x, y, 1, 1, PAL.white);
           if (t > 0.4) { rect(g, x - 1, y, 1, 1, col); rect(g, x + 1, y, 1, 1, col); rect(g, x, y - 1, 1, 1, col); rect(g, x, y + 1, 1, 1, col); }
           break;
-        case 'leaf': rect(g, x, y, 2, 1, col); if (Math.sin(Time.t * 6 + p.ph) > 0) rect(g, x + 1, y - 1, 1, 1, shade(col, 0.2)); break;
+        case 'leaf': g.fillStyle = col; g.fillRect(hx, hy, 2, 1); if (Math.sin(Time.t * 6 + p.ph) > 0) { g.fillStyle = shade(col, 0.2); g.fillRect(hx + 1, hy - 1, 1, 1); } break;
         case 'bubble': pring(g, x, y, p.size, col); px(g, x - 1, y - 1, PAL.white); break;
         case 'ring': g.globalAlpha = t; pring(g, x, y, Math.round((1 - t) * p.size), col); g.globalAlpha = 1; break;
         case 'text': drawText(g, p.text, x, y, col, { align: 'center', outline: '#10162B' }); break;
         case 'bit': drawText(g, p.text || (p.ph > 3 ? '1' : '0'), x, y, col); break;
         case 'star': rect(g, x, y, 1, 1, col); if ((Time.frame >> 3) % 2) { rect(g, x - 1, y, 3, 1, col); rect(g, x, y - 1, 1, 3, col); } break;
-        case 'rain': rect(g, x, y, 1, 4, col); break;
-        case 'snow': rect(g, x, y, p.size, p.size, col); break;
+        case 'rain': g.fillStyle = col; g.fillRect(hx, hy, 0.5, 4); break;
+        case 'snow': g.fillStyle = col; g.fillRect(hx, hy, p.size, p.size); break;
       }
     }
   }
 };
 
-// ---------- iluminación: oscuridad con fuentes de luz (a media resolución = píxeles gruesos) ----------
+// ---------- iluminación: oscuridad con fuentes de luz (a resolución de juego: degradados finos) ----------
 // haz giratorio de un faro: cuña de luz con degradado (se acorta cuando apunta hacia la cámara)
 function drawLightBeam(g, x, y, a, len, spread, color, alpha) {
   const dx = Math.cos(a), L = len * (0.3 + 0.7 * Math.abs(dx));
@@ -222,7 +226,7 @@ function drawLightBeam(g, x, y, a, len, spread, color, alpha) {
 }
 const Light = {
   cv: null, lights: [],
-  init() { this.cv = makeCanvas(W / 2, H / 2); },
+  init() { this.cv = makeCanvas(W, H); },
   begin() { this.lights.length = 0; },
   add(x, y, r, a = 1, color = null) { this.lights.push({ x, y, r, a, color }); },
   render(g, darkness, tint = '#0B1030') {
@@ -233,7 +237,7 @@ const Light = {
     lg.fillStyle = tint; lg.globalAlpha = darkness; lg.fillRect(0, 0, L.width, L.height); lg.globalAlpha = 1;
     lg.globalCompositeOperation = 'destination-out';
     for (const l of this.lights) {
-      const x = l.x / 2, y = l.y / 2, r = l.r / 2;
+      const x = l.x, y = l.y, r = l.r;
       const grd = lg.createRadialGradient(x, y, 0, x, y, r);
       grd.addColorStop(0, `rgba(0,0,0,${l.a})`); grd.addColorStop(0.55, `rgba(0,0,0,${l.a * 0.7})`); grd.addColorStop(1, 'rgba(0,0,0,0)');
       lg.fillStyle = grd; lg.beginPath(); lg.arc(x, y, r, 0, Math.PI * 2); lg.fill();
