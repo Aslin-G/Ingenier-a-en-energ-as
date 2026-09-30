@@ -531,7 +531,8 @@ class Level {
       const e = it.e, lines = it.lines;
       const w = Math.max(...lines.map(l => textW(stripMarkup(l)))) + 8, h = lines.length * 10 + 5;
       const ax = e.x + (e.w || 16) / 2 - cx, ay = e.y - cy;
-      const r = Labels.place(ax - w / 2, ay - h - 6, w, h);
+      const r = Labels.place(ax - w / 2, ay - h - 6, w, h, { optional: true });
+      if (!r) continue;
       const lx = clamp(Math.round(ax), r.x + 2, r.x + w - 3), ly = r.y + h < ay ? r.y + h : r.y;
       if (Math.abs(r.y + h + 6 - ay) > 3 || Math.abs(r.x + w / 2 - ax) > 3) { const ty = r.y + h < ay ? ay - 1 : ay + (e.h || 16); for (let yy = Math.min(ly, ty); yy < Math.max(ly, ty); yy += 2) px(g, lx, yy, PAL.teal); }
       panel(g, r.x, r.y, w, h, { border: PAL.teal, bg: 'rgba(5,30,40,0.92)' });

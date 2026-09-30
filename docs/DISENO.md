@@ -28,6 +28,10 @@ Este documento resume cómo se llevaron al juego la **especificación técnica y
 | **Jefes que ejecutan un algoritmo** | Cada isla termina con un guardián cuyo comportamiento ES un programa del concepto de la isla. Con la Lente Debug se lee su código con la línea actual resaltada y sus variables en vivo: leer el algoritmo permite predecir el siguiente ataque. |
 | **El parche a mitad de combate** | Al perder la mitad de la vida, el jefe reescribe su código. Una pregunta rápida (PARCHE) sobre ese código lo ralentiza si se acierta a la primera: comprender el programa es una ventaja jugable. |
 | **La Lente como arma de estudio** | Con la Lente activa, cada golpe es crítico (+1). Mirar «por dentro» del mundo se recompensa también en combate. |
+| **Cerraduras de código: predecir y golpear** | Leer y trazar código antes de escribirlo es de lo más eficaz para aprender a programar. En cada isla hay cofres con un programa corto: se predice el resultado y se golpea el cristal correcto con el sable. Las opciones incorrectas son errores típicos con nombre (índice desde 1, una vuelta de menos, las dos ramas del SI, el parámetro que «cambia» la variable de fuera, el orden de un pipeline...). Fallar ejecuta la traza paso a paso y trae otra variante: no se puede adivinar por descarte. |
+| **Cartas con repaso espaciado** | La práctica de recuperación espaciada (recordar justo cuando empieza el olvido) fija mejor que repetir seguido. Cada concepto es una carta con cajas de Leitner (10 min, 1, 3, 7 y 21 días); acertar la sube y aleja el repaso, fallar la baja y lo acerca. Las cartas de programación usan preguntas de traza generadas; las de energía, preguntas con la explicación de cada error. Combo, racha de días y colección (NUEVA → ORO) dan el enganche. |
+| **Reto del día de toda la clase** | Un reto del banco elegido por la fecha: todo el grupo juega el mismo y, al superarlo, ve un código de 4 cifras que el docente puede comprobar en su menú. |
+| **La forja: mejoras que son conceptos** | Siete mejoras del Lumisable nombradas como código (*alcance ← alcance + 5*, *Filtro SI*, *bucle de energía*, *pulso()*, *lista de células*, *estado GUARDIA*, *tajo ordenado*). Se pagan con núcleos que se ganan aprendiendo (cerraduras, repaso, reto del día) y se forjan respondiendo una pregunta del concepto: el progreso del personaje depende de lo que se entiende. |
 
 ## 3. Bucle de juego
 
@@ -124,7 +128,10 @@ Reglas de diseño de todos los jefes: **cada ataque se anuncia** (signo «!», m
 
 ## 7. Dirección de arte y sonido
 
-- **Resolución interna de 480×270**, escalada con píxel nítido (entero opcional). El lienzo real es de 960×540: el pixel art se ve igual y algunas pantallas (el mapa) dibujan detalles a doble resolución.
+- **Resolución interna de 480×270**, escalada con píxel nítido (entero opcional). El lienzo real es de 960×540: cada píxel de juego es un bloque de 2×2, y lo que necesita más finura (cielos, luces, el mapa, destellos) se dibuja a doble resolución.
+- **Modo HD**: una capa WebGL muestra el mismo fotograma pasado por **Scale2x** aplicado a los bloques de 2×2 (con tolerancia para los degradados): las escaleras de los bordes se redondean con píxeles de la mitad de tamaño, de modo que sprites, textos, círculos y diagonales doblan su resolución sin dejar de ser pixel art. Los bloques con detalle doble pasan intactos. Sin WebGL, o si el equipo baja de ~35 fps, se vuelve al dibujo normal; se puede desactivar en Ajustes.
+- **Fondos con profundidad**: cielos con degradado continuo y estrellas de medio píxel que titilan; perspectiva aérea (cada capa lejana se funde con el cielo, recibe un borde iluminado y niebla baja); montañas facetadas con nieve, lomas con matorrales, copas, nubes y cuevas sombreadas como esferas unidas con tramado ordenado; rayos de luz y resplandores con degradado real.
+- **Terreno, luz y agua**: la roca se oscurece hacia su interior (campo de distancias al borde con tramado), sombras de contacto bajo personajes y enemigos, iluminación a resolución de juego, viñeta suave, agua con profundidad, destellos y cáusticas, y partículas en medios píxeles.
 - **Mapa ilustrado**: once ilustraciones procedurales, una por isla y fiel a su tema (faro y muelles, molino y cultivos, torre solar, islas flotantes con turbinas, cascadas, selva y biodigestores, volcán y planta geotérmica, tanques de hidrógeno, rascacielos-batería, torre-prisma, Faro Aurora), con tres estados que cuentan la historia: **por descubrir** (niebla), **apagada** (desaturada, sin luces) y **restaurada** (color, luces y animación). Océano con bajíos, rosa de los vientos, nubes y gaviotas; rutas marítimas punteadas; insignias de jefe; placas superiores y un panel inferior de información que nunca se solapan.
 - **Paleta propia** con variantes por isla: puerto al atardecer, valle verde, Solaria dorada, Aeris celeste, Hydria turquesa, BioLoop frondoso, Gea volcánica, Bahía H2 industrial, Ciudad Batería de neón, Prisma iridiscente y el Faro blanco.
 - **Todo procedural**: sprites con animaciones (correr, saltar, planear, nadar, trepar), retratos con expresiones, *tiles*, fondos parallax de varias capas, partículas, iluminación a media resolución con luces de color y transiciones en diamante.
@@ -132,7 +139,7 @@ Reglas de diseño de todos los jefes: **cada ataque se anuncia** (signo «!», m
 
 ## 8. Arquitectura técnica
 
-- **Un único HTML autocontenido** generado a partir de 31 módulos (`src/NN_*.js`) concatenados dentro de una función autoejecutable. Sin dependencias, sin red y sin recursos externos.
+- **Un único HTML autocontenido** generado a partir de 36 módulos (`src/NN_*.js`) concatenados dentro de una función autoejecutable. Sin dependencias, sin red y sin recursos externos.
 - **Pila de escenas** (`push`/`pop` con `onEnter`/`onExit`); las escenas transparentes dibujan encima de la anterior.
 - **Bucle de paso fijo** (1/60 s) con dibujo por frame e **interpolación**: el dibujo mezcla el estado anterior y el actual según el tiempo sobrante, así el movimiento es fluido también en pantallas de 120/144 Hz.
 - **Cámara anclada al píxel de Lía**: el escenario y la protagonista avanzan en el mismo fotograma, sin el vaivén de 1 px que aparece al redondear por separado cámara y sprite. El contacto con el suelo usa bordes exclusivos, de modo que Lía no alterna entre «caer» y «reposo» cuando está quieta.
@@ -155,5 +162,8 @@ Las pruebas de `tools/tests/` se ejecutan con Playwright y Chromium sin interfaz
 - **walk**: recorrido automático de la campaña completa. Todas las islas quedan restauradas, se obtienen las 11 habilidades y el juego llega al epílogo y a los créditos.
 - **menus**: capturas de todas las pantallas de menú para revisarlas a ojo.
 - **map**: las 11 ilustraciones existen en sus tres estados, el mapa se dibuja con distinto progreso, el viaje llega a la isla elegida e `index.html` es idéntico a `lumina_loop.html`.
+- **hd**: el filtro WebGL compila (con SwiftShader), la capa HD cubre exactamente el lienzo sin interceptar clics, y el ajuste la apaga; en navegadores automatizados queda apagada salvo con `#hd=1`.
+- **locks**: 3000 preguntas de cerradura generadas son válidas (una sola correcta, tres opciones distintas, traza coherente y solo caracteres de la fuente); cada isla tiene cofres sobre suelo firme; fallar abre la traza y trae otra variante; acertar abre el cofre, da núcleos y se guarda.
+- **cards**: preguntas de las 19 cartas, calendario de Leitner con reloj simulado, racha de días, repaso completo desde el mapa con teclado, reto del día (determinista y con recompensa una vez) y forja (fallar no gasta núcleos; acertar cambia el combate).
 - **Publicación**: el flujo `.github/workflows/publicar.yml` compila y publica en GitHub Pages en cada envío.
 - **bosses**: el Lumisable depura enemigos con tajos, pulso, parada y rebote, y la recarga funciona; los 10 jefes ejecutan su programa, son alcanzables con un tajo normal en su ventana vulnerable, cambian de fase con el parche, se depuran, dan su recompensa y devuelven al mapa; la salida de una isla lleva a su jefe.

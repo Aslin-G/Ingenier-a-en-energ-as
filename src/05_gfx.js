@@ -307,6 +307,8 @@ const Labels = {
       const r = { x: fx(x + dx), y: fy(y + dy), w, h };
       if (!this.hit(r)) { this.rects.push(r); return r; }
     }
+    // sin hueco libre: las etiquetas opcionales (Lente) no se dibujan antes que montarse
+    if (o.optional) return null;
     const r = { x: fx(x), y: fy(y), w, h }; this.rects.push(r); return r;
   }
 };

@@ -9,13 +9,14 @@
     "test:puzzles": "node tools/tests/puzzles.js",
     "test:walk": "node tools/tests/walk.js",
     "test:menus": "node tools/tests/menus.js",
-    "test": "node tools/tests/glyphs.js && node tools/tests/levels.js && node tools/tests/puzzles.js && node tools/tests/presets.js && node tools/tests/bosses.js && node tools/tests/map.js && node tools/tests/locks.js && node tools/tests/cards.js && node tools/tests/walk.js && node tools/tests/menus.js",
+    "test": "node tools/tests/glyphs.js && node tools/tests/levels.js && node tools/tests/puzzles.js && node tools/tests/presets.js && node tools/tests/bosses.js && node tools/tests/map.js && node tools/tests/hd.js && node tools/tests/locks.js && node tools/tests/cards.js && node tools/tests/walk.js && node tools/tests/menus.js",
     "test:map": "node tools/tests/map.js",
     "test:bosses": "node tools/tests/bosses.js",
     "test:glyphs": "node tools/tests/glyphs.js",
     "test:presets": "node tools/tests/presets.js",
     "test:locks": "node tools/tests/locks.js",
-    "test:cards": "node tools/tests/cards.js"
+    "test:cards": "node tools/tests/cards.js",
+    "test:hd": "node tools/tests/hd.js"
   },
   "license": "UNLICENSED"
 }

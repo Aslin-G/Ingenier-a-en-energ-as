@@ -348,7 +348,9 @@ class LockCrystal extends Entity {
     this.y = this.baseY + Math.round(Math.sin(this.t * 2 + this.i) * 2);
     if (this.state === 'gone' || this.state === 'ok') { this.fx += dt; if (this.fx > 0.6) this.dead = true; }
   }
-  onHit() { if (this.state !== 'idle' || this.lock.busy) return false; this.lock.choose(this); return true; }
+  // solo un tajo directo elige (el pulso cargado atraviesa los cristales sin escoger ninguno)
+  // con enemigos cerca los tajos no eligen (así no se escoge sin querer en plena pelea; E sigue eligiendo)
+  onHit(h) { if (this.state !== 'idle' || this.lock.busy || (h && h.kind === 'pulse') || (h && h.src === 'saber' && this.lv.dangerNear(90))) return false; this.lock.choose(this); return true; }
   canInteract() { return this.state === 'idle' && !this.lock.busy && !this.lock.solved; }
   interactRect() { return { x: this.x - 6, y: this.y - 4, w: this.w + 12, h: 40 }; }
   interact() { this.lock.choose(this); }

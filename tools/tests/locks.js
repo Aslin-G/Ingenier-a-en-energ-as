@@ -75,6 +75,8 @@ const ok = (cond, msg) => { console.log((cond ? '  ok   ' : '  FALLO') + ' ' + m
   const near = await p.evaluate(() => { const lv = LL.G.run.level; return { panel: !!lv.lockPanel, near: lv.lockPanel ? lv.lockPanel.near : 0 }; });
   ok(near.panel && near.near > 0.9, 'al acercarse aparece el holograma con el código');
   await p.screenshot({ path: outDir + '/locks_panel.png' });
+  const pulse = await p.evaluate(() => { const lock = LL.G.run.level.lockPanel; const c = lock.crystals[0]; const r = c.onHit({ dmg: 3, kind: 'pulse' }); return { r, state: c.state, top: LL.Scenes.top().constructor.name }; });
+  ok(pulse.r === false && pulse.state === 'idle' && pulse.top !== 'TraceScene', 'el pulso cargado atraviesa los cristales sin elegir ninguno');
   const wrong = await p.evaluate(() => {
     const lv = LL.G.run.level, lock = lv.lockPanel, q0 = lock.q;
     const c = lock.crystals.find(c => !c.opt.ok);

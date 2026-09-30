@@ -62,8 +62,16 @@ const Game = {
     if (!(Scenes.top() && Scenes.top().hideToasts)) Toast.draw(ctx);
     TouchPad.draw(ctx);
     // en puzzles y menús los resultados ya se leen en pantalla: los subtítulos de sonido no tapan la interfaz
+    // subtítulos de sonido: bajo el cartel de la isla, la barra del jefe o el holograma, sin chocar con los avisos
     if (G.save.settings.captions && AudioSys.captions.length && !(Scenes.top() && Scenes.top().hideToasts)) {
-      AudioSys.captions.forEach((c, i) => { const w = textW(c.text) + 8; ctx.globalAlpha = Math.min(1, c.t * 2); rect(ctx, W / 2 - w / 2, 24 + i * 12, w, 11, 'rgba(0,0,0,0.6)'); drawText(ctx, c.text, W / 2, 26 + i * 12, '#C9D2F0', { align: 'center' }); ctx.globalAlpha = 1; });
+      const top = Toast.top() + 2; let cy = top;
+      AudioSys.captions.forEach(c => {
+        const w = textW(c.text) + 8, x = W / 2 - w / 2;
+        const hit = Toast.list.some((t, k) => { const tw = textW(t.text) + 12, ty = t.y != null ? t.y : top + k * 18; return x + w > W - tw - 6 && cy < ty + 15 && cy + 11 > ty; });
+        if (hit) cy = Math.max(cy, top + Toast.list.length * 18);
+        ctx.globalAlpha = Math.min(1, c.t * 2); rect(ctx, x, cy, w, 11, 'rgba(0,0,0,0.6)'); drawText(ctx, c.text, W / 2, cy + 2, '#C9D2F0', { align: 'center' }); ctx.globalAlpha = 1;
+        cy += 12;
+      });
     }
     if (Save.flash > 0) { ctx.globalAlpha = Math.min(1, Save.flash); icon(ctx, 'star', W - 12, H - 12); ctx.globalAlpha = 1; }
     Trans.draw(ctx);
@@ -136,6 +144,8 @@ const touchOff = () => TouchPad.visible ? 32 : 0;
 function drawHUD(g, lv) {
   const p = lv.player;
   if (lv.def.noHud) return;
+  // con un diálogo abierto arriba, el HUD se retira (no asoma cortado bajo el cuadro)
+  if (Dlg.box && Dlg.box.atTop) return;
   // ancho de la zona de células (crece con los fragmentos de los jefes)
   const cellsW = Math.max(30, p.maxCells * 10);
   const abX = 8 + cellsW;
@@ -610,10 +620,14 @@ class MapScene {
     for (const i of order) drawIslandArt(g, REGIONS[i], i, t, this.sel === i && !this.travel);
     for (const i of order) this.drawBadge(g, REGIONS[i], i);
     // nombres bajo las islas conocidas (la elegida lleva su cartel)
+    const ban = this.travel ? null : this.nameBannerRect(REGIONS[this.sel]);
     for (const i of order) {
       const r = REGIONS[i];
       if (!unlocked(r.key) || this.travel || i === this.sel) continue;
-      drawText(g, r.name, r.x, Math.min(r.y + 21, H - 48), restored(r.key) ? PAL.cream : '#9AA2C8', { align: 'center', outline: '#0A1638' });
+      // el cartel de la isla elegida tapa el nombre de la vecina: ese nombre espera
+      const ny = Math.min(r.y + 21, H - 48), nw = textW(r.name) + 4;
+      if (ban && r.x + nw / 2 > ban.x && r.x - nw / 2 < ban.x + ban.w && ny + 9 > ban.y && ny - 1 < ban.y + ban.h) continue;
+      drawText(g, r.name, r.x, ny, restored(r.key) ? PAL.cream : '#9AA2C8', { align: 'center', outline: '#0A1638' });
     }
     // viaje por la ruta marítima
     if (this.travel) this.drawTravel(g);
@@ -635,11 +649,15 @@ class MapScene {
     else if (beaten) { rect(g, x - 3, y - 1, 7, 3, PAL.ink); px(g, x - 3, y - 2, PAL.ink); px(g, x, y - 3, PAL.ink); px(g, x + 3, y - 2, PAL.ink); }
     else drawText(g, '✓', x, y - 3, PAL.ink, { align: 'center' });
   }
-  drawNameBanner(g, r) {
+  nameBannerRect(r) {
     const name = r.name.toUpperCase(), w = textW(name) + 16, h = 13;
     let x = Math.round(r.x - w / 2), y = Math.round(r.y - ISL_AY - 12);
     x = clamp(x, 4, W - w - 4);
     if (y < 24) y = Math.round(r.y + 22);
+    return { x: x - 3, y, w: w + 6, h: h + 9, name, bx: x, bw: w, bh: h };
+  }
+  drawNameBanner(g, r) {
+    const R = this.nameBannerRect(r), name = R.name, w = R.bw, h = R.bh, x = R.bx, y = R.y;
     const bob = Math.floor(this.t * 3) % 2;
     rect(g, x + 2, y + 2, w, h, 'rgba(5,10,30,0.45)');
     rect(g, x, y, w, h, shade(r.col, -0.55)); rect(g, x, y, w, 1, r.col); rect(g, x, y + h - 1, w, 1, r.col);

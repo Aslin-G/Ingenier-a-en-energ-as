@@ -30,6 +30,7 @@ Videojuego educativo de plataformas, combate y puzzles en **pixel art animado**,
 | **Lente Debug** (golpes críticos, programa de los jefes) | F | LB |
 | Blueprint (tu último algoritmo) | B | L3 (pulsar stick izquierdo) |
 | Atlas Aurora | C | Select / Back |
+| Cartas del Atlas (en el mapa) | R | — |
 | Pista de PÍX | H | RB |
 | Pausa | Esc / P | Start |
 
@@ -84,6 +85,13 @@ Lumi concentra su luz en una hoja: el **Lumisable**. Los enemigos son programas 
 
 Al vencerlos se vuelven amistosos, entran en el **Bestiario** del Atlas y dejan un **fragmento de célula** (3 fragmentos = +1 célula máxima). Tras dos derrotas, PÍX ofrece la **ayuda de combate**.
 
+### Aprender jugando: cerraduras, cartas y forja
+
+- **Cerraduras de código** (en todas las islas): cofres sellados con un programa corto del concepto de la isla. Lía lee el código en un holograma, **predice el resultado** y golpea con el Lumisable (o elige con E) el cristal correcto. Cada opción incorrecta es un **error típico** (contar desde 1, una vuelta de menos, ejecutar las dos ramas de un SI, olvidar el valor inicial, cambiar el orden de un pipeline...). Si falla, el programa se **ejecuta paso a paso** con la explicación del error y llega una **variante nueva** con otros números. Con la Lente Debug el holograma da una pista.
+- **Cartas del Atlas con repaso espaciado**: cada concepto practicado se vuelve una carta coleccionable (NUEVA → BRONCE → PLATA → ORO). El **repaso relámpago** sigue el sistema de Leitner: acertar aleja el siguiente repaso (10 min, 1 día, 3, 7 y 21 días) y fallar lo acerca, porque recordar justo antes de olvidar es lo que fija lo aprendido. Hay combo, XP y **racha de días**. En el mapa, el botón **CARTAS** (tecla R) avisa cuando hay cartas pendientes.
+- **Reto del día**: el mismo reto del banco para toda la clase. Al superarlo aparece un **código de 4 cifras** que el modo docente también muestra, para comprobarlo en clase.
+- **Forja del Lumisable** (en el Taller): siete mejoras del sable que son conceptos (*alcance ← alcance + 5*, *Filtro SI* para parar mejor, *bucle de energía*, *función pulso()* más barata, *lista de células*, *estado GUARDIA*, *tajo ordenado*). Se pagan con **núcleos de forja** (cerraduras, repaso diario y reto del día) y se forjan **respondiendo bien una pregunta** del concepto; fallar no cuesta núcleos.
+
 ### Tipos de puzzle
 
 - **CodeLab**: editor de bloques **sin arrastrar**. Cada reto trae las instrucciones necesarias ya armadas: el estudiante las **ordena** (toca una línea y la mueve con ▲ ▼), **ajusta los números** con − + y **toca los valores** para cambiarlos. Tocar un bloque de la izquierda lo añade bajo la línea marcada y ✗ borra. Tiene intérprete real: `SI/SINO`, `REPETIR`, `MIENTRAS`, `PARA CADA`, variables, funciones con parámetros y retorno. Tiene ejecución paso a paso, puntos de interrupción, traza, vista de variables, detección de bucles infinitos y **vista de diagrama de flujo** del mismo programa.
@@ -103,9 +111,9 @@ Cada reto pasa por **DEMO → LO HACEMOS JUNTOS → TÚ SOLO**, ofrece **pistas 
 - **Lente Debug** (F): muestra variables, estados y secretos ocultos en el escenario.
 - **Blueprint** (B): tu último algoritmo como un plano.
 - **Mapa del archipiélago ilustrado** (a doble resolución): cada isla tiene su propia ilustración animada que representa su tema y su energía (el faro y los muelles del Puerto, el molino y los cultivos del Valle, los paneles y la torre solar de Solaria, las islas flotantes con turbinas de Aeris, las cascadas de Hydria, la selva y los biodigestores de BioLoop, el volcán y la planta geotérmica de Gea, los tanques de hidrógeno de la Bahía H2, los rascacielos-batería de neón, la torre-prisma de la microred y el gran Faro Aurora). Las islas aparecen **apagadas** hasta restaurarlas y **cubiertas de niebla** hasta descubrirlas; los viajes siguen rutas marítimas animadas.
-- **Misiones**: 12 principales y 20 secundarias. **22 Chispas de Aurora** escondidas y **20 pegatinas** (logros).
+- **Misiones**: 12 principales y 20 secundarias. **22 Chispas de Aurora** escondidas y **25 pegatinas** (logros).
 - **Mapa de dominio estimado**: progreso por concepto y por energía (presentado como una estimación, nunca como una nota).
-- **Taller de Lía**: recuerdos de cada isla, pegatinas y cosméticos.
+- **Taller de Lía**: recuerdos de cada isla, pegatinas, cosméticos y la **Forja del Lumisable**.
 - **Aurora Lab** (tras el final): sandbox de microred para experimentar sin penalización y comparar experimentos.
 
 ### Modo docente
@@ -117,10 +125,19 @@ Desde el menú principal, sin necesidad de cuenta y sin que nada salga del naveg
 - **Luchar contra un jefe**: abre directamente la arena de cualquiera de los 10 jefes (también como revancha).
 - **Ver dominio** y **resumen local** (retos resueltos, al primer intento, pistas, bucles infinitos, errores con alta confianza...).
 - Acceso directo al **Aurora Lab** y reinicio del progreso.
+- El **código del reto del día** aparece al pie del menú docente: quien supera el reto ve el mismo código.
 
 ### Accesibilidad
 
-Volumen de música y efectos, velocidad del texto (incluida instantánea), **subtítulos de sonidos**, **alto contraste**, **reducir destellos**, **reducir sacudidas**, **modo sin tiempo**, **ayuda de combate** (+2 células y jefes más lentos), controles táctiles (auto/siempre/nunca), escalado de píxel entero y remapeo de teclas. Todos los menús se pueden usar con teclado, mando, ratón o pantalla táctil.
+**Gráficos HD** (se pueden apagar si el equipo va justo), volumen de música y efectos, velocidad del texto (incluida instantánea), **subtítulos de sonidos**, **alto contraste**, **reducir destellos**, **reducir sacudidas**, **modo sin tiempo**, **ayuda de combate** (+2 células y jefes más lentos), controles táctiles (auto/siempre/nunca), escalado de píxel entero y remapeo de teclas. Todos los menús se pueden usar con teclado, mando, ratón o pantalla táctil.
+
+### Gráficos: pixel art a doble resolución
+
+- **Modo HD**: el juego se dibuja en «píxeles de juego» de 480×270 sobre un lienzo de 960×540. Una capa WebGL aplica **Scale2x** a cada bloque de 2×2: las escaleras de los bordes se redondean con píxeles la mitad de grandes, así personajes, enemigos, textos, círculos y diagonales ganan resolución sin dejar de ser pixel art. Si el navegador no tiene WebGL, o el equipo va lento, el juego vuelve solo al dibujo normal (y se puede apagar en Ajustes).
+- **Cielos a doble resolución** con degradado continuo, halo del sol, luna creciente y estrellas de medio píxel que titilan.
+- **Perspectiva aérea**: las capas lejanas del fondo se funden con el cielo, tienen el borde iluminado por el sol y niebla baja entre cordilleras.
+- **Volumen**: montañas facetadas con nieve, lomas con matorrales, copas de árboles y nubes sombreadas como esferas con tramado, cuevas con estalactitas y cristales facetados; el terreno se oscurece hacia el interior de la roca.
+- **Luz y agua**: iluminación a resolución de juego, rayos de sol y resplandores con degradado real, viñeta suave, sombras de contacto bajo los personajes y agua con profundidad, destellos y cáusticas.
 
 ---
 
@@ -132,14 +149,16 @@ lumina_loop.html        ← copia idéntica de index.html (enlaces antiguos)
 .nojekyll               ← GitHub Pages publica los archivos tal cual
 .github/workflows/      ← publicación automática en GitHub Pages
 src/
-  shell.html            plantilla HTML (lienzo 480×270 y estilos)
+  shell.html            plantilla HTML (lienzo de 960×540, capa HD y estilos)
   01_core.js            lienzo, paleta, utilidades, entrada (teclado, puntero, táctil, mando)
   02_font.js            fuente bitmap propia con acentos y marcado de color
   03_audio.js           Web Audio: efectos procedurales y música generativa por capas
   04_save.js            estado global, guardado, dominio, XP, logros, habilidades
   05_gfx.js             primitivas, partículas, iluminación, transiciones, avisos
+  05_hd.js              modo HD: posprocesado WebGL (Scale2x por bloques de 2×2)
   06_sprites.js         sprites animados y retratos generados por código
   07_worldart.js        temas de cada isla, tiles y fondos parallax
+  07_worldhd.js         cielos HD, perspectiva aérea, volumen, terreno, agua y viñeta
   08_ui.js              UI inmediata con foco de teclado/mando y arrastrar/soltar
   09_dialogue.js        diálogos con retratos, globos, cinemáticas con generadores
   10_world.js           niveles, física de plataformas, Lía, PÍX y Lumi
@@ -156,7 +175,10 @@ src/
   19_story_common.js    utilidades de historia y constructor de niveles
   20_… 26_lv_*.js       las islas (niveles, diálogos y puzzles)
   27_bosses.js          los 10 jefes regionales, sus arenas y el Bestiario
+  28_locks.js           cerraduras de código: preguntas de traza generadas y traza paso a paso
+  29_cards.js           cartas del Atlas, repaso espaciado (Leitner) y reto del día
   29_challenges.js      banco de 115 retos del modo docente
+  29_forge.js           Forja del Lumisable (mejoras del sable ligadas a conceptos)
   30_lv_faro.js         Faro Aurora, Perfect Zero, final y créditos
   99_main.js            bucle de 60 Hz de paso fijo y arranque
 tools/
@@ -186,6 +208,9 @@ node tools/tests/puzzles.js   # resuelve los puzzles principales y construye los
 node tools/tests/presets.js   # cada reto de código empieza armado pero sin resolver, y su solución funciona
 node tools/tests/bosses.js    # sable (tajos, pulso, parada, rebote, recarga) y los 10 jefes de principio a fin
 node tools/tests/map.js       # mapa ilustrado, viaje entre islas e index.html idéntico a lumina_loop.html
+node tools/tests/hd.js        # modo HD: el filtro WebGL compila, cubre el lienzo y se puede apagar
+node tools/tests/locks.js     # cerraduras de código: 3000 preguntas válidas, cofres en cada isla, fallo → traza → variante
+node tools/tests/cards.js     # cartas: calendario de Leitner, racha, repaso desde el mapa, reto del día y forja
 node tools/tests/walk.js      # recorre la campaña completa hasta el epílogo
 node tools/tests/menus.js     # abre todas las pantallas de menú
 ```
