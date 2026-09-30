@@ -4,9 +4,17 @@
 // =====================================================================
 
 const W = 480, H = 270, TILE = 16;
+// El juego se dibuja en coordenadas de 480×270 (píxel de juego), pero el lienzo
+// real tiene el doble de resolución (RES): el pixel art se ve igual, y pantallas
+// como el mapa pueden dibujar ilustraciones con el doble de detalle.
+const RES = 2;
 const cv = document.getElementById('game');
+cv.width = W * RES; cv.height = H * RES;
 const ctx = cv.getContext('2d', { alpha: false });
+ctx.setTransform(RES, 0, 0, RES, 0, 0);
 ctx.imageSmoothingEnabled = false;
+// dibuja un lienzo preparado a doble densidad (hi-res) ocupando w×h píxeles de juego
+function drawHiRes(g, img, x, y, w, h) { g.drawImage(img, Math.round(x * RES) / RES, Math.round(y * RES) / RES, w != null ? w : img.width / RES, h != null ? h : img.height / RES); }
 
 // ---------- Paleta base (del documento de diseño) + tonos de apoyo ----------
 const PAL = {

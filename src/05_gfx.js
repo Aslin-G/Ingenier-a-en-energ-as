@@ -312,15 +312,27 @@ const Toast = {
   show(text, color = PAL.sun, dur = 2.2) { this.list.push({ text, color, t: dur, max: dur }); if (this.list.length > 4) this.list.shift(); },
   update(dt) { for (const t of this.list) t.t -= dt; this.list = this.list.filter(t => t.t > 0); },
   // zonas que ocupan los avisos (para que los globos no se monten encima)
-  reserveAreas() { let y = 20; for (const t of this.list) { const w = textW(t.text) + 12; Labels.reserve(W - w - 6, y, w, 15); y += 18; } },
+  // los avisos empiezan bajo el HUD; más abajo si hay barra de jefe o placas del mapa
+  top() {
+    const s = typeof Scenes !== 'undefined' ? Scenes.top() : null;
+    if (s && s.toastTop) return s.toastTop;
+    const lv = typeof G !== 'undefined' && G.run ? G.run.level : null;
+    const inLevel = s && s.lv === lv;
+    // mientras se ve el cartel con el nombre de la isla, los avisos van debajo de él
+    if (inLevel && lv && lv.banner > 0 && lv.def.title && !lv.def.noHud) return 78;
+    return inLevel && lv.rboss && lv.rboss.showBar ? 30 : 20;
+  },
+  reserveAreas() { let y = this.top(); for (const t of this.list) { const w = textW(t.text) + 12; Labels.reserve(W - w - 6, Math.round(t.y != null ? t.y : y), w, 15); y += 18; } },
   draw(g) {
-    let y = 20;
+    let y = this.top();
     for (const t of this.list) {
       const w = textW(t.text) + 12;
+      // cada aviso se desliza hacia su fila (sin saltos cuando cambia la zona libre)
+      t.y = t.y == null ? y : approach(t.y, y, 3);
       const slide = t.t > t.max - 0.2 ? (t.t - (t.max - 0.2)) / 0.2 : t.t < 0.25 ? 1 - t.t / 0.25 : 0;
       const x = W - w - 6 + Math.round(slide * (w + 10));
-      panel(g, x, y, w, 15, { border: t.color, accent: t.color });
-      drawText(g, t.text, x + 6, y + 5, t.color);
+      panel(g, x, Math.round(t.y), w, 15, { border: t.color, accent: t.color });
+      drawText(g, t.text, x + 6, Math.round(t.y) + 5, t.color);
       y += 18;
     }
   }

@@ -410,11 +410,11 @@ class Level {
   layoutLabels(cx, cy) {
     Labels.reset();
     if (!this.def.noHud) {
-      Labels.reserve(0, 0, this.hudW || 150, 22); Labels.reserve(W - 80, 0, 80, 17);
+      Labels.reserve(0, 0, this.hudW || 150, 22); Labels.reserve(W - 80 - touchOff(), 0, 80 + touchOff(), 24);
       if (this.rboss && this.rboss.showBar) Labels.reserve(W / 2 - 104, 0, 208, 26);
       if (this.rboss && this.rboss.showBar && this.lensT > 0.05 && this.rboss.codeRect) { const r = this.rboss.codeRect; Labels.reserve(r.x, r.y, r.w, r.h); }
       const obj = this.def.objective ? this.def.objective(this) : null;
-      if (obj && (!Cut.active || Cut.free)) Labels.reserve(0, H - 20, Math.min(260, textW(obj) + 20) + 6, 20);
+      if (obj && (!Cut.active || Cut.free)) Labels.reserve(0, TouchPad.visible ? 23 : H - 20, Math.min(260, textW(obj) + 20) + 6, 20);
     }
     if (this.lensT > 0.01) Labels.reserve(W - 64, H - 16, 64, 16);
     if (this.banner > 0 && this.def.title) Labels.reserve(W / 2 - 130, 32, 260, 44);

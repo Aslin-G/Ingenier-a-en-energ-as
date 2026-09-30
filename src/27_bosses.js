@@ -289,7 +289,7 @@ function drawBossHUD(g, lv, b) {
     // el panel se coloca en el lado contrario al jefe para no taparlo
     if (b.panelSide == null) b.panelSide = -1;
     if (b.cx < W * 0.42) b.panelSide = 1; else if (b.cx > W * 0.58) b.panelSide = -1;
-    const px0 = b.panelSide < 0 ? 4 : W - lw - 4, py0 = 26;
+    const px0 = b.panelSide < 0 ? 4 : W - lw - 4, py0 = TouchPad.visible && b.panelSide < 0 ? 40 : 26;
     b.codeRect = { x: px0, y: py0, w: lw, h: ph };
     g.globalAlpha = lv.lensT;
     panel(g, px0, py0, lw, ph, { border: PAL.teal, bg: 'rgba(5,30,40,0.9)' });

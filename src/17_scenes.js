@@ -11,17 +11,17 @@ const Scenes = {
 };
 
 const REGIONS = [
-  { key: 'puerto', name: 'Puerto Inicial', prog: 'Secuencias', energy: 'Flujo de energía', x: 64, y: 198, transport: 'barca solar', col: PAL.teal },
-  { key: 'valle', name: 'Valle Secuencia', prog: 'Secuencia y depuración', energy: 'Conversión', x: 116, y: 148, transport: 'barca solar', col: PAL.leaf },
-  { key: 'solaria', name: 'Solaria', prog: 'Variables y SI', energy: 'Solar', x: 190, y: 204, transport: 'barca solar', col: PAL.sun },
-  { key: 'aeris', name: 'Aeris', prog: 'Bucles', energy: 'Eólica', x: 158, y: 82, transport: 'planeador eólico', col: PAL.aqua },
-  { key: 'hydria', name: 'Cascadas Hydria', prog: 'Funciones', energy: 'Hidroeléctrica', x: 256, y: 134, transport: 'ascensor hidráulico', col: PAL.sky },
-  { key: 'bioloop', name: 'Bosque BioLoop', prog: 'Listas y recorridos', energy: 'Biomasa', x: 320, y: 208, transport: 'barca solar', col: PAL.lime },
-  { key: 'gea', name: 'Gea Profunda', prog: 'Estados', energy: 'Geotermia', x: 382, y: 158, transport: 'teleférico geotérmico', col: PAL.coral },
-  { key: 'h2', name: 'Bahía H2', prog: 'Pipelines', energy: 'Hidrógeno verde', x: 436, y: 214, transport: 'barca solar', col: PAL.aqua },
-  { key: 'bateria', name: 'Ciudad Batería', prog: 'Búsqueda y orden', energy: 'Almacenamiento', x: 414, y: 90, transport: 'tranvía batería', col: PAL.pink },
-  { key: 'prisma', name: 'Microred Prisma', prog: 'Integración', energy: 'Microred', x: 324, y: 60, transport: 'planeador eólico', col: PAL.violet },
-  { key: 'faro', name: 'Faro Aurora', prog: 'Todo', energy: 'Sistema híbrido', x: 238, y: 38, transport: 'ascensor de luz', col: PAL.white }
+  { key: 'puerto', name: 'Puerto Inicial', prog: 'Secuencias', energy: 'Flujo de energía', x: 56, y: 198, transport: 'barca solar', col: PAL.teal },
+  { key: 'valle', name: 'Valle Secuencia', prog: 'Secuencia y depuración', energy: 'Conversión', x: 106, y: 128, transport: 'barca solar', col: PAL.leaf },
+  { key: 'solaria', name: 'Solaria', prog: 'Variables y SI', energy: 'Solar', x: 172, y: 196, transport: 'barca solar', col: PAL.sun },
+  { key: 'aeris', name: 'Aeris', prog: 'Bucles', energy: 'Eólica', x: 160, y: 66, transport: 'planeador eólico', col: PAL.aqua },
+  { key: 'hydria', name: 'Cascadas Hydria', prog: 'Funciones', energy: 'Hidroeléctrica', x: 246, y: 132, transport: 'ascensor hidráulico', col: PAL.sky },
+  { key: 'bioloop', name: 'Bosque BioLoop', prog: 'Listas y recorridos', energy: 'Biomasa', x: 292, y: 204, transport: 'barca solar', col: PAL.lime },
+  { key: 'gea', name: 'Gea Profunda', prog: 'Estados', energy: 'Geotermia', x: 362, y: 150, transport: 'teleférico geotérmico', col: PAL.coral },
+  { key: 'h2', name: 'Bahía H2', prog: 'Pipelines', energy: 'Hidrógeno verde', x: 428, y: 200, transport: 'barca solar', col: PAL.aqua },
+  { key: 'bateria', name: 'Ciudad Batería', prog: 'Búsqueda y orden', energy: 'Almacenamiento', x: 430, y: 80, transport: 'tranvía batería', col: PAL.pink },
+  { key: 'prisma', name: 'Microred Prisma', prog: 'Integración', energy: 'Microred', x: 330, y: 62, transport: 'planeador eólico', col: PAL.violet },
+  { key: 'faro', name: 'Faro Aurora', prog: 'Todo', energy: 'Sistema híbrido', x: 242, y: 48, transport: 'ascensor de luz', col: PAL.white }
 ];
 const regionIdx = k => REGIONS.findIndex(r => r.key === k);
 const restored = k => flag('restored_' + k);
@@ -46,6 +46,7 @@ const Game = {
   },
   draw() {
     UI.beginFrame();
+    ctx.setTransform(RES, 0, 0, RES, 0, 0);
     ctx.imageSmoothingEnabled = false;
     // dibujar desde la última escena opaca
     let start = 0;
@@ -129,6 +130,8 @@ class GameplayScene {
   }
 }
 
+// con controles táctiles, el botón de pausa ocupa la esquina: el contador se aparta
+const touchOff = () => TouchPad.visible ? 32 : 0;
 function drawHUD(g, lv) {
   const p = lv.player;
   if (lv.def.noHud) return;
@@ -143,7 +146,7 @@ function drawHUD(g, lv) {
     const hudW = abX + wAb, hudH = info0 ? 21 : 20;
     lv.hudW = hudW + 4;
     rect(g, 1, 1, hudW, hudH, 'rgba(10,14,32,0.5)'); rect(g, 2, 0, hudW - 2, 1, 'rgba(10,14,32,0.5)');
-    rect(g, W - 75, 1, 72, 15, 'rgba(10,14,32,0.5)');
+    rect(g, W - 75 - touchOff(), 1, 72, 15, 'rgba(10,14,32,0.5)');
   }
   // células de energía (forma de Lumi)
   for (let i = 0; i < p.maxCells; i++) {
@@ -167,19 +170,21 @@ function drawHUD(g, lv) {
     else if (ab === 'glide') info = 'mantén SALTO en el aire';
     if (info) drawText(g, info, abX + 7, 12, '#C9D2F0', { shadow: PAL.ink });
   }
-  if (hasAbility('lens') && !lv.lens && lv.time < 60 && lv.def.lensHint) keyHint(g, 6, 22, 'lens', 'Lente', '#C9D2F0');
+  if (hasAbility('lens') && !lv.lens && lv.time < 60 && lv.def.lensHint) keyHint(g, 6, TouchPad.visible ? 40 : 22, 'lens', 'Lente', '#C9D2F0');
   // jefe: nombre, vida y (con la Lente) su programa
   if (lv.rboss && lv.rboss.showBar) drawBossHUD(g, lv, lv.rboss);
   // coleccionables
   const ch = Object.keys(G.save.collectibles.chispas).length;
-  icon(g, 'spark', W - 70, 4); drawText(g, String(ch), W - 60, 5, PAL.pink, { shadow: PAL.ink });
-  icon(g, 'seed', W - 40, 4); drawText(g, String(G.save.collectibles.seeds), W - 30, 5, PAL.lime, { shadow: PAL.ink });
+  const to = touchOff();
+  icon(g, 'spark', W - 70 - to, 4); drawText(g, String(ch), W - 60 - to, 5, PAL.pink, { shadow: PAL.ink });
+  icon(g, 'seed', W - 40 - to, 4); drawText(g, String(G.save.collectibles.seeds), W - 30 - to, 5, PAL.lime, { shadow: PAL.ink });
   // objetivo
   const obj = lv.def.objective ? lv.def.objective(lv) : null;
   if (obj && (!Cut.active || Cut.free)) {
-    const w = Math.min(260, textW(obj) + 20);
-    rect(g, 4, H - 18, w, 13, 'rgba(16,22,43,0.75)'); rect(g, 4, H - 18, 2, 13, PAL.sun);
-    drawText(g, '▶ ' + obj, 9, H - 15, PAL.cream);
+    // con controles táctiles, el objetivo sube bajo el HUD (abajo lo taparía la cruceta)
+    const w = Math.min(260, textW(obj) + 20), oy = TouchPad.visible ? 25 : H - 18;
+    rect(g, 4, oy, w, 13, 'rgba(16,22,43,0.75)'); rect(g, 4, oy, 2, 13, PAL.sun);
+    drawText(g, fitText('▶ ' + obj, w - 8), 9, oy + 3, PAL.cream);
   }
   // indicador de interacción (con fondo propio, en el hueco que le reservó el nivel)
   if (lv.nearby && (!Cut.active || Cut.free) && lv.promptRect) {
@@ -392,7 +397,7 @@ class RemapScene {
     acts.forEach(([a, n], i) => {
       const y = 42 + i * 15;
       drawText(g, n, 110, y + 3, PAL.cream);
-      const label = this.waiting === a ? 'pulsa una tecla...' : (Input.bindings[a] || []).slice(0, 2).map(keyName).join(' / ');
+      const label = this.waiting === a ? 'pulsa una tecla...' : [...new Set((Input.bindings[a] || []).map(keyName))].slice(0, 2).join(' / ');
       if (UI.btn(g, 'rm' + a, 230, y, 140, 13, label, { color: this.waiting === a ? PAL.sun : PAL.teal })) {
         this.waiting = a;
         Input.captureNext = code => {
@@ -540,6 +545,7 @@ class MasteryScene {
 //  MAPA DEL ARCHIPIÉLAGO AURORA
 // ---------------------------------------------------------------------
 class MapScene {
+  get toastTop() { return 30; }
   constructor(focus) {
     this.t = 0; this.opaque = true; this.hostsCut = true; this.touchPad = false;
     const avail = REGIONS.filter(r => unlocked(r.key));
@@ -565,7 +571,7 @@ class MapScene {
     if (Input.hit('codex')) Scenes.push(new CodexScene());
     if (Input.pointer.pressed) {
       const P = Input.pointer;
-      REGIONS.forEach((r, i) => { if (dist(P.x, P.y, r.x, r.y) < 18 && unlocked(r.key)) { if (this.sel === i) this.go(); else { this.sel = i; AudioSys.sfx('select'); } } });
+      if (P.y < H - 40) REGIONS.forEach((r, i) => { if (Math.abs(P.x - r.x) < 30 && P.y > r.y - 34 && P.y < r.y + 20 && unlocked(r.key)) { if (this.sel === i) this.go(); else { this.sel = i; AudioSys.sfx('select'); } } });
     }
   }
   move(d) {
@@ -580,77 +586,124 @@ class MapScene {
     this.travel = { from: from < 0 ? 0 : from, to: this.sel, t: 0 };
     AudioSys.sfx('run');
   }
-  drawIsland(g, r, i) {
-    const on = restored(r.key), un = unlocked(r.key), sel = this.sel === i;
-    const t = this.t, x = r.x, y = r.y + Math.sin(t * 0.8 + i) * 1.5;
-    const th = THEMES[r.key === 'puerto' ? 'puerto' : r.key] || THEMES.valle;
-    // sombra y agua
-    g.globalAlpha = 0.35; pellipse(g, x, y + 10, 26, 5, '#0B1A40'); g.globalAlpha = 1;
-    if (!un) { g.globalAlpha = 0.5; pellipse(g, x, y, 20, 8, '#2A2F55'); drawText(g, '?', x, y - 3, '#5A6090', { align: 'center' }); g.globalAlpha = 1; return; }
-    const gc = on ? th.ground.topC : desaturate(th.ground.topC, 0.7), fc = on ? th.ground.fill : desaturate(th.ground.fill, 0.7);
-    pellipse(g, x, y + 3, 22, 8, fc); pellipse(g, x, y, 22, 7, gc); pellipse(g, x - 4, y - 2, 12, 3, shade(gc, 0.2));
-    // icono de la isla
-    const k = r.key;
-    const c = on ? r.col : '#5A6090';
-    if (k === 'puerto' || k === 'faro') { rect(g, x - 2, y - 18, 4, 16, on ? '#FFF3D7' : '#6A6A8A'); rect(g, x - 3, y - 21, 6, 3, on ? PAL.sun : '#3A4068'); if (on && k === 'faro') { g.globalAlpha = 0.3; for (let rr = 0; rr < 60; rr += 3) rect(g, x + Math.cos(t) * rr, y - 20 + Math.sin(t) * rr * 0.3, 2, 2, PAL.sun); g.globalAlpha = 1; } }
-    else if (k === 'valle' || k === 'aeris' || k === 'prisma') { rect(g, x - 1, y - 16, 2, 14, '#FFF3D7'); for (let b = 0; b < 4; b++) { const a = (on ? t * 2 : 0) + b * 1.57; pline(g, x, y - 16, x + Math.cos(a) * 7, y - 16 + Math.sin(a) * 7, '#FFFFFF'); } }
-    else if (k === 'solaria') { for (let p = 0; p < 3; p++) rect(g, x - 10 + p * 7, y - 6, 6, 3, on ? '#2A6ADA' : '#3A4068'); pcircle(g, x + 10, y - 14, 3, on ? PAL.sun : '#6A6A5A'); }
-    else if (k === 'hydria') { rect(g, x - 3, y - 14, 6, 12, on ? '#DFFBFF' : '#5A6A8A'); }
-    else if (k === 'bioloop') { pcircle(g, x - 6, y - 8, 6, on ? '#2A9A55' : '#3A5A4A'); pcircle(g, x + 5, y - 10, 7, on ? '#3FA85A' : '#3A5A4A'); }
-    else if (k === 'gea') { for (let p = 0; p < 3; p++) rect(g, x - 6 + p * 5, y - 8 - p * 2, 3, 6 + p * 2, on ? PAL.violet : '#4A3A5A'); if (on && Math.random() < 0.1) Particles.spawn({ x: x, y: y - 12, vy: -15, life: 1, type: 'fade', size: 2, color: 'rgba(255,255,255,0.5)', screen: true }); }
-    else if (k === 'h2') { rect(g, x - 8, y - 12, 7, 10, on ? '#FFFFFF' : '#6A6A8A'); rect(g, x + 2, y - 10, 6, 8, on ? PAL.orange : '#6A5A4A'); }
-    else if (k === 'bateria') { for (let p = 0; p < 3; p++) { rect(g, x - 9 + p * 7, y - 14 + p, 5, 12 - p, '#2A2F6A'); rect(g, x - 8 + p * 7, y - 6, 3, 4, on ? [PAL.lime, PAL.sun, PAL.pink][p] : '#3A4068'); } }
-    if (!on) { g.globalAlpha = 0.35 + Math.sin(t * 2 + i) * 0.1; pellipse(g, x, y - 4, 26, 12, '#5B3A8C'); g.globalAlpha = 1; }
-    else if (Math.random() < 0.03) Particles.spawn({ x: x + rand(-15, 15), y: y - rand(4, 16), vy: -10, life: 1, type: 'star', color: r.col, screen: true });
-    // jefe de la isla: corona si está depurado, «!» si espera en la salida
-    if (on && BOSSES[k]) {
-      if (flag('boss_' + k)) { rect(g, x + 13, y - 12, 7, 3, PAL.sun); px(g, x + 13, y - 13, PAL.sun); px(g, x + 16, y - 14, PAL.sun); px(g, x + 19, y - 13, PAL.sun); }
-      else if (Math.floor(t * 3) % 2) drawText(g, '!', x + 16, y - 16, PAL.coral, { align: 'center', outline: PAL.ink });
-    }
-    if (sel) { const bob = Math.floor(t * 3) % 2; drawText(g, '▼', x, y - 34 - bob, PAL.sun, { align: 'center', outline: PAL.ink }); pring(g, x, y + 2, 28, PAL.sun); }
-  }
+  // ---------- dibujo: océano, rutas, islas ilustradas, placas y panel inferior ----------
   draw(g) {
-    vGradient(g, 0, 0, W, H, [[0, '#1B3A8A'], [0.5, '#2A6ADA'], [1, '#30A8C8']], false);
-    for (let i = 0; i < 70; i++) { const x = (i * 71 + this.t * 6 * (i % 3 + 1)) % (W + 20) - 10, y = (i * 37) % H; rect(g, x, y, 4 + (i % 3) * 2, 1, 'rgba(255,255,255,0.12)'); }
-    // nubes
-    for (let i = 0; i < 4; i++) { const x = ((this.t * 5 + i * 140) % (W + 100)) - 50; g.globalAlpha = 0.35; pcircle(g, x, 20 + i * 60, 12, '#FFFFFF'); pcircle(g, x + 12, 22 + i * 60, 9, '#FFFFFF'); g.globalAlpha = 1; }
-    // caminos
-    for (let i = 1; i < REGIONS.length; i++) {
-      const a = REGIONS[i - 1], b = REGIONS[i];
-      if (!unlocked(b.key)) continue;
-      pline(g, a.x, a.y, b.x, b.y, restored(b.key) ? 'rgba(255,216,74,0.8)' : 'rgba(255,243,215,0.45)', 3, Math.floor(this.t * 6));
+    MapArt.build();
+    const t = this.t;
+    drawHiRes(g, MapArt.ocean, 0, 0, W, H);
+    drawOceanLive(g, t);
+    drawRoutes(g, t);
+    // islas de arriba abajo para que las más cercanas tapen a las lejanas
+    const order = REGIONS.map((r, i) => i).sort((a, b) => REGIONS[a].y - REGIONS[b].y);
+    for (const i of order) drawIslandArt(g, REGIONS[i], i, t, this.sel === i && !this.travel);
+    for (const i of order) this.drawBadge(g, REGIONS[i], i);
+    // nombres bajo las islas conocidas (la elegida lleva su cartel)
+    for (const i of order) {
+      const r = REGIONS[i];
+      if (!unlocked(r.key) || this.travel || i === this.sel) continue;
+      drawText(g, r.name, r.x, Math.min(r.y + 21, H - 48), restored(r.key) ? PAL.cream : '#9AA2C8', { align: 'center', outline: '#0A1638' });
     }
-    // líneas de energía hacia el faro (islas restauradas)
-    REGIONS.forEach(r => { if (restored(r.key) && r.key !== 'faro') { g.globalAlpha = 0.25 + Math.sin(this.t * 3 + r.x) * 0.1; pline(g, r.x, r.y - 6, REGIONS[10].x, REGIONS[10].y - 10, r.col); g.globalAlpha = 1; } });
-    REGIONS.forEach((r, i) => this.drawIsland(g, r, i));
-    // viaje
-    if (this.travel) {
-      const a = REGIONS[this.travel.from], b = REGIONS[this.travel.to], k = easeInOut(clamp(this.travel.t, 0, 1));
-      const x = lerp(a.x, b.x, k), y = lerp(a.y, b.y, k) - Math.sin(k * Math.PI) * 20;
-      const tr = b.transport;
-      if (tr.includes('planeador') || tr.includes('ascensor') || tr.includes('teleférico')) { for (let q = 0; q < 8; q++) rect(g, x - 8 + q * 2, y - 4 + Math.abs(q - 4), 2, 1, PAL.aqua); g.drawImage(Spr.lia.glide[0].r, x - 10, y - 2, 20, 27); }
-      else { for (let q = 0; q < 6; q++) rect(g, x - 10 + q, y + 4 + q * 0.5, 20 - q * 2, 1, '#8B5A3C'); rect(g, x - 1, y - 10, 1, 14, PAL.cream); for (let q = 0; q < 8; q++) rect(g, x, y - 9 + q, q, 1, PAL.sun); rect(g, x - 8, y + 1, 6, 2, '#2A4A9A'); }
-      drawText(g, tr, x, y + 12, PAL.cream, { align: 'center', outline: PAL.ink });
-    }
+    // viaje por la ruta marítima
+    if (this.travel) this.drawTravel(g);
     Particles.draw(g, 0, 0, true);
-    // panel de info
-    const r = REGIONS[this.sel];
-    panel(g, 4, 4, 180, 70, { border: r.col, accent: r.col });
-    drawText(g, 'ARCHIPIÉLAGO AURORA', 10, 8, '#8C93B8');
-    drawText(g, r.name, 10, 20, r.col, { outline: PAL.ink });
-    drawText(g, '⚙ ' + r.prog, 10, 32, PAL.teal); drawText(g, '⚡ ' + r.energy, 10, 42, PAL.lime);
+    // cartel con el nombre de la isla elegida
+    if (!this.travel) this.drawNameBanner(g, REGIONS[this.sel]);
+    this.drawTopBar(g);
+    this.drawInfoPanel(g, REGIONS[this.sel]);
+    Cut.draw(g);
+  }
+  // insignia de estado: ✓ restaurada, corona si su jefe está depurado, «!» si el jefe espera
+  drawBadge(g, r, i) {
+    if (!unlocked(r.key) || !restored(r.key)) return;
+    const x = r.x + 34, y = r.y + 6;
+    const boss = BOSSES[r.key], beaten = boss && flag('boss_' + r.key);
+    const col = boss && !beaten ? PAL.coral : beaten ? PAL.sun : PAL.lime;
+    pcircle(g, x, y, 5, OUTLINE); pcircle(g, x, y, 4, col);
+    if (boss && !beaten) { if (Math.floor(this.t * 3) % 2) drawText(g, '!', x, y - 3, PAL.ink, { align: 'center' }); }
+    else if (beaten) { rect(g, x - 3, y - 1, 7, 3, PAL.ink); px(g, x - 3, y - 2, PAL.ink); px(g, x, y - 3, PAL.ink); px(g, x + 3, y - 2, PAL.ink); }
+    else drawText(g, '✓', x, y - 3, PAL.ink, { align: 'center' });
+  }
+  drawNameBanner(g, r) {
+    const name = r.name.toUpperCase(), w = textW(name) + 16, h = 13;
+    let x = Math.round(r.x - w / 2), y = Math.round(r.y - ISL_AY - 12);
+    x = clamp(x, 4, W - w - 4);
+    if (y < 24) y = Math.round(r.y + 22);
+    const bob = Math.floor(this.t * 3) % 2;
+    rect(g, x + 2, y + 2, w, h, 'rgba(5,10,30,0.45)');
+    rect(g, x, y, w, h, shade(r.col, -0.55)); rect(g, x, y, w, 1, r.col); rect(g, x, y + h - 1, w, 1, r.col);
+    rect(g, x - 3, y + 3, 3, h - 6, shade(r.col, -0.7)); rect(g, x + w, y + 3, 3, h - 6, shade(r.col, -0.7));
+    drawText(g, name, x + w / 2, y + 3, PAL.white, { align: 'center' });
+    drawText(g, '▼', clamp(r.x, x + 6, x + w - 6), y + h + 1 + bob, PAL.sun, { align: 'center', outline: PAL.ink });
+  }
+  drawTravel(g) {
+    const a = REGIONS[this.travel.from], b = REGIONS[this.travel.to], k = easeInOut(clamp(this.travel.t, 0, 1));
+    const i = Math.max(this.travel.from, this.travel.to), fwd = this.travel.to >= this.travel.from;
+    const p = routePoint(fwd ? a : b, fwd ? b : a, fwd ? k : 1 - k, routeBend(i));
+    const tr = b.transport, x = p.x, y = p.y;
+    if (tr.includes('planeador') || tr.includes('ascensor') || tr.includes('teleférico')) {
+      const yy = y - 14 - Math.sin(k * Math.PI) * 10;
+      for (let q = 0; q < 8; q++) rect(g, x - 8 + q * 2, yy - 4 + Math.abs(q - 4), 2, 1, PAL.aqua);
+      g.drawImage(Spr.lia.glide[0].r, Math.round(x - 11), Math.round(yy - 2));
+    } else {
+      for (let q = 1; q < 6; q++) { g.globalAlpha = 0.5 - q * 0.08; rect(g, x - 10 - q * 5, y + 5, 5, 1, '#FFFFFF'); } g.globalAlpha = 1;
+      const bob = Math.round(Math.sin(this.t * 6));
+      rect(g, x - 10, y + 2 + bob, 20, 3, '#8B5A3C'); rect(g, x - 8, y + 5 + bob, 16, 1, '#5E3A26');
+      rect(g, x - 1, y - 10 + bob, 1, 12, PAL.cream); for (let q = 0; q < 8; q++) rect(g, x, y - 9 + q + bob, q, 1, PAL.sun);
+      rect(g, x - 8, y - 1 + bob, 6, 3, '#2A4A9A'); rect(g, x - 8, y - 1 + bob, 6, 1, PAL.aqua);
+    }
+    const lw = textW(tr) + 10, ly = y - 36 - (tr.includes('planeador') || tr.includes('ascensor') || tr.includes('teleférico') ? 12 : 0);
+    rect(g, x - lw / 2, ly, lw, 11, 'rgba(10,14,32,0.75)');
+    drawText(g, tr, x, ly + 2, PAL.cream, { align: 'center' });
+  }
+  drawTopBar(g) {
+    const done = REGIONS.filter(r => restored(r.key)).length;
+    const bosses = Object.keys(BOSSES).filter(k => flag('boss_' + k)).length;
+    const chispas = Object.keys(G.save.collectibles.chispas).length, chTot = Object.keys(CHISPAS).length;
+    // placa izquierda: título y ayuda
+    const hint = Input.lastDevice === 'touch' ? 'toca una isla para elegirla' : '← → elige · ENTER viaja';
+    const lw = Math.max(textW('ARCHIPIÉLAGO AURORA'), textW(hint)) + 14;
+    panel(g, 3, 2, lw, 24, { border: '#C8A04A', bg: 'rgba(12,20,48,0.85)', hi: '#8A6A2A' });
+    drawText(g, 'ARCHIPIÉLAGO AURORA', 10, 6, PAL.sun);
+    drawText(g, hint, 10, 15, '#C9D2F0');
+    // placa derecha: progreso (islas, jefes, chispas) y pausa
+    const s1 = 'islas ' + done + '/11 · jefes ' + bosses + '/10', s2 = 'chispas ' + chispas + '/' + chTot;
+    const sw = Math.max(textW(s1), textW(s2)) + 14, sx = W - sw - 26;
+    panel(g, sx, 2, sw, 24, { border: '#C8A04A', bg: 'rgba(12,20,48,0.85)', hi: '#8A6A2A' });
+    drawText(g, s1, sx + 7, 6, PAL.cream); drawText(g, s2, sx + 7, 15, PAL.pink);
+    if (UI.btn(g, 'mpause', W - 23, 2, 20, 24, '≡', { color: PAL.cream, tip: 'Pausa' })) Scenes.push(new PauseScene(null));
+  }
+  drawInfoPanel(g, r) {
+    const y0 = H - 38, un = unlocked(r.key), on = restored(r.key);
+    panel(g, 2, y0, W - 4, 36, { border: r.col, bg: 'rgba(12,18,42,0.94)', accent: r.col, accentW: 60 });
+    // miniatura de la isla (postal)
+    const art = MapArt.isl[r.key];
+    rect(g, 6, y0 + 4, 44, 28, shade(r.col, -0.75));
+    if (art) { g.save(); g.imageSmoothingEnabled = true; g.imageSmoothingQuality = 'high'; g.drawImage(un ? (on ? art.on : art.off) : art.fog, 8, y0 + 3, 40, 30); g.restore(); g.imageSmoothingEnabled = false; }
+    strokeRect(g, 6, y0 + 4, 44, 28, r.col);
+    // textos (cada línea recortada a su ancho: nunca se montan sobre los botones)
+    const tx = 56, tw = 262;
+    const status = on ? '✓ RESTAURADA' : un ? '○ SIN ENERGÍA' : '? POR DESCUBRIR';
+    const stCol = on ? PAL.lime : un ? PAL.coral : '#8C93B8';
+    const nm = (regionIdx(r.key) + 1) + '. ' + r.name;
+    drawText(g, fitText(nm, tw - textW(status) - 10), tx, y0 + 4, r.col, { outline: PAL.ink });
+    drawText(g, status, tx + tw, y0 + 4, stCol, { align: 'right' });
+    drawText(g, fitText('⚙ ' + r.prog + '   ⚡ ' + r.energy, tw), tx, y0 + 14, '#C9D2F0');
     const ch = Object.keys(CHISPAS).filter(k => CHISPAS[k].region === r.key), got = ch.filter(k => G.save.collectibles.chispas[k]).length;
-    drawText(g, (restored(r.key) ? '✓ restaurada' : unlocked(r.key) ? '○ sin energía' : '? bloqueada') + '  ·  chispas ' + got + '/' + ch.length, 10, 52, restored(r.key) ? PAL.lime : PAL.coral);
-    if (BOSSES[r.key]) drawText(g, fitText(flag('boss_' + r.key) ? '✦ ' + BOSSES[r.key].name + ' depurado' : restored(r.key) ? '! Jefe: te espera en la salida' : '? Jefe: ' + BOSSES[r.key].name, 170), 10, 62, flag('boss_' + r.key) ? PAL.sun : PAL.coral);
+    const chTxt = '✦ chispas ' + got + '/' + ch.length + '   ';
+    drawText(g, chTxt, tx, y0 + 24, PAL.pink);
+    if (BOSSES[r.key]) {
+      const beaten = flag('boss_' + r.key);
+      const boss = beaten ? '♦ ' + BOSSES[r.key].name + ' depurado' : on ? '! Jefe: te espera en la salida' : '♦ Jefe: ' + BOSSES[r.key].name;
+      drawText(g, fitText(boss, tw - textW(chTxt)), tx + textW(chTxt), y0 + 24, beaten ? PAL.sun : on ? PAL.coral : '#8C93B8');
+    }
     // botones
     UI.nav = false;
-    if (UI.btn(g, 'mgo', W - 96, H - 20, 92, 16, '▶ VIAJAR', { primary: true, color: PAL.lime, disabled: !unlocked(r.key) })) this.go();
-    if (UI.btn(g, 'mtaller', W - 96, H - 40, 92, 16, 'TALLER', { icon: 'home', color: PAL.orange })) Scenes.push(new TallerScene());
-    if (UI.btn(g, 'matlas', W - 196, H - 20, 96, 16, 'ATLAS (C)', { color: PAL.teal })) Scenes.push(new CodexScene());
-    if (UI.btn(g, 'mmast', W - 196, H - 40, 96, 16, 'DOMINIO', { color: PAL.lime })) Scenes.push(new MasteryScene());
-    if (UI.btn(g, 'mpause', W - 40, 4, 36, 14, '≡', { color: PAL.cream })) Scenes.push(new PauseScene(null));
-    drawText(g, '← → elegir isla · ENTER viajar', 8, H - 12, '#C9D2F0', { shadow: PAL.ink });
-    Cut.draw(g);
+    const bx = W - 158;
+    if (UI.btn(g, 'mgo', bx, y0 + 4, 76, 14, '▶ VIAJAR', { primary: true, color: PAL.lime, disabled: !un })) this.go();
+    if (UI.btn(g, 'mtaller', bx + 80, y0 + 4, 74, 14, 'TALLER', { icon: 'home', color: PAL.orange })) Scenes.push(new TallerScene());
+    if (UI.btn(g, 'matlas', bx, y0 + 20, 76, 14, 'ATLAS (C)', { color: PAL.teal })) Scenes.push(new CodexScene());
+    if (UI.btn(g, 'mmast', bx + 80, y0 + 20, 74, 14, 'DOMINIO', { color: PAL.lime })) Scenes.push(new MasteryScene());
+    UI.drawTooltip(g);
   }
 }
 

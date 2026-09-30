@@ -124,14 +124,15 @@ Reglas de diseño de todos los jefes: **cada ataque se anuncia** (signo «!», m
 
 ## 7. Dirección de arte y sonido
 
-- **Resolución interna de 480×270**, escalada con píxel nítido (entero opcional).
+- **Resolución interna de 480×270**, escalada con píxel nítido (entero opcional). El lienzo real es de 960×540: el pixel art se ve igual y algunas pantallas (el mapa) dibujan detalles a doble resolución.
+- **Mapa ilustrado**: once ilustraciones procedurales, una por isla y fiel a su tema (faro y muelles, molino y cultivos, torre solar, islas flotantes con turbinas, cascadas, selva y biodigestores, volcán y planta geotérmica, tanques de hidrógeno, rascacielos-batería, torre-prisma, Faro Aurora), con tres estados que cuentan la historia: **por descubrir** (niebla), **apagada** (desaturada, sin luces) y **restaurada** (color, luces y animación). Océano con bajíos, rosa de los vientos, nubes y gaviotas; rutas marítimas punteadas; insignias de jefe; placas superiores y un panel inferior de información que nunca se solapan.
 - **Paleta propia** con variantes por isla: puerto al atardecer, valle verde, Solaria dorada, Aeris celeste, Hydria turquesa, BioLoop frondoso, Gea volcánica, Bahía H2 industrial, Ciudad Batería de neón, Prisma iridiscente y el Faro blanco.
 - **Todo procedural**: sprites con animaciones (correr, saltar, planear, nadar, trepar), retratos con expresiones, *tiles*, fondos parallax de varias capas, partículas, iluminación a media resolución con luces de color y transiciones en diamante.
 - **Audio con Web Audio**: efectos sintetizados, canciones por isla generadas a partir de una semilla con capas de intensidad, ambientes (mar, viento, cascada, bosque, magma) y subtítulos de sonidos opcionales.
 
 ## 8. Arquitectura técnica
 
-- **Un único HTML autocontenido** generado a partir de 30 módulos (`src/NN_*.js`) concatenados dentro de una función autoejecutable. Sin dependencias, sin red y sin recursos externos.
+- **Un único HTML autocontenido** generado a partir de 31 módulos (`src/NN_*.js`) concatenados dentro de una función autoejecutable. Sin dependencias, sin red y sin recursos externos.
 - **Pila de escenas** (`push`/`pop` con `onEnter`/`onExit`); las escenas transparentes dibujan encima de la anterior.
 - **Bucle de paso fijo** (1/60 s) con dibujo por frame e **interpolación**: el dibujo mezcla el estado anterior y el actual según el tiempo sobrante, así el movimiento es fluido también en pantallas de 120/144 Hz.
 - **Cámara anclada al píxel de Lía**: el escenario y la protagonista avanzan en el mismo fotograma, sin el vaivén de 1 px que aparece al redondear por separado cámara y sprite. El contacto con el suelo usa bordes exclusivos, de modo que Lía no alterna entre «caer» y «reposo» cuando está quieta.
@@ -153,4 +154,6 @@ Las pruebas de `tools/tests/` se ejecutan con Playwright y Chromium sin interfaz
 - **puzzles**: todos los retos principales se resuelven con su solución de referencia, las soluciones incorrectas fallan con una explicación (p. ej. umbral solar de 500 o 1000 W/m², reglas de microred básicas) y los 115 retos del banco se construyen y se dibujan.
 - **walk**: recorrido automático de la campaña completa. Todas las islas quedan restauradas, se obtienen las 11 habilidades y el juego llega al epílogo y a los créditos.
 - **menus**: capturas de todas las pantallas de menú para revisarlas a ojo.
+- **map**: las 11 ilustraciones existen en sus tres estados, el mapa se dibuja con distinto progreso, el viaje llega a la isla elegida e `index.html` es idéntico a `lumina_loop.html`.
+- **Publicación**: el flujo `.github/workflows/publicar.yml` compila y publica en GitHub Pages en cada envío.
 - **bosses**: el Lumisable depura enemigos con tajos, pulso, parada y rebote, y la recarga funciona; los 10 jefes ejecutan su programa, son alcanzables con un tajo normal en su ventana vulnerable, cambian de fase con el parche, se depuran, dan su recompensa y devuelven al mapa; la salida de una isla lleva a su jefe.

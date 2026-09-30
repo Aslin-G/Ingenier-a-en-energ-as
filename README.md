@@ -102,7 +102,7 @@ Cada reto pasa por **DEMO → LO HACEMOS JUNTOS → TÚ SOLO**, ofrece **pistas 
 - **Atlas Aurora**: 87 entradas (algoritmos, energías, personajes, islas, misterios y **bestiario** de enemigos y jefes) que se desbloquean jugando, no antes.
 - **Lente Debug** (F): muestra variables, estados y secretos ocultos en el escenario.
 - **Blueprint** (B): tu último algoritmo como un plano.
-- **Mapa del archipiélago** con viajes animados (barca solar, planeador, teleférico, tranvía...).
+- **Mapa del archipiélago ilustrado** (a doble resolución): cada isla tiene su propia ilustración animada que representa su tema y su energía (el faro y los muelles del Puerto, el molino y los cultivos del Valle, los paneles y la torre solar de Solaria, las islas flotantes con turbinas de Aeris, las cascadas de Hydria, la selva y los biodigestores de BioLoop, el volcán y la planta geotérmica de Gea, los tanques de hidrógeno de la Bahía H2, los rascacielos-batería de neón, la torre-prisma de la microred y el gran Faro Aurora). Las islas aparecen **apagadas** hasta restaurarlas y **cubiertas de niebla** hasta descubrirlas; los viajes siguen rutas marítimas animadas.
 - **Misiones**: 12 principales y 20 secundarias. **22 Chispas de Aurora** escondidas y **20 pegatinas** (logros).
 - **Mapa de dominio estimado**: progreso por concepto y por energía (presentado como una estimación, nunca como una nota).
 - **Taller de Lía**: recuerdos de cada isla, pegatinas y cosméticos.
@@ -151,6 +151,7 @@ src/
   15_puzzles_a.js       secuencias, diagramas de flujo, máquinas de estados
   16_puzzles_b.js       ordenar/buscar, microred, objetivo, preguntas, habilidades
   17_scenes.js          escenas: título, mapa, pausa, Atlas, ajustes, docente, Lab...
+  18_islandmap.js       ilustraciones de las islas y océano del mapa (doble resolución)
   18_codex.js           Atlas Aurora, Chispas y misiones
   19_story_common.js    utilidades de historia y constructor de niveles
   20_… 26_lv_*.js       las islas (niveles, diálogos y puzzles)
@@ -184,6 +185,7 @@ node tools/tests/levels.js    # carga los 14 niveles y las 10 arenas de jefe y g
 node tools/tests/puzzles.js   # resuelve los puzzles principales y construye los 115 retos
 node tools/tests/presets.js   # cada reto de código empieza armado pero sin resolver, y su solución funciona
 node tools/tests/bosses.js    # sable (tajos, pulso, parada, rebote, recarga) y los 10 jefes de principio a fin
+node tools/tests/map.js       # mapa ilustrado, viaje entre islas e index.html idéntico a lumina_loop.html
 node tools/tests/walk.js      # recorre la campaña completa hasta el epílogo
 node tools/tests/menus.js     # abre todas las pantallas de menú
 ```
