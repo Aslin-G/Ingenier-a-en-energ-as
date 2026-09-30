@@ -52,6 +52,7 @@ class Level {
     this.parse(def.map);
     this.hitstop = 0;
     populateFoes(this);
+    placeLocks(this);
     this.bg = getBackground(def.theme);
     this.buildStatic();
     const start = this.findSpawn(spawnId);
@@ -415,6 +416,7 @@ class Level {
     for (const e of this.entities) if (e instanceof Enemy && !e.dead && (e.excl > 0 || e.hpShowT > 0 || e.stunT > 0) && this.onScreen(e, cx, cy)) drawFoeUI(g, e, cx, cy);
     // textos flotantes: primero se reservan HUD y aviso de interacción, luego globos y etiquetas de la Lente
     this.layoutLabels(cx, cy);
+    drawLockPanel(g, this);
     Bark.draw(g, cx, cy, id => id === 'pix' ? this.pix : id === 'lia' ? this.player : id === 'lumi' ? this.lumi : this.byId[id]);
     if (this.lensT > 0.01) this.drawLensLabels(g, cx, cy);
   }
@@ -429,10 +431,12 @@ class Level {
     }
     if (this.lensT > 0.01) Labels.reserve(W - 64, H - 16, 64, 16);
     if (this.banner > 0 && this.def.title) Labels.reserve(W / 2 - 130, 32, 260, 44);
+    if (this.lockPanel && this.lockPanel.near > 0.05 && !Dlg.box) { const r = lockPanelRect(this.lockPanel); Labels.reserve(r.x, r.y, r.w, r.h); }
+    for (const e of this.entities) if (e.labelRect && !e.dead) { const r = e.labelRect(cx, cy); if (r) Labels.reserve(r.x, r.y, r.w, r.h); }
     Toast.reserveAreas();
     this.promptRect = null;
     const e = this.nearby;
-    if (e && (!Cut.active || Cut.free) && !this.def.noHud) {
+    if (e && !e.noPrompt && (!Cut.active || Cut.free) && !this.def.noHud) {
       const label = this.promptLabel(e), kw = textW(bindName('interact')) + 6, w = kw + 8 + textW(label) + 6;
       this.promptRect = Labels.place(e.x + e.w / 2 - cx - w / 2, e.y - cy - 20, w, 13);
       this.promptRect.label = label;

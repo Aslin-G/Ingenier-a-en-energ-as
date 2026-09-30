@@ -30,7 +30,9 @@ function newSave() {
     attempts: {}, teacherUnlocked: false, labUnlocked: false, lastRegion: 'puerto',
     // combate: fragmentos de célula (3 = +1 célula), intentos por jefe, y si la isla siguiente
     // exige vencer al jefe (las partidas anteriores a los jefes no quedan bloqueadas)
-    cellShards: 0, bossTries: {}, bossGate: true
+    cellShards: 0, bossTries: {}, bossGate: true,
+    // cerraduras de código resueltas y núcleos de forja ganados
+    locks: {}, forgeCores: 0
   };
 }
 
@@ -151,7 +153,9 @@ const ACHIEVEMENTS = {
   lab: { name: 'CIENTÍFICA DEL LAB', desc: 'Comparaste tres experimentos en Aurora Lab.' },
   sidequests: { name: 'VECINA EJEMPLAR', desc: 'Completaste 10 misiones secundarias.' },
   parry: { name: 'REFLEJOS DE LUZ', desc: 'Hiciste una parada perfecta con el Lumisable.' },
-  bosses: { name: 'GUARDIANA DEL ARCHIPIÉLAGO', desc: 'Depuraste a los 10 jefes regionales.' }
+  bosses: { name: 'GUARDIANA DEL ARCHIPIÉLAGO', desc: 'Depuraste a los 10 jefes regionales.' },
+  reader: { name: 'LECTORA DE CÓDIGO', desc: 'Predijiste 5 cerraduras de código al primer intento.' },
+  locksmith: { name: 'CERRAJERA DE AURORA', desc: 'Abriste 10 cerraduras de código.' }
 };
 function achieve(id) {
   if (G.save.achievements[id] || !ACHIEVEMENTS[id]) return;

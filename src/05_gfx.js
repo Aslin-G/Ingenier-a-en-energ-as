@@ -323,6 +323,8 @@ const Toast = {
     const lv = typeof G !== 'undefined' && G.run ? G.run.level : null;
     const inLevel = s && s.lv === lv;
     // mientras se ve el cartel con el nombre de la isla, los avisos van debajo de él
+    // junto a una cerradura de código, los avisos van bajo su holograma
+    if (inLevel && lv.lockPanel && lv.lockPanel.near > 0.05 && !Dlg.box && typeof lockPanelRect === 'function') { const r = lockPanelRect(lv.lockPanel); if (r.y < 60) return r.y + r.h + 4; }
     if (inLevel && lv && lv.banner > 0 && lv.def.title && !lv.def.noHud) return 78;
     return inLevel && lv.rboss && lv.rboss.showBar ? 30 : 20;
   },
