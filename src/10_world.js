@@ -822,7 +822,7 @@ class Player {
     // el golpe empuja lejos de quien lo dio
     const sx = src && src.x != null ? src.x + (src.w || 0) / 2 : null;
     const dir = sx != null && Math.abs(sx - this.cx) > 1 ? sign(this.cx - sx) : -this.face;
-    this.cells--; this.inv = 1.3; this.vy = -180; this.vx = dir * 150; this.hurtT = 0.28;
+    this.cells--; this.inv = forged('guard') ? 1.9 : 1.3; this.vy = -180; this.vx = dir * 150; this.hurtT = 0.28;
     if (src && src.knockPlayer) src.knockPlayer(this);
     this.atk = null; this.chargeT = 0; this.chargeReady = false; this.healT = 0;
     hitstop(this.lv, 0.07);

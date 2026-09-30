@@ -156,9 +156,9 @@ function drawHUD(g, lv) {
   }
   // energía: la marca indica lo que cuesta recargar una célula
   const bw = cellsW - 4;
-  const eCol = p.chargeReady ? (Math.floor(lv.time * 12) % 2 ? PAL.white : PAL.teal) : p.energy >= HEAL_COST && p.cells < p.maxCells ? PAL.lime : PAL.teal;
+  const eCol = p.chargeReady ? (Math.floor(lv.time * 12) % 2 ? PAL.white : PAL.teal) : p.energy >= healCost() && p.cells < p.maxCells ? PAL.lime : PAL.teal;
   bar(g, 6, 14, bw, 4, p.energy, 100, eCol, '#10162B');
-  rect(g, 6 + Math.round(bw * HEAL_COST / 100), 13, 1, 6, 'rgba(255,243,215,0.55)');
+  rect(g, 6 + Math.round(bw * healCost() / 100), 13, 1, 6, 'rgba(255,243,215,0.55)');
   // habilidad actual
   const ab = G.save.currentAbility;
   if (ab && hasAbility(ab)) {
@@ -772,6 +772,10 @@ class TallerScene {
       panel(g, 300, 140, 170, 44, { border: PAL.teal });
       drawPara(g, 'PÍX: "He creado un algoritmo para elegir merienda." LÍA: "¿Por qué tiene 72 condiciones?"', 306, 146, 160, PAL.cream);
     }
+    // forja del Lumisable: mejoras del sable a cambio de núcleos y de demostrar el concepto
+    const cores = G.save.forgeCores || 0, forgedN = FORGE.filter(f => forged(f.id)).length;
+    if (UI.btn(g, 'tforge', 300, 192, 170, 18, '⚒ FORJA DEL LUMISABLE', { color: PAL.orange, primary: cores > 0 && forgedN < FORGE.length, tip: 'Mejoras del sable: cada una es un concepto' })) Scenes.push(new ForgeScene());
+    drawText(g, '◆ ' + cores + ' núcleos · ' + forgedN + '/' + FORGE.length + ' forjadas', 385, 214, '#E8C8A0', { align: 'center' });
     if (UI.btn(g, 'tback', W - 70, H - 20, 64, 14, 'VOLVER', { color: PAL.teal })) { UI.nav = this.prevNav; Scenes.pop(); }
     UI.drawTooltip(g);
   }

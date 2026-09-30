@@ -14,7 +14,13 @@ const SABER = {
   up: { dur: 0.27, act: [0.02, 0.14], a0: 15, a1: -195, box: [-14, -22, 28, 26], dmg: 1, kb: 80, len: 15 },
   down: { dur: 0.27, act: [0.01, 0.16], a0: 10, a1: 170, box: [-12, 14, 24, 24], dmg: 1, kb: 50, len: 15 }
 };
-const PULSE_COST = 30, HEAL_COST = 50, HEAL_TIME = 0.9, CHARGE_TIME = 0.65, PASSIVE_ENERGY_CAP = 60;
+const CHARGE_TIME = 0.65, PASSIVE_ENERGY_CAP = 60;
+// mejoras de la Forja del Lumisable (cada una es un concepto: ver 29_forge.js)
+const forged = k => !!(G.save.forge && G.save.forge[k]);
+// coste del pulso y de la recarga (la forja los abarata)
+const pulseCost = () => forged('pulse') ? 20 : 30;
+const healCost = () => forged('cells') ? 40 : 50;
+const healTime = () => forged('cells') ? 0.7 : 0.9;
 
 // color del sable: es la luz de Lumi (cambia con su emoción)
 function saberColor(lv) { const c = lv && lv.lumi ? lv.lumi.color : PAL.sun; return typeof c === 'string' && c[0] === '#' && c.length === 7 ? c : PAL.sun; }
@@ -34,9 +40,10 @@ Player.prototype.saberPivot = function (kind) {
   return { x: this.cx + f * 3, y: this.y + 10 };
 };
 Player.prototype.atkBox = function () {
-  const a = this.atk, b = a.def.box;
-  const x = a.face > 0 ? this.cx + b[0] : this.cx - b[0] - b[2];
-  return { x, y: this.y + b[1], w: b[2], h: b[3] };
+  const a = this.atk, b = a.def.box, ext = forged('reach') ? 5 : 0;
+  // alcance ← alcance + 5 (forja): la caja crece hacia delante
+  const w = b[2] + ext, x = a.face > 0 ? this.cx + b[0] : this.cx - b[0] - w;
+  return { x, y: this.y + b[1], w, h: b[3] };
 };
 Player.prototype.startAttack = function (kind) {
   const def = SABER[kind];
@@ -82,28 +89,28 @@ Player.prototype.updateCombat = function (dt, control) {
       if (Math.floor(before * 10) !== Math.floor(this.chargeT * 10)) AudioSys.sfx('chargeUp', clamp(this.chargeT / CHARGE_TIME, 0, 1));
     }
     if (!this.chargeReady && this.chargeT >= CHARGE_TIME) {
-      if (this.energy >= PULSE_COST) { this.chargeReady = true; AudioSys.sfx('ok'); Particles.burst(this.cx, this.y + 10, 10, { color: saberColor(lv), min: 20, max: 50, type: 'star', lmax: 0.4 }); }
-      else if (!this.noEnergyMsg) { this.noEnergyMsg = true; Particles.text(this.cx, this.y - 10, 'energía < ' + PULSE_COST, PAL.coral); }
+      if (this.energy >= pulseCost()) { this.chargeReady = true; AudioSys.sfx('ok'); Particles.burst(this.cx, this.y + 10, 10, { color: saberColor(lv), min: 20, max: 50, type: 'star', lmax: 0.4 }); }
+      else if (!this.noEnergyMsg) { this.noEnergyMsg = true; Particles.text(this.cx, this.y - 10, 'energía < ' + pulseCost(), PAL.coral); }
     }
   } else {
-    if (this.chargeReady && this.energy >= PULSE_COST) this.firePulse();
+    if (this.chargeReady && this.energy >= pulseCost()) this.firePulse();
     this.chargeT = 0; this.chargeReady = false; this.noEnergyMsg = false;
   }
   // recarga de célula: quieta en el suelo, mantener ↓ (sin saltar)
-  const canHeal = this.onGround && !this.inWater && Input.down('down') && !Input.down('jump') && Math.abs(this.vx) < 12 && !this.atk && this.cells < this.maxCells && this.energy >= HEAL_COST;
+  const canHeal = this.onGround && !this.inWater && Input.down('down') && !Input.down('jump') && Math.abs(this.vx) < 12 && !this.atk && this.cells < this.maxCells && this.energy >= healCost();
   if (canHeal) {
     this.healT += dt;
     if (Math.random() < 0.6) { const an = rand(0, 6.28); Particles.spawn({ x: this.cx + Math.cos(an) * 18, y: this.y + 10 + Math.sin(an) * 18, vx: -Math.cos(an) * 50, vy: -Math.sin(an) * 50, life: 0.35, type: 'dot', color: PAL.sun }); }
-    if (this.healT >= HEAL_TIME) {
-      this.healT = 0; this.cells++; this.energy -= HEAL_COST;
+    if (this.healT >= healTime()) {
+      this.healT = 0; this.cells++; this.energy -= healCost();
       AudioSys.sfx('heal'); Particles.burst(this.cx, this.y + 8, 16, { colors: [PAL.sun, PAL.white, PAL.orange], min: 20, max: 60, type: 'star' });
       Particles.text(this.cx, this.y - 8, '+1 célula', PAL.sun);
       lv.lumi.mood = 'happy'; lv.lumi.moodT = 1.5;
     }
   } else this.healT = 0;
-  if (this.cells < this.maxCells && this.energy >= HEAL_COST && !flag('healTip') && !Cut.active) {
+  if (this.cells < this.maxCells && this.energy >= healCost() && !flag('healTip') && !Cut.active) {
     setFlag('healTip');
-    Toast.show('Quieta, mantén ' + (Input.lastDevice === 'touch' ? '▼' : bindName('down')) + ': Lumi recarga una célula (' + HEAL_COST + ' de energía)', PAL.sun, 4.5);
+    Toast.show('Quieta, mantén ' + (Input.lastDevice === 'touch' ? '▼' : bindName('down')) + ': Lumi recarga una célula (' + healCost() + ' de energía)', PAL.sun, 4.5);
   }
 };
 // resuelve los golpes del tajo activo
@@ -117,9 +124,11 @@ Player.prototype.resolveHits = function () {
     if (!r || !rectHit(box, r)) continue;
     a.hits.add(e);
     // parada: golpear justo al principio del tajo contra un ataque que se puede detener
-    if (e.parryWindow && e.parryWindow() && a.t < 0.13) { e.onParry(this); parryFx(this, e); landed = true; continue; }
+    // Filtro SI (forja): la ventana de parada es más amplia
+    if (e.parryWindow && e.parryWindow() && a.t < (forged('parry') ? 0.2 : 0.13)) { e.onParry(this); parryFx(this, e); landed = true; continue; }
     const crit = lv.lensT > 0.5 && e.weakPoint !== false;
-    const res = e.onHit({ dmg: d.dmg, dir: a.face, kind: a.kind, kb: d.kb, crit, t: a.t, src: 'saber' });
+    // Tajo final (forja): el tercer tajo del combo pesa más
+    const res = e.onHit({ dmg: d.dmg + (a.kind === 'f3' && forged('finisher') ? 1 : 0), dir: a.face, kind: a.kind, kb: d.kb, crit, t: a.t, src: 'saber' });
     if (res) { landed = true; if (res === 'block') blocked = true; }
   }
   // rebote sobre pinchos con el tajo hacia abajo
@@ -130,7 +139,7 @@ Player.prototype.resolveHits = function () {
   if (!landed) return;
   if (!a.landed) {
     a.landed = true;
-    if (!blocked) this.energy = Math.min(100, this.energy + 8);
+    if (!blocked) this.energy = Math.min(100, this.energy + (forged('energy') ? 12 : 8));
     if (a.kind === 'down') {
       // POGO: rebote hacia arriba
       this.vy = -PHYS.jumpV * 0.95; this.gliding = false; this.pogoT = 0.2; this.coyote = 0;
@@ -151,7 +160,7 @@ function parryFx(p, e) {
 }
 Player.prototype.firePulse = function () {
   const lv = this.lv;
-  this.energy -= PULSE_COST;
+  this.energy -= pulseCost();
   const dir = this.face;
   lv.addEntity(new LumenWave(lv, dir > 0 ? this.x + this.w : this.x - 14, this.y - 1, dir, saberColor(lv)));
   AudioSys.sfx('pulse'); FX.shake(1, 0.12);
@@ -176,7 +185,7 @@ Player.prototype.drawSaber = function (g, cx, cy) {
       for (let r = d.len - 6; r <= d.len + 2; r++) px(g, X + c * r, Y + s * r, r === d.len + 2 ? edge : r >= d.len ? '#FFFFFF' : col);
     }
     g.globalAlpha = fade;
-    this.drawBlade(g, X, Y, ang * Math.PI / 180, a.face, d.len, col, 1);
+    this.drawBlade(g, X, Y, ang * Math.PI / 180, a.face, d.len + (forged('reach') ? 3 : 0), col, 1);
     g.globalAlpha = 1;
   } else if (this.chargeT > 0.15) {
     // sable sostenido hacia atrás mientras carga
@@ -188,7 +197,7 @@ Player.prototype.drawSaber = function (g, cx, cy) {
     g.globalAlpha = 1;
   }
   if (this.healT > 0) {
-    const k = this.healT / HEAL_TIME;
+    const k = this.healT / healTime();
     g.globalAlpha = 0.5; pring(g, this.cx - cx, this.y + 10 - cy, Math.round(20 - k * 12), PAL.sun); g.globalAlpha = 1;
   }
 };

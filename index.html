@@ -978,7 +978,9 @@ function newSave() {
     // cerraduras de código resueltas y núcleos de forja ganados
     locks: {}, forgeCores: 0,
     // cartas del Atlas (repaso espaciado), racha de repaso y reto del día
-    cards: {}, review: { streak: 0, best: 0, last: null, coreDay: null }, daily: {}
+    cards: {}, review: { streak: 0, best: 0, last: null, coreDay: null }, daily: {},
+    // mejoras forjadas del Lumisable
+    forge: {}
   };
 }
 
@@ -1103,7 +1105,8 @@ const ACHIEVEMENTS = {
   reader: { name: 'LECTORA DE CÓDIGO', desc: 'Predijiste 5 cerraduras de código al primer intento.' },
   locksmith: { name: 'CERRAJERA DE AURORA', desc: 'Abriste 10 cerraduras de código.' },
   memory: { name: 'MEMORIA DE ORO', desc: 'Llevaste 5 cartas del Atlas al nivel ORO.' },
-  streak: { name: 'CONSTANCIA', desc: 'Repasaste tus cartas 3 días seguidos.' }
+  streak: { name: 'CONSTANCIA', desc: 'Repasaste tus cartas 3 días seguidos.' },
+  smith: { name: 'MAESTRA FORJADORA', desc: 'Forjaste todas las mejoras del Lumisable.' }
 };
 function achieve(id) {
   if (G.save.achievements[id] || !ACHIEVEMENTS[id]) return;
@@ -4466,7 +4469,7 @@ class Player {
     // el golpe empuja lejos de quien lo dio
     const sx = src && src.x != null ? src.x + (src.w || 0) / 2 : null;
     const dir = sx != null && Math.abs(sx - this.cx) > 1 ? sign(this.cx - sx) : -this.face;
-    this.cells--; this.inv = 1.3; this.vy = -180; this.vx = dir * 150; this.hurtT = 0.28;
+    this.cells--; this.inv = forged('guard') ? 1.9 : 1.3; this.vy = -180; this.vx = dir * 150; this.hurtT = 0.28;
     if (src && src.knockPlayer) src.knockPlayer(this);
     this.atk = null; this.chargeT = 0; this.chargeReady = false; this.healT = 0;
     hitstop(this.lv, 0.07);
@@ -5542,7 +5545,13 @@ const SABER = {
   up: { dur: 0.27, act: [0.02, 0.14], a0: 15, a1: -195, box: [-14, -22, 28, 26], dmg: 1, kb: 80, len: 15 },
   down: { dur: 0.27, act: [0.01, 0.16], a0: 10, a1: 170, box: [-12, 14, 24, 24], dmg: 1, kb: 50, len: 15 }
 };
-const PULSE_COST = 30, HEAL_COST = 50, HEAL_TIME = 0.9, CHARGE_TIME = 0.65, PASSIVE_ENERGY_CAP = 60;
+const CHARGE_TIME = 0.65, PASSIVE_ENERGY_CAP = 60;
+// mejoras de la Forja del Lumisable (cada una es un concepto: ver 29_forge.js)
+const forged = k => !!(G.save.forge && G.save.forge[k]);
+// coste del pulso y de la recarga (la forja los abarata)
+const pulseCost = () => forged('pulse') ? 20 : 30;
+const healCost = () => forged('cells') ? 40 : 50;
+const healTime = () => forged('cells') ? 0.7 : 0.9;
 
 // color del sable: es la luz de Lumi (cambia con su emoción)
 function saberColor(lv) { const c = lv && lv.lumi ? lv.lumi.color : PAL.sun; return typeof c === 'string' && c[0] === '#' && c.length === 7 ? c : PAL.sun; }
@@ -5562,9 +5571,10 @@ Player.prototype.saberPivot = function (kind) {
   return { x: this.cx + f * 3, y: this.y + 10 };
 };
 Player.prototype.atkBox = function () {
-  const a = this.atk, b = a.def.box;
-  const x = a.face > 0 ? this.cx + b[0] : this.cx - b[0] - b[2];
-  return { x, y: this.y + b[1], w: b[2], h: b[3] };
+  const a = this.atk, b = a.def.box, ext = forged('reach') ? 5 : 0;
+  // alcance ← alcance + 5 (forja): la caja crece hacia delante
+  const w = b[2] + ext, x = a.face > 0 ? this.cx + b[0] : this.cx - b[0] - w;
+  return { x, y: this.y + b[1], w, h: b[3] };
 };
 Player.prototype.startAttack = function (kind) {
   const def = SABER[kind];
@@ -5610,28 +5620,28 @@ Player.prototype.updateCombat = function (dt, control) {
       if (Math.floor(before * 10) !== Math.floor(this.chargeT * 10)) AudioSys.sfx('chargeUp', clamp(this.chargeT / CHARGE_TIME, 0, 1));
     }
     if (!this.chargeReady && this.chargeT >= CHARGE_TIME) {
-      if (this.energy >= PULSE_COST) { this.chargeReady = true; AudioSys.sfx('ok'); Particles.burst(this.cx, this.y + 10, 10, { color: saberColor(lv), min: 20, max: 50, type: 'star', lmax: 0.4 }); }
-      else if (!this.noEnergyMsg) { this.noEnergyMsg = true; Particles.text(this.cx, this.y - 10, 'energía < ' + PULSE_COST, PAL.coral); }
+      if (this.energy >= pulseCost()) { this.chargeReady = true; AudioSys.sfx('ok'); Particles.burst(this.cx, this.y + 10, 10, { color: saberColor(lv), min: 20, max: 50, type: 'star', lmax: 0.4 }); }
+      else if (!this.noEnergyMsg) { this.noEnergyMsg = true; Particles.text(this.cx, this.y - 10, 'energía < ' + pulseCost(), PAL.coral); }
     }
   } else {
-    if (this.chargeReady && this.energy >= PULSE_COST) this.firePulse();
+    if (this.chargeReady && this.energy >= pulseCost()) this.firePulse();
     this.chargeT = 0; this.chargeReady = false; this.noEnergyMsg = false;
   }
   // recarga de célula: quieta en el suelo, mantener ↓ (sin saltar)
-  const canHeal = this.onGround && !this.inWater && Input.down('down') && !Input.down('jump') && Math.abs(this.vx) < 12 && !this.atk && this.cells < this.maxCells && this.energy >= HEAL_COST;
+  const canHeal = this.onGround && !this.inWater && Input.down('down') && !Input.down('jump') && Math.abs(this.vx) < 12 && !this.atk && this.cells < this.maxCells && this.energy >= healCost();
   if (canHeal) {
     this.healT += dt;
     if (Math.random() < 0.6) { const an = rand(0, 6.28); Particles.spawn({ x: this.cx + Math.cos(an) * 18, y: this.y + 10 + Math.sin(an) * 18, vx: -Math.cos(an) * 50, vy: -Math.sin(an) * 50, life: 0.35, type: 'dot', color: PAL.sun }); }
-    if (this.healT >= HEAL_TIME) {
-      this.healT = 0; this.cells++; this.energy -= HEAL_COST;
+    if (this.healT >= healTime()) {
+      this.healT = 0; this.cells++; this.energy -= healCost();
       AudioSys.sfx('heal'); Particles.burst(this.cx, this.y + 8, 16, { colors: [PAL.sun, PAL.white, PAL.orange], min: 20, max: 60, type: 'star' });
       Particles.text(this.cx, this.y - 8, '+1 célula', PAL.sun);
       lv.lumi.mood = 'happy'; lv.lumi.moodT = 1.5;
     }
   } else this.healT = 0;
-  if (this.cells < this.maxCells && this.energy >= HEAL_COST && !flag('healTip') && !Cut.active) {
+  if (this.cells < this.maxCells && this.energy >= healCost() && !flag('healTip') && !Cut.active) {
     setFlag('healTip');
-    Toast.show('Quieta, mantén ' + (Input.lastDevice === 'touch' ? '▼' : bindName('down')) + ': Lumi recarga una célula (' + HEAL_COST + ' de energía)', PAL.sun, 4.5);
+    Toast.show('Quieta, mantén ' + (Input.lastDevice === 'touch' ? '▼' : bindName('down')) + ': Lumi recarga una célula (' + healCost() + ' de energía)', PAL.sun, 4.5);
   }
 };
 // resuelve los golpes del tajo activo
@@ -5645,9 +5655,11 @@ Player.prototype.resolveHits = function () {
     if (!r || !rectHit(box, r)) continue;
     a.hits.add(e);
     // parada: golpear justo al principio del tajo contra un ataque que se puede detener
-    if (e.parryWindow && e.parryWindow() && a.t < 0.13) { e.onParry(this); parryFx(this, e); landed = true; continue; }
+    // Filtro SI (forja): la ventana de parada es más amplia
+    if (e.parryWindow && e.parryWindow() && a.t < (forged('parry') ? 0.2 : 0.13)) { e.onParry(this); parryFx(this, e); landed = true; continue; }
     const crit = lv.lensT > 0.5 && e.weakPoint !== false;
-    const res = e.onHit({ dmg: d.dmg, dir: a.face, kind: a.kind, kb: d.kb, crit, t: a.t, src: 'saber' });
+    // Tajo final (forja): el tercer tajo del combo pesa más
+    const res = e.onHit({ dmg: d.dmg + (a.kind === 'f3' && forged('finisher') ? 1 : 0), dir: a.face, kind: a.kind, kb: d.kb, crit, t: a.t, src: 'saber' });
     if (res) { landed = true; if (res === 'block') blocked = true; }
   }
   // rebote sobre pinchos con el tajo hacia abajo
@@ -5658,7 +5670,7 @@ Player.prototype.resolveHits = function () {
   if (!landed) return;
   if (!a.landed) {
     a.landed = true;
-    if (!blocked) this.energy = Math.min(100, this.energy + 8);
+    if (!blocked) this.energy = Math.min(100, this.energy + (forged('energy') ? 12 : 8));
     if (a.kind === 'down') {
       // POGO: rebote hacia arriba
       this.vy = -PHYS.jumpV * 0.95; this.gliding = false; this.pogoT = 0.2; this.coyote = 0;
@@ -5679,7 +5691,7 @@ function parryFx(p, e) {
 }
 Player.prototype.firePulse = function () {
   const lv = this.lv;
-  this.energy -= PULSE_COST;
+  this.energy -= pulseCost();
   const dir = this.face;
   lv.addEntity(new LumenWave(lv, dir > 0 ? this.x + this.w : this.x - 14, this.y - 1, dir, saberColor(lv)));
   AudioSys.sfx('pulse'); FX.shake(1, 0.12);
@@ -5704,7 +5716,7 @@ Player.prototype.drawSaber = function (g, cx, cy) {
       for (let r = d.len - 6; r <= d.len + 2; r++) px(g, X + c * r, Y + s * r, r === d.len + 2 ? edge : r >= d.len ? '#FFFFFF' : col);
     }
     g.globalAlpha = fade;
-    this.drawBlade(g, X, Y, ang * Math.PI / 180, a.face, d.len, col, 1);
+    this.drawBlade(g, X, Y, ang * Math.PI / 180, a.face, d.len + (forged('reach') ? 3 : 0), col, 1);
     g.globalAlpha = 1;
   } else if (this.chargeT > 0.15) {
     // sable sostenido hacia atrás mientras carga
@@ -5716,7 +5728,7 @@ Player.prototype.drawSaber = function (g, cx, cy) {
     g.globalAlpha = 1;
   }
   if (this.healT > 0) {
-    const k = this.healT / HEAL_TIME;
+    const k = this.healT / healTime();
     g.globalAlpha = 0.5; pring(g, this.cx - cx, this.y + 10 - cy, Math.round(20 - k * 12), PAL.sun); g.globalAlpha = 1;
   }
 };
@@ -9281,9 +9293,9 @@ function drawHUD(g, lv) {
   }
   // energía: la marca indica lo que cuesta recargar una célula
   const bw = cellsW - 4;
-  const eCol = p.chargeReady ? (Math.floor(lv.time * 12) % 2 ? PAL.white : PAL.teal) : p.energy >= HEAL_COST && p.cells < p.maxCells ? PAL.lime : PAL.teal;
+  const eCol = p.chargeReady ? (Math.floor(lv.time * 12) % 2 ? PAL.white : PAL.teal) : p.energy >= healCost() && p.cells < p.maxCells ? PAL.lime : PAL.teal;
   bar(g, 6, 14, bw, 4, p.energy, 100, eCol, '#10162B');
-  rect(g, 6 + Math.round(bw * HEAL_COST / 100), 13, 1, 6, 'rgba(255,243,215,0.55)');
+  rect(g, 6 + Math.round(bw * healCost() / 100), 13, 1, 6, 'rgba(255,243,215,0.55)');
   // habilidad actual
   const ab = G.save.currentAbility;
   if (ab && hasAbility(ab)) {
@@ -9897,6 +9909,10 @@ class TallerScene {
       panel(g, 300, 140, 170, 44, { border: PAL.teal });
       drawPara(g, 'PÍX: "He creado un algoritmo para elegir merienda." LÍA: "¿Por qué tiene 72 condiciones?"', 306, 146, 160, PAL.cream);
     }
+    // forja del Lumisable: mejoras del sable a cambio de núcleos y de demostrar el concepto
+    const cores = G.save.forgeCores || 0, forgedN = FORGE.filter(f => forged(f.id)).length;
+    if (UI.btn(g, 'tforge', 300, 192, 170, 18, '⚒ FORJA DEL LUMISABLE', { color: PAL.orange, primary: cores > 0 && forgedN < FORGE.length, tip: 'Mejoras del sable: cada una es un concepto' })) Scenes.push(new ForgeScene());
+    drawText(g, '◆ ' + cores + ' núcleos · ' + forgedN + '/' + FORGE.length + ' forjadas', 385, 214, '#E8C8A0', { align: 'center' });
     if (UI.btn(g, 'tback', W - 70, H - 20, 64, 14, 'VOLVER', { color: PAL.teal })) { UI.nav = this.prevNav; Scenes.pop(); }
     UI.drawTooltip(g);
   }
@@ -15577,6 +15593,117 @@ addCh({ title: 'Microred: semana completa', type: 'optimizar', prog: ['optimizat
 });
 
 
+// ===== 29_forge.js =====
+// =====================================================================
+//  FORJA DEL LUMISABLE (en el Taller de Lía)
+//  Mejoras del sable que SON conceptos: se pagan con núcleos de forja
+//  (cerraduras de código, repaso diario de cartas y reto del día) y, para
+//  forjarlas, hay que demostrar el concepto respondiendo una pregunta.
+//  Fallar no cuesta núcleos: se explica el error y llega otra pregunta.
+// =====================================================================
+const FORGE = [
+  { id: 'reach', name: 'Alcance variable', key: 'variables', cost: 2, code: 'alcance ← alcance + 5', desc: 'La hoja llega más lejos: golpeas antes.' },
+  { id: 'parry', name: 'Filtro SI', key: 'conditions', cost: 2, code: 'SI llega un disparo → devolver', desc: 'Más margen para devolver disparos.' },
+  { id: 'energy', name: 'Bucle de energía', key: 'loops', cost: 2, code: 'MIENTRAS golpeas: energía + 12', desc: 'Cada golpe da 12 de energía (antes 8).' },
+  { id: 'pulse', name: 'Función pulso()', key: 'functions', cost: 3, code: 'pulso() cuesta 20', desc: 'El pulso cargado gasta 20 (antes 30).' },
+  { id: 'cells', name: 'Lista de células', key: 'arrays', cost: 3, code: 'recargar(células[i]) más rápido', desc: 'Recargar cuesta 40 (antes 50) y es rápido.' },
+  { id: 'guard', name: 'Estado GUARDIA', key: 'states', cost: 3, code: 'DAÑO → GUARDIA (1,9 s)', desc: 'Más invulnerable tras recibir un golpe.' },
+  { id: 'finisher', name: 'Tajo ordenado', key: 'sorting', cost: 4, code: 'combo[2] → daño + 1', desc: 'El tercer tajo del combo hace +1 de daño.' }
+];
+
+class ForgeScene {
+  constructor() { this.opaque = false; this.nav = true; this.t = 0; UI.nav = true; UI.focus = null; }
+  update(dt) { this.t += dt; if (Input.hit('back')) { Input.consume(); Scenes.pop(); } }
+  draw(g) {
+    rect(g, 0, 0, W, H, 'rgba(12,6,4,0.9)');
+    panel(g, 10, 4, 460, 262, { border: PAL.orange, accent: PAL.orange, accentW: 80, bg: 'rgba(30,18,14,0.96)' });
+    drawText(g, 'FORJA DEL LUMISABLE', 240, 10, PAL.orange, { align: 'center', scale: 2 });
+    drawText(g, 'Cada mejora es un concepto: para forjarla, demuestra que lo entiendes.', 240, 28, '#E8C8A0', { align: 'center' });
+    // sable que gana brillo con cada mejora
+    const n = FORGE.filter(f => forged(f.id)).length, cx = 240, cy = 44;
+    for (let i = 0; i < 90; i++) { const k = i / 90; rect(g, cx - 45 + i, cy, 1, 3, mix(PAL.sun, '#FFFFFF', k)); }
+    g.globalAlpha = 0.25 + n * 0.08 + Math.sin(this.t * 4) * 0.08; rect(g, cx - 46, cy - 2, 92, 7, PAL.sun); g.globalAlpha = 1;
+    rect(g, cx - 56, cy - 1, 11, 5, '#565E8C'); rect(g, cx - 58, cy - 3, 3, 9, '#3A4068');
+    const cores = G.save.forgeCores || 0;
+    drawText(g, '◆ ' + cores + ' núcleo' + (cores === 1 ? '' : 's'), 460, 40, PAL.aqua, { align: 'right' });
+    drawText(g, n + '/' + FORGE.length + ' forjadas', 20, 40, PAL.sun);
+    // mejoras
+    FORGE.forEach((f, i) => {
+      const y = 56 + i * 26, done = forged(f.id), can = !done && cores >= f.cost;
+      panel(g, 18, y, 444, 23, { bg: done ? '#2A2410' : '#1A1420', border: done ? PAL.sun : '#5A3A2A', flat: true });
+      icon(g, CARD_META[f.key].icon, 24, y + 7);
+      drawText(g, f.name, 36, y + 4, done ? PAL.sun : PAL.cream);
+      drawText(g, MASTERY_LABELS[f.key], 36, y + 13, '#8C93B8');
+      drawText(g, fitText(f.code, 150), 150, y + 4, PAL.lime);
+      drawText(g, fitText(f.desc, 210), 150, y + 13, '#C9D2F0');
+      const label = done ? '✓ FORJADA' : 'FORJAR ◆' + f.cost;
+      if (UI.btn(g, 'fg' + f.id, 370, y + 4, 86, 15, label, { color: done ? PAL.sun : can ? PAL.orange : '#6A5A5A', disabled: done || !can, primary: can, tip: done ? f.desc : can ? 'Responde una pregunta de ' + MASTERY_LABELS[f.key] : 'Te faltan ' + (f.cost - cores) + ' núcleos' })) Scenes.push(new ForgeTrialScene(f));
+    });
+    drawPara(g, 'Consigue núcleos abriendo cerraduras de código en las islas, repasando tus cartas cada día y superando el reto del día.', 20, 242, 360, '#8C7A6A', { lh: 10 });
+    if (UI.btn(g, 'fgback', 392, 246, 70, 15, 'VOLVER', { color: PAL.teal })) Scenes.pop();
+    UI.drawTooltip(g);
+  }
+}
+
+// prueba de forja: una pregunta del concepto; acertar forja la mejora
+class ForgeTrialScene {
+  constructor(f) { this.f = f; this.opaque = false; this.nav = true; this.t = 0; this.n = 0; UI.focus = null; this.load(); }
+  load() { this.q = cardQuestion(this.f.key, hashStr(this.f.id) + Date.now() % 50000 + this.n * 97); this.pick = -1; this.n++; }
+  answer(j) {
+    if (this.pick >= 0) return;
+    this.pick = j; UI.clicks.clear();
+    const f = this.f;
+    if (this.q.options[j].ok) {
+      G.save.forgeCores = Math.max(0, (G.save.forgeCores || 0) - f.cost);
+      (G.save.forge = G.save.forge || {})[f.id] = true;
+      addMastery(f.key, 3); AudioSys.sfx('fanfare'); FX.flash(PAL.sun, 0.3);
+      Particles.burst(240, 60, 30, { colors: [PAL.sun, PAL.orange, PAL.white], min: 30, max: 110, type: 'star', screen: true, layer: 1 });
+      Toast.show('⚒ Forjado: ' + f.name, PAL.orange, 3);
+      if (FORGE.every(x => forged(x.id))) achieve('smith');
+      Save.write();
+    } else AudioSys.sfx('fail');
+    this.focusN = 3;
+  }
+  update(dt) {
+    this.t += dt;
+    if (G.autoDialog) { if (this.pick < 0) this.answer(this.q.options.findIndex(o => o.ok)); else Scenes.pop(); return; }
+    if (this.pick < 0) for (let j = 0; j < 3; j++) if (Input.codeHit('Digit' + (j + 1)) || Input.codeHit('Numpad' + (j + 1))) this.answer(j);
+    if (Input.hit('back')) { Input.consume(); Scenes.pop(); }
+  }
+  draw(g) {
+    const f = this.f, q = this.q;
+    rect(g, 0, 0, W, H, 'rgba(12,6,4,0.85)');
+    panel(g, 30, 14, 420, 242, { border: PAL.orange, accent: PAL.orange, accentW: 60, bg: 'rgba(30,18,14,0.97)' });
+    drawText(g, 'PRUEBA DE FORJA · ' + f.name.toUpperCase(), 40, 20, PAL.orange);
+    drawText(g, MASTERY_LABELS[f.key], 440, 20, '#8C93B8', { align: 'right' });
+    let y = 34;
+    if (q.code && q.code.length) {
+      const ch = q.code.length * 10 + 8;
+      panel(g, 40, y, 400, ch, { bg: '#0B1020', border: '#2A3570', flat: true });
+      q.code.forEach((ln, i) => { drawText(g, String(i + 1), 52, y + 5 + i * 10, '#565E8C', { align: 'right' }); drawRichLine(g, parseRich(ln, PAL.cream), 58, y + 5 + i * 10); });
+      y += ch + 6;
+    }
+    y += drawPara(g, q.ask, 40, y, 400, PAL.sun, { lh: 10 }) + 6;
+    q.options.forEach((o, j) => {
+      const bh = Math.max(16, wrapPlain(o.v, 370).length * 10 + 6);
+      const col = this.pick < 0 ? PAL.orange : o.ok ? PAL.lime : j === this.pick ? PAL.coral : '#5A3A2A';
+      if (UI.btn(g, 'ft' + j, 40, y, 400, bh, '', { color: col, disabled: this.pick >= 0 && !o.ok && j !== this.pick }) && this.pick < 0) this.answer(j);
+      drawText(g, String(j + 1), 48, y + Math.floor(bh / 2) - 3, col);
+      drawPara(g, o.v, 60, y + 4, 370, this.pick >= 0 && o.ok ? PAL.lime : PAL.cream, { lh: 10 });
+      y += bh + 3;
+    });
+    if (this.pick >= 0) {
+      const o = q.options[this.pick];
+      drawPara(g, o.ok ? '{g}¡Forjado!{/} ' + f.desc : '{r}Aún no.{/} ' + (o.why || '') + ' No gastaste núcleos: prueba con otra pregunta.', 40, y + 2, 400, PAL.cream, { lh: 10 });
+      const id = o.ok ? 'ftdone' : 'ftagain';
+      if (UI.btn(g, id, 330, 234, 110, 16, o.ok ? 'VOLVER ▶' : 'OTRA PREGUNTA ↻', { primary: true, color: o.ok ? PAL.lime : PAL.orange })) { if (o.ok) Scenes.pop(); else { this.load(); UI.focus = null; } }
+      if (this.focusN > 0) { UI.focus = id; this.focusN--; }
+    } else drawText(g, 'Elige con 1 · 2 · 3, el ratón o el dedo', 440, 240, '#8C7A6A', { align: 'right' });
+    UI.drawTooltip(g);
+  }
+}
+
+
 // ===== 30_lv_faro.js =====
 // =====================================================================
 //  REGIÓN 10: FARO AURORA · PERFECT ZERO · EPÍLOGO · CRÉDITOS
@@ -16168,7 +16295,7 @@ class CreditsScene {
 // Navegación con teclado por escena: los menús la activan, el juego no
 [TitleScene, PauseScene, SettingsScene, RemapScene, CodexScene, TeacherScene, TallerScene, ConfirmScene, QuestLogScene, SparkEditorScene, ShieldRuleScene, CodeLabScene, PuzzleBase].forEach(K => K.prototype.nav = true);
 // los avisos (MISIÓN, ATLAS, XP...) se muestran al volver al juego, no encima de puzzles o menús
-[PuzzleBase, CodeLabScene, CodexScene, SettingsScene, RemapScene, QuestLogScene, MasteryScene, LabScene, TallerScene, ControlsScene, BlueprintScene, ConceptCardScene, AbilityCardScene, CardsScene, ReviewScene, TraceScene].forEach(K => K.prototype.hideToasts = true);
+[PuzzleBase, CodeLabScene, CodexScene, SettingsScene, RemapScene, QuestLogScene, MasteryScene, LabScene, TallerScene, ControlsScene, BlueprintScene, ConceptCardScene, AbilityCardScene, CardsScene, ReviewScene, TraceScene, ForgeScene, ForgeTrialScene].forEach(K => K.prototype.hideToasts = true);
 [GameplayScene, MapScene, ChispaScene, AbilityCardScene, ConceptCardScene, MasteryScene, ControlsScene, BlueprintScene].forEach(K => K.prototype.nav = false);
 
 const STEP = 1 / 60;
@@ -16212,7 +16339,7 @@ function boot() {
 
 // Interfaz mínima para depuración y pruebas automáticas
 window.LL = {
-  G, Game, Scenes, HD, LEVELS, textW, Cards, cardQuestion, CardsScene, ReviewScene, CARD_BANK, CARD_META, dailyChallenge, dailyCode, launchDaily, makeLockQuestion, LOCK_GEN, CodeLock, TraceScene, buildLevel: (k, sp) => new Level(k, sp), Save, Input, UI, Cut, flag, setFlag, CODEX, QUESTS, CHALLENGES, REGIONS, makePuzzleScene, Particles, AudioSys, BOSSES, makeEnemy, unlocked, MapArt,
+  G, Game, Scenes, HD, LEVELS, textW, FORGE, forged, ForgeScene, ForgeTrialScene, pulseCost, healCost, Cards, cardQuestion, CardsScene, ReviewScene, CARD_BANK, CARD_META, dailyChallenge, dailyCode, launchDaily, makeLockQuestion, LOCK_GEN, CodeLock, TraceScene, buildLevel: (k, sp) => new Level(k, sp), Save, Input, UI, Cut, flag, setFlag, CODEX, QUESTS, CHALLENGES, REGIONS, makePuzzleScene, Particles, AudioSys, BOSSES, makeEnemy, unlocked, MapArt,
   cfg: { CFG_FEST_BOOT, CFG_PUERTO_ROUTE, CFG_PUERTO_CHAIN, CFG_PUERTO_CARRERA, CFG_VALLE_RUTA, CFG_VALLE_SACOS, CFG_VALLE_MOLINO, CFG_SOL_FLOW, CFG_SOL_FLORES, CFG_SOL_SENSOR, CFG_SOL_MATRIZ, CFG_SOL_NUBE, CFG_AERIS_MOLINO, CFG_AERIS_VIENTO, CFG_AERIS_BUCLE, CFG_HYD_FORJA, CFG_HYD_RIO, CFG_HYD_DUP, cfgBioSorter, CFG_BIO_LISTA, CFG_BIO_MERCADO, CFG_GEA_FSM, CFG_GEA_AISLADA, CFG_GEA_CRISTAL, CFG_H2_PIPE, CFG_H2_BARCO, CFG_BAT_SORT, CFG_BAT_SEARCH, CFG_BAT_BETA, CFG_BAT_BUG, CFG_PRISMA_MG, CFG_PRISMA_FEST, CFG_PRISMA_SINSOL, pzPhaseCfg },
   A,
   S: { TitleScene, PauseScene, SettingsScene, RemapScene, CodexScene, TeacherScene, TallerScene, QuestLogScene, MasteryScene, MapScene, LabScene, ControlsScene, BlueprintScene, ConfirmScene, SparkEditorScene, ShieldRuleScene, Shot, RegionBoss }

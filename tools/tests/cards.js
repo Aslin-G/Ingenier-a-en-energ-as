@@ -115,6 +115,23 @@ const ok = (cond, msg) => { console.log((cond ? '  ok   ' : '  FALLO') + ' ' + m
   });
   ok(daily.same && daily.once === 1 && daily.twice === 1 && daily.done && /^\d{4}$/.test(daily.code), 'el reto del día es el mismo cada día, da 1 núcleo una vez y un código de 4 cifras (' + daily.code + ')');
 
+  // 5) forja del Lumisable: fallar no cuesta núcleos, acertar forja y cambia el combate
+  await p.evaluate(() => { LL.Scenes.clear(); LL.G.save.forge = {}; LL.G.save.forgeCores = 5; LL.Scenes.push(new LL.S.TallerScene()); LL.Scenes.push(new LL.ForgeScene()); });
+  await p.waitForTimeout(400);
+  await p.screenshot({ path: outDir + '/forge.png' });
+  const fg = await p.evaluate(() => {
+    const f = LL.FORGE.find(x => x.id === 'pulse'), before = LL.pulseCost();
+    const tr = new LL.ForgeTrialScene(f); LL.Scenes.push(tr);
+    tr.answer(tr.q.options.findIndex(o => !o.ok));
+    const afterWrong = { cores: LL.G.save.forgeCores, forged: LL.forged('pulse') };
+    tr.load(); tr.answer(tr.q.options.findIndex(o => o.ok));
+    return { before, afterWrong, cores: LL.G.save.forgeCores, forged: LL.forged('pulse'), after: LL.pulseCost() };
+  });
+  await p.waitForTimeout(300);
+  await p.screenshot({ path: outDir + '/forge_trial.png' });
+  ok(fg.afterWrong.cores === 5 && !fg.afterWrong.forged, 'un fallo en la prueba de forja no gasta núcleos');
+  ok(fg.forged && fg.cores === 2 && fg.before === 30 && fg.after === 20, 'acertar forja «Función pulso()»: el pulso pasa de 30 a 20 de energía');
+
   ok(errs.length === 0, 'sin errores de consola' + (errs.length ? '\n     ' + errs.join('\n     ') : ''));
   await b.close();
   console.log(fails ? `${fails} FALLO(S)` : 'CARTAS OK');
