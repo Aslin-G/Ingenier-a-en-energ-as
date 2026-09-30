@@ -25,7 +25,9 @@ const REGIONS = [
 ];
 const regionIdx = k => REGIONS.findIndex(r => r.key === k);
 const restored = k => flag('restored_' + k);
-const unlocked = k => { const i = regionIdx(k); return i === 0 || G.save.teacherAll || restored(REGIONS[i - 1].key) || restored(k); };
+// jefe de una isla vencido (o no hace falta: partidas anteriores a los jefes, o isla sin jefe)
+const bossDone = k => !G.save.bossGate || !BOSSES[k] || flag('boss_' + k);
+const unlocked = k => { const i = regionIdx(k); if (i === 0 || G.save.teacherAll || restored(k)) return true; const prev = REGIONS[i - 1].key; return restored(prev) && bossDone(prev); };
 
 const Game = {
   update(dt) {
@@ -130,12 +132,16 @@ class GameplayScene {
 function drawHUD(g, lv) {
   const p = lv.player;
   if (lv.def.noHud) return;
+  // ancho de la zona de células (crece con los fragmentos de los jefes)
+  const cellsW = Math.max(30, p.maxCells * 10);
+  const abX = 8 + cellsW;
   // fondos suaves del HUD: el texto se lee sobre cualquier escenario
   {
     const ab0 = G.save.currentAbility, A0 = ab0 && hasAbility(ab0) ? ABILITIES[ab0] : null;
     const info0 = A0 && (ab0 === 'shield' || ab0 === 'pack' || ab0 === 'glide');
     const wAb = A0 ? Math.max(textW(A0.name), info0 ? 110 : 0) + 12 : 0;
-    const hudW = 38 + wAb, hudH = info0 ? 21 : 20;
+    const hudW = abX + wAb, hudH = info0 ? 21 : 20;
+    lv.hudW = hudW + 4;
     rect(g, 1, 1, hudW, hudH, 'rgba(10,14,32,0.5)'); rect(g, 2, 0, hudW - 2, 1, 'rgba(10,14,32,0.5)');
     rect(g, W - 75, 1, 72, 15, 'rgba(10,14,32,0.5)');
   }
@@ -144,20 +150,26 @@ function drawHUD(g, lv) {
     const on = i < p.cells;
     drawLumiShape(g, 6 + i * 10, 5, Spr.lumi[0], on ? PAL.sun : '#3A4068', on ? PAL.orange : '#22306B', false);
   }
-  bar(g, 6, 14, 28, 4, p.energy, 100, PAL.teal, '#10162B');
+  // energía: la marca indica lo que cuesta recargar una célula
+  const bw = cellsW - 4;
+  const eCol = p.chargeReady ? (Math.floor(lv.time * 12) % 2 ? PAL.white : PAL.teal) : p.energy >= HEAL_COST && p.cells < p.maxCells ? PAL.lime : PAL.teal;
+  bar(g, 6, 14, bw, 4, p.energy, 100, eCol, '#10162B');
+  rect(g, 6 + Math.round(bw * HEAL_COST / 100), 13, 1, 6, 'rgba(255,243,215,0.55)');
   // habilidad actual
   const ab = G.save.currentAbility;
   if (ab && hasAbility(ab)) {
     const A = ABILITIES[ab];
-    rect(g, 38, 3, 4, 14, A.color);
-    drawText(g, A.name, 45, 3, A.color, { shadow: PAL.ink });
+    rect(g, abX, 3, 4, 14, A.color);
+    drawText(g, A.name, abX + 7, 3, A.color, { shadow: PAL.ink });
     let info = '';
     if (ab === 'shield') info = (p.shieldArmed ? (p.shieldOn ? '■ ACTIVO' : '○ armado') : 'desarmado') + ' · ' + ['SI peligro', 'SIEMPRE', 'SI saltando'][p.shieldRule];
     else if (ab === 'pack') info = 'mochila[' + (G.save.pack || []).length + ']';
     else if (ab === 'glide') info = 'mantén SALTO en el aire';
-    if (info) drawText(g, info, 45, 12, '#C9D2F0', { shadow: PAL.ink });
+    if (info) drawText(g, info, abX + 7, 12, '#C9D2F0', { shadow: PAL.ink });
   }
   if (hasAbility('lens') && !lv.lens && lv.time < 60 && lv.def.lensHint) keyHint(g, 6, 22, 'lens', 'Lente', '#C9D2F0');
+  // jefe: nombre, vida y (con la Lente) su programa
+  if (lv.rboss && lv.rboss.showBar) drawBossHUD(g, lv, lv.rboss);
   // coleccionables
   const ch = Object.keys(G.save.collectibles.chispas).length;
   icon(g, 'spark', W - 70, 4); drawText(g, String(ch), W - 60, 5, PAL.pink, { shadow: PAL.ink });
@@ -242,7 +254,7 @@ class TitleScene {
       if (UI.btn(g, 'm_' + id, W / 2 - 70, 142 + i * 18, 140, 15, label, { disabled: !en, color: i === 0 ? PAL.sun : PAL.teal, primary: i === (this.hasSave ? 1 : 0) })) this.pick(id);
     });
     drawText(g, 'Teclado · Mando · Táctil', W / 2, 238, '#C9D2F0', { align: 'center', shadow: PAL.ink });
-    drawText(g, 'v1.0 · HTML5 + Canvas + JS puro', W - 6, H - 10, 'rgba(255,243,215,0.6)', { align: 'right' });
+    drawText(g, 'v1.1 · HTML5 + Canvas + JS puro', W - 6, H - 10, 'rgba(255,243,215,0.6)', { align: 'right' });
   }
   pick(id) {
     AudioSys.unlock();
@@ -301,9 +313,9 @@ class ControlsScene {
     rect(g, 0, 0, W, H, 'rgba(5,7,15,0.85)');
     panel(g, 60, 20, 360, 230, { border: PAL.sun });
     drawText(g, 'CONTROLES', 240, 28, PAL.sun, { align: 'center', scale: 2 });
-    const rows = [['left', 'mover a la izquierda'], ['right', 'mover a la derecha'], ['up', 'subir escaleras / nadar'], ['down', 'bajar / atravesar plataformas'], ['jump', 'saltar (mantén: salto alto / planear)'], ['run', 'correr'], ['interact', 'hablar / usar'], ['ability', 'usar habilidad'], ['swap', 'cambiar de habilidad'], ['lens', 'Lente Debug'], ['blueprint', 'Blueprint: tu último algoritmo'], ['codex', 'Atlas Aurora'], ['hint', 'pista de PÍX'], ['pause', 'pausa']];
-    rows.forEach(([a, d], i) => { keyHint(g, 80, 50 + i * 13, a, d, PAL.cream); });
-    drawText(g, 'Táctil: botones en pantalla · Mando: A saltar, X usar, Y habilidad', 240, 238, '#8C93B8', { align: 'center' });
+    const rows = [['left', 'mover a la izquierda'], ['right', 'mover a la derecha'], ['up', 'subir escaleras / nadar'], ['down', 'bajar · quieta: recargar una célula'], ['jump', 'saltar (mantén: salto alto / planear)'], ['run', 'correr'], ['attack', 'Lumisable (mantén: pulso · ↓ en el aire: rebote)'], ['interact', 'hablar / usar'], ['ability', 'usar habilidad'], ['swap', 'cambiar de habilidad'], ['lens', 'Lente Debug (golpes críticos)'], ['blueprint', 'Blueprint: tu último algoritmo'], ['codex', 'Atlas Aurora'], ['hint', 'pista de PÍX'], ['pause', 'pausa']];
+    rows.forEach(([a, d], i) => { keyHint(g, 76, 48 + i * 12, a, d, PAL.cream); });
+    drawText(g, 'Mando: A saltar · X atacar · B usar · Y habilidad', 240, 236, '#8C93B8', { align: 'center' });
   }
 }
 
@@ -344,7 +356,7 @@ class SettingsScene {
     };
     const tog = (key, label, desc) => {
       row(label);
-      if (UI.btn(g, 't' + key, 330, y, 90, 12, S[key] ? 'SÍ' : 'NO', { color: S[key] ? PAL.lime : PAL.coral })) { S[key] = !S[key]; AudioSys.sfx('click'); if (key === 'pixelPerfect') resize(); }
+      if (UI.btn(g, 't' + key, 330, y, 90, 12, S[key] ? 'SÍ' : 'NO', { color: S[key] ? PAL.lime : PAL.coral })) { S[key] = !S[key]; AudioSys.sfx('click'); if (key === 'pixelPerfect') resize(); if (key === 'assist' && G.run.level && G.run.level.player) G.run.level.player.refreshCells(); }
       y += 16;
     };
     const cyc = (key, label, opts, names) => {
@@ -364,6 +376,7 @@ class SettingsScene {
     tog('noTimer', 'Modo sin tiempo (sin prisas)');
     tog('confidence', 'Preguntar "¿qué tan seguro estás?"');
     tog('pixelPerfect', 'Escalado de píxel entero');
+    tog('assist', 'Ayuda de combate (+2 células, jefes lentos)');
     if (UI.btn(g, 'remap', 56, y + 4, 150, 14, 'REMAPEAR TECLAS', { color: PAL.violet })) Scenes.push(new RemapScene());
     if (UI.btn(g, 'sback', 330, y + 4, 90, 14, 'VOLVER', { color: PAL.teal, primary: true })) this.close();
   }
@@ -375,9 +388,9 @@ class RemapScene {
     rect(g, 0, 0, W, H, 'rgba(5,7,15,0.92)');
     panel(g, 90, 20, 300, 230, { border: PAL.violet });
     drawText(g, 'REMAPEAR TECLAS', 240, 28, PAL.violet, { align: 'center' });
-    const acts = [['left', 'Izquierda'], ['right', 'Derecha'], ['up', 'Arriba'], ['down', 'Abajo'], ['jump', 'Saltar'], ['interact', 'Interactuar'], ['ability', 'Habilidad'], ['swap', 'Cambiar habilidad'], ['lens', 'Lente Debug'], ['hint', 'Pista'], ['run', 'Correr']];
+    const acts = [['left', 'Izquierda'], ['right', 'Derecha'], ['up', 'Arriba'], ['down', 'Abajo'], ['jump', 'Saltar'], ['attack', 'Atacar (sable)'], ['interact', 'Interactuar'], ['ability', 'Habilidad'], ['swap', 'Cambiar habilidad'], ['lens', 'Lente Debug'], ['hint', 'Pista'], ['run', 'Correr']];
     acts.forEach(([a, n], i) => {
-      const y = 44 + i * 16;
+      const y = 42 + i * 15;
       drawText(g, n, 110, y + 3, PAL.cream);
       const label = this.waiting === a ? 'pulsa una tecla...' : (Input.bindings[a] || []).slice(0, 2).map(keyName).join(' / ');
       if (UI.btn(g, 'rm' + a, 230, y, 140, 13, label, { color: this.waiting === a ? PAL.sun : PAL.teal })) {
@@ -394,8 +407,8 @@ class RemapScene {
         };
       }
     });
-    if (UI.btn(g, 'rmreset', 110, 226, 120, 14, 'RESTABLECER', { color: PAL.coral })) { Input.bindings = JSON.parse(JSON.stringify(DEFAULT_BINDINGS)); G.save.settings.bindings = null; Save.writeSettings(); }
-    if (UI.btn(g, 'rmback', 250, 226, 120, 14, 'VOLVER', { color: PAL.teal })) Scenes.pop();
+    if (UI.btn(g, 'rmreset', 110, 228, 120, 14, 'RESTABLECER', { color: PAL.coral })) { Input.bindings = JSON.parse(JSON.stringify(DEFAULT_BINDINGS)); G.save.settings.bindings = null; Save.writeSettings(); }
+    if (UI.btn(g, 'rmback', 250, 228, 120, 14, 'VOLVER', { color: PAL.teal })) Scenes.pop();
   }
 }
 
@@ -406,7 +419,7 @@ function unlockCodex(id) {
   if (!CODEX[id]) return;
   if (!G.save.codex[id]) { G.save.codex[id] = { read: false, t: Date.now() }; Toast.show('+ ATLAS: ' + CODEX[id].title, PAL.teal, 2); }
 }
-const CODEX_CATS = [['algoritmos', 'ALGORITMOS', PAL.teal], ['energias', 'ENERGÍAS', PAL.lime], ['personajes', 'PERSONAJES', PAL.pink], ['islas', 'ISLAS', PAL.sun], ['misterios', 'MISTERIOS', PAL.violet]];
+const CODEX_CATS = [['algoritmos', 'ALGORITMOS', PAL.teal], ['energias', 'ENERGÍAS', PAL.lime], ['personajes', 'PERSONAJES', PAL.pink], ['islas', 'ISLAS', PAL.sun], ['misterios', 'MISTERIOS', PAL.violet], ['bestiario', 'BESTIARIO', PAL.coral]];
 class CodexScene {
   static VIS = 14;
   constructor(focusId) {
@@ -438,7 +451,7 @@ class CodexScene {
     drawText(g, 'ATLAS AURORA', 8, 6, PAL.sun, { scale: 2 });
     const known = Object.keys(G.save.codex).length;
     drawText(g, known + ' / ' + Object.keys(CODEX).length + ' entradas', W - 66, 8, '#8C93B8', { align: 'right' });
-    CODEX_CATS.forEach(([k, n, c], i) => { if (UI.btn(g, 'cc' + k, 8 + i * 94, 24, 90, 14, n, { color: c, bg: this.cat === k ? shade(c, -0.6) : undefined })) { this.cat = k; this.sel = null; this.scroll = 0; this.lscroll = 0; } });
+    CODEX_CATS.forEach(([k, n, c], i) => { if (UI.btn(g, 'cc' + k, 8 + i * 78, 24, 76, 14, n, { color: c, bg: this.cat === k ? shade(c, -0.6) : undefined })) { this.cat = k; this.sel = null; this.scroll = 0; this.lscroll = 0; } });
     // lista (con desplazamiento si no cabe)
     panel(g, 4, 42, 142, 224, { border: '#2A3570' });
     const list = this.entries(), VIS = CodexScene.VIS;
@@ -463,7 +476,8 @@ class CodexScene {
     g.save(); g.beginPath(); g.rect(152, 44, 322, 202); g.clip();
     let y = 50 - this.scroll;
     drawText(g, e.title, 162, y, PAL.sun, { scale: 2 }); y += 20;
-    if (e.icon) icon(g, e.icon, 450, 50 - this.scroll);
+    if (e.portrait) { const pt = Portraits.get(e.portrait, 'feliz'); strokeRect(g, 437, 45 - this.scroll, 34, 34, PAL.coral); g.drawImage(pt, 438, 46 - this.scroll); }
+    else if (e.icon) icon(g, e.icon, 450, 50 - this.scroll);
     const secs = e.sectionsFn ? e.sectionsFn() : (e.sections || []);
     if (e.short) { y += drawPara(g, e.short, 162, y, 300, PAL.cream) + 6; }
     for (const [h, body] of secs) {
@@ -588,6 +602,11 @@ class MapScene {
     else if (k === 'bateria') { for (let p = 0; p < 3; p++) { rect(g, x - 9 + p * 7, y - 14 + p, 5, 12 - p, '#2A2F6A'); rect(g, x - 8 + p * 7, y - 6, 3, 4, on ? [PAL.lime, PAL.sun, PAL.pink][p] : '#3A4068'); } }
     if (!on) { g.globalAlpha = 0.35 + Math.sin(t * 2 + i) * 0.1; pellipse(g, x, y - 4, 26, 12, '#5B3A8C'); g.globalAlpha = 1; }
     else if (Math.random() < 0.03) Particles.spawn({ x: x + rand(-15, 15), y: y - rand(4, 16), vy: -10, life: 1, type: 'star', color: r.col, screen: true });
+    // jefe de la isla: corona si está depurado, «!» si espera en la salida
+    if (on && BOSSES[k]) {
+      if (flag('boss_' + k)) { rect(g, x + 13, y - 12, 7, 3, PAL.sun); px(g, x + 13, y - 13, PAL.sun); px(g, x + 16, y - 14, PAL.sun); px(g, x + 19, y - 13, PAL.sun); }
+      else if (Math.floor(t * 3) % 2) drawText(g, '!', x + 16, y - 16, PAL.coral, { align: 'center', outline: PAL.ink });
+    }
     if (sel) { const bob = Math.floor(t * 3) % 2; drawText(g, '▼', x, y - 34 - bob, PAL.sun, { align: 'center', outline: PAL.ink }); pring(g, x, y + 2, 28, PAL.sun); }
   }
   draw(g) {
@@ -616,12 +635,13 @@ class MapScene {
     Particles.draw(g, 0, 0, true);
     // panel de info
     const r = REGIONS[this.sel];
-    panel(g, 4, 4, 180, 58, { border: r.col, accent: r.col });
+    panel(g, 4, 4, 180, 70, { border: r.col, accent: r.col });
     drawText(g, 'ARCHIPIÉLAGO AURORA', 10, 8, '#8C93B8');
     drawText(g, r.name, 10, 20, r.col, { outline: PAL.ink });
     drawText(g, '⚙ ' + r.prog, 10, 32, PAL.teal); drawText(g, '⚡ ' + r.energy, 10, 42, PAL.lime);
     const ch = Object.keys(CHISPAS).filter(k => CHISPAS[k].region === r.key), got = ch.filter(k => G.save.collectibles.chispas[k]).length;
     drawText(g, (restored(r.key) ? '✓ restaurada' : unlocked(r.key) ? '○ sin energía' : '? bloqueada') + '  ·  chispas ' + got + '/' + ch.length, 10, 52, restored(r.key) ? PAL.lime : PAL.coral);
+    if (BOSSES[r.key]) drawText(g, fitText(flag('boss_' + r.key) ? '✦ ' + BOSSES[r.key].name + ' depurado' : restored(r.key) ? '! Jefe: te espera en la salida' : '? Jefe: ' + BOSSES[r.key].name, 170), 10, 62, flag('boss_' + r.key) ? PAL.sun : PAL.coral);
     // botones
     UI.nav = false;
     if (UI.btn(g, 'mgo', W - 96, H - 20, 92, 16, '▶ VIAJAR', { primary: true, color: PAL.lime, disabled: !unlocked(r.key) })) this.go();
@@ -665,7 +685,9 @@ class TallerScene {
     // pegatinas (logros)
     rect(g, 300, 30, 170, 100, '#5A3A2A'); strokeRect(g, 300, 30, 170, 100, '#3A2010');
     drawText(g, 'PEGATINAS', 385, 34, PAL.pink, { align: 'center' });
-    Object.keys(ACHIEVEMENTS).forEach((k, i) => { const x = 308 + (i % 9) * 18, y = 48 + Math.floor(i / 9) * 20; if (G.save.achievements[k]) { pcircle(g, x + 6, y + 6, 6, hsl(i * 40, 80, 65)); icon(g, 'star', x + 2, y + 2); } else pring(g, x + 6, y + 6, 6, '#7A5A4A'); });
+    Object.keys(ACHIEVEMENTS).forEach((k, i) => { const x = 308 + (i % 9) * 18, y = 46 + Math.floor(i / 9) * 18; if (G.save.achievements[k]) { pcircle(g, x + 6, y + 6, 6, hsl(i * 40, 80, 65)); icon(g, 'star', x + 2, y + 2); } else pring(g, x + 6, y + 6, 6, '#7A5A4A'); });
+    const bossesDone = Object.keys(BOSSES).filter(k => flag('boss_' + k)).length;
+    drawText(g, 'Jefes ' + bossesDone + '/' + Object.keys(BOSSES).length + ' · fragmentos ' + ((G.save.cellShards || 0) % 3) + '/3', 385, 116, '#E8C8A0', { align: 'center' });
     // Lía y PÍX
     const f = Spr.lia.idle[liaIdleFrame(this.t)];
     g.drawImage(f.r, 230, 164); g.drawImage(Spr.pix[Math.floor(this.t * 16) % 4].r, 252, 150 + Math.sin(this.t * 3) * 2);
@@ -703,17 +725,33 @@ class TeacherScene {
         ['reto', 'LANZAR RETO', 'Combina concepto + energía y elige del banco de ' + CHALLENGES.length + ' retos.'],
         ['mastery', 'VER DOMINIO', 'Mapa de dominio estimado del progreso local.'],
         ['resumen', 'RESUMEN LOCAL', 'Estadísticas de la partida guardada.'],
+        ['jefe', 'LUCHAR CONTRA UN JEFE', 'Cada jefe ejecuta un algoritmo de su isla: se lee con la Lente Debug.'],
         ['lab', 'AURORA LAB', 'Sandbox de microred sin penalización.'],
         ['reset', 'REINICIAR PROGRESO', 'Borra la partida guardada (conserva ajustes).']
       ];
       opts.forEach(([id, l, d], i) => {
-        if (UI.btn(g, 'tm' + id, 40, 44 + i * 34, 140, 18, l, { color: id === 'reset' ? PAL.coral : PAL.teal })) this.pick(id);
-        drawPara(g, d, 190, 48 + i * 34, 260, PAL.cream);
+        if (UI.btn(g, 'tm' + id, 40, 42 + i * 30, 140, 18, l, { color: id === 'reset' ? PAL.coral : id === 'jefe' ? PAL.orange : PAL.teal })) this.pick(id);
+        drawPara(g, d, 190, 46 + i * 30, 260, PAL.cream);
       });
       if (UI.btn(g, 'tmback', W - 70, H - 20, 64, 14, 'VOLVER', {})) { Scenes.pop(); }
     } else if (this.page === 'isla') {
-      REGIONS.forEach((r, i) => { if (UI.btn(g, 'ti' + r.key, 30 + (i % 3) * 144, 50 + Math.floor(i / 3) * 40, 136, 30, r.name, { color: r.col })) { G.save.started = true; G.save.teacherAll = true; G.save.teacherUnlocked = true; setFlag('prologueDone'); for (let k = 0; k < i; k++) { setFlag('restored_' + REGIONS[k].key); } grantAbilitiesUpTo(r.key); Save.write(); UI.nav = false; Game.startLevel(LEVEL_OF_REGION[r.key] || r.key); } });
-      drawPara(g, 'Al elegir una isla se marcan como restauradas las anteriores y se otorgan sus habilidades, para poder trabajar un concepto concreto en clase.', 30, 214, 420, '#8C93B8');
+      REGIONS.forEach((r, i) => { if (UI.btn(g, 'ti' + r.key, 30 + (i % 3) * 144, 50 + Math.floor(i / 3) * 40, 136, 30, r.name, { color: r.col })) { G.save.started = true; G.save.teacherAll = true; G.save.teacherUnlocked = true; setFlag('prologueDone'); for (let k = 0; k < i; k++) { setFlag('restored_' + REGIONS[k].key); setFlag('boss_' + REGIONS[k].key); } grantAbilitiesUpTo(r.key); Save.write(); UI.nav = false; Game.startLevel(LEVEL_OF_REGION[r.key] || r.key); } });
+      drawPara(g, 'Al elegir una isla se marcan como restauradas las anteriores (con sus jefes) y se otorgan sus habilidades, para poder trabajar un concepto concreto en clase.', 30, 214, 420, '#8C93B8');
+    } else if (this.page === 'jefe') {
+      const keys = Object.keys(BOSSES);
+      keys.forEach((k, i) => {
+        const D = BOSSES[k], r = REGIONS[regionIdx(k)];
+        if (UI.btn(g, 'tj' + k, 30 + (i % 2) * 214, 44 + Math.floor(i / 2) * 32, 206, 17, D.name, { color: D.color, tip: r.name + ' · ' + r.prog })) {
+          G.save.started = true; G.save.teacherAll = true; G.save.teacherUnlocked = true; setFlag('prologueDone');
+          const idx = regionIdx(k);
+          for (let q = 0; q < idx; q++) { setFlag('restored_' + REGIONS[q].key); setFlag('boss_' + REGIONS[q].key); }
+          setFlag('restored_' + k); grantAbilitiesUpTo(REGIONS[idx + 1] ? REGIONS[idx + 1].key : k);
+          G.bossRematch = flag('boss_' + k) ? k : null;
+          Save.write(); UI.nav = false; Game.startLevel('jefe_' + k);
+        }
+        drawText(g, (flag('boss_' + k) ? '✓ ' : '') + r.name + ' · ' + r.prog, 30 + (i % 2) * 214 + 103, 44 + Math.floor(i / 2) * 32 + 19, flag('boss_' + k) ? PAL.lime : '#C9D2F0', { align: 'center' });
+      });
+      drawPara(g, 'Cada jefe cierra su isla con el concepto trabajado: con la Lente se lee su programa y a mitad del combate hay que corregir su código con un parche.', 30, 214, 420, '#8C93B8');
     } else if (this.page === 'reto') {
       drawText(g, 'CONCEPTO', 40, 44, PAL.teal);
       const progs = ['sequence', 'variables', 'conditions', 'loops', 'functions', 'arrays', 'states', 'debugging', 'search', 'sorting', 'optimization'];
@@ -742,6 +780,7 @@ class TeacherScene {
   }
   pick(id) {
     if (id === 'isla') this.page = 'isla';
+    if (id === 'jefe') this.page = 'jefe';
     if (id === 'reto') this.page = 'reto';
     if (id === 'mastery') Scenes.push(new MasteryScene());
     if (id === 'resumen') this.page = 'resumen';

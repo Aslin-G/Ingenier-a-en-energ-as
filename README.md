@@ -1,6 +1,6 @@
 # Lumina Loop: El Código de los Elementos
 
-Videojuego educativo de plataformas y puzzles en **pixel art animado**, escrito en **HTML5 + Canvas 2D + JavaScript puro** (sin bibliotecas, sin imágenes ni sonidos externos y sin red). Enseña **pensamiento algorítmico** y **energías renovables** a partir de una historia: el archipiélago Aurora sufre un apagón y Lía, una aprendiz de técnica, tiene que reparar su red eléctrica escribiendo algoritmos.
+Videojuego educativo de plataformas, combate y puzzles en **pixel art animado**, escrito en **HTML5 + Canvas 2D + JavaScript puro** (sin bibliotecas, sin imágenes ni sonidos externos y sin red). Enseña **pensamiento algorítmico** y **energías renovables** a partir de una historia: el archipiélago Aurora sufre un apagón y Lía, una aprendiz de técnica, tiene que reparar su red eléctrica escribiendo algoritmos.
 
 > Todo el arte (sprites, retratos, fondos parallax, iluminación) y toda la música y los efectos se generan por código al iniciar el juego.
 
@@ -20,17 +20,20 @@ Videojuego educativo de plataformas y puzzles en **pixel art animado**, escrito 
 | Subir/bajar escaleras, nadar | ↑ ↓ / W S | Stick / cruceta |
 | Saltar (mantener = más alto / planear) | Espacio / Z / K | A |
 | Correr | Shift | Gatillos (LT/RT) |
-| Hablar / usar | E / X / J | X |
+| **Atacar con el Lumisable** (mantener = pulso cargado) | X / J | X |
+| Tajo hacia arriba / rebote en el aire | ↑ + ataque / ↓ + ataque | Stick + X |
+| Recargar una célula (quieta) | mantener ↓ | Stick abajo |
+| Hablar / usar | E (o ataque si no hay peligro cerca) | B (o X) |
 | Volver / cancelar | Esc / Retroceso | B |
 | Usar habilidad | Q / L | Y |
 | Cambiar de habilidad | R | R3 (pulsar stick derecho) |
-| **Lente Debug** | F | LB |
+| **Lente Debug** (golpes críticos, programa de los jefes) | F | LB |
 | Blueprint (tu último algoritmo) | B | L3 (pulsar stick izquierdo) |
 | Atlas Aurora | C | Select / Back |
 | Pista de PÍX | H | RB |
 | Pausa | Esc / P | Start |
 
-- **Táctil**: en móvil o tableta aparece una cruceta virtual y botones de acción; en los puzzles se puede arrastrar o tocar para *seleccionar y colocar*.
+- **Táctil**: en móvil o tableta aparece una cruceta virtual y botones de acción (⚔ ataca); en los puzzles basta con tocar.
 - Todas las teclas se pueden **remapear** en *Ajustes → Remapear teclas*.
 
 ---
@@ -56,6 +59,31 @@ Videojuego educativo de plataformas y puzzles en **pixel art animado**, escrito 
 
 Cada habilidad es un concepto que se *juega* además de programarse: el **If Shield** solo te protege si se cumple la condición que le pusiste, el **Loop Glide** te mantiene en el aire *mientras* haya corriente, el **Array Pack** guarda objetos por índice, el **State Shift** solo acepta transiciones válidas, etc.
 
+### Combate: el Lumisable y los jefes
+
+Lumi concentra su luz en una hoja: el **Lumisable**. Los enemigos son programas corrompidos por el apagón y, al vencerlos, se **depuran** y vuelven a ser criaturas felices.
+
+- **Combo de 3 tajos**, tajo hacia arriba, **rebote (pogo)** hacia abajo sobre enemigos, proyectiles y pinchos, **pulso cargado** (mantener el ataque) y **parada**: golpear un proyectil justo a tiempo lo devuelve a quien lo lanzó.
+- **Energía**: se gana golpeando y con orbes. Quieta, manteniendo ↓, Lumi convierte 50 de energía en una **célula**. Con la **Lente Debug** activa cada golpe es **crítico**.
+- **Enemigos con personalidad** en todas las islas, con los colores de su región: Bit Saltarín, Zumbyte, Toro-Ohm, Torretín, más los enemigos conceptuales (Bugglin, Loopling, Shadow If, Drainer...). Con la Lente muestran su algoritmo.
+- **Un jefe al final de cada isla**, que *ejecuta un algoritmo* del concepto de esa isla: con la Lente se lee su programa con la línea actual resaltada. A mitad del combate reescribe su código y hay que aplicarle un **parche** (una pregunta rápida) para ralentizarlo.
+
+| Isla | Jefe | Concepto que ejecuta |
+|---|---|---|
+| Puerto Inicial | Capitán Cortocircuito | Secuencia |
+| Valle Secuencia | Gran Bugglin Rey | Depuración |
+| Solaria | Don Nubarrón | SI / SINO |
+| Aeris | Tornado Loopling | Bucle MIENTRAS |
+| Cascadas Hydria | Hidra de Compuertas | Funciones con parámetro |
+| Bosque BioLoop | Compostor Glotón | Listas e índices |
+| Gea Profunda | Magmatón | Máquina de estados |
+| Bahía H2 | Kraken de Fugas | Pipeline |
+| Ciudad Batería | Drenadora Suprema | Búsqueda del mínimo / orden |
+| Microred Prisma | Sobrecarga | Integración |
+| Faro Aurora | Perfect Zero | La función objetivo |
+
+Al vencerlos se vuelven amistosos, entran en el **Bestiario** del Atlas y dejan un **fragmento de célula** (3 fragmentos = +1 célula máxima). Tras dos derrotas, PÍX ofrece la **ayuda de combate**.
+
 ### Tipos de puzzle
 
 - **CodeLab**: editor de bloques **sin arrastrar**. Cada reto trae las instrucciones necesarias ya armadas: el estudiante las **ordena** (toca una línea y la mueve con ▲ ▼), **ajusta los números** con − + y **toca los valores** para cambiarlos. Tocar un bloque de la izquierda lo añade bajo la línea marcada y ✗ borra. Tiene intérprete real: `SI/SINO`, `REPETIR`, `MIENTRAS`, `PARA CADA`, variables, funciones con parámetros y retorno. Tiene ejecución paso a paso, puntos de interrupción, traza, vista de variables, detección de bucles infinitos y **vista de diagrama de flujo** del mismo programa.
@@ -71,11 +99,11 @@ Cada reto pasa por **DEMO → LO HACEMOS JUNTOS → TÚ SOLO**, ofrece **pistas 
 
 ### Meta-juego
 
-- **Atlas Aurora**: 66 entradas (algoritmos, energías, personajes, islas y misterios) que se desbloquean jugando, no antes.
+- **Atlas Aurora**: 87 entradas (algoritmos, energías, personajes, islas, misterios y **bestiario** de enemigos y jefes) que se desbloquean jugando, no antes.
 - **Lente Debug** (F): muestra variables, estados y secretos ocultos en el escenario.
 - **Blueprint** (B): tu último algoritmo como un plano.
 - **Mapa del archipiélago** con viajes animados (barca solar, planeador, teleférico, tranvía...).
-- **Misiones**: 12 principales y 20 secundarias. **22 Chispas de Aurora** escondidas y **18 pegatinas** (logros).
+- **Misiones**: 12 principales y 20 secundarias. **22 Chispas de Aurora** escondidas y **20 pegatinas** (logros).
 - **Mapa de dominio estimado**: progreso por concepto y por energía (presentado como una estimación, nunca como una nota).
 - **Taller de Lía**: recuerdos de cada isla, pegatinas y cosméticos.
 - **Aurora Lab** (tras el final): sandbox de microred para experimentar sin penalización y comparar experimentos.
@@ -86,12 +114,13 @@ Desde el menú principal, sin necesidad de cuenta y sin que nada salga del naveg
 
 - **Elegir isla**: abre cualquier región (marca como restauradas las anteriores y concede sus habilidades).
 - **Lanzar reto**: filtra el banco de **115 retos** por concepto y energía.
+- **Luchar contra un jefe**: abre directamente la arena de cualquiera de los 10 jefes (también como revancha).
 - **Ver dominio** y **resumen local** (retos resueltos, al primer intento, pistas, bucles infinitos, errores con alta confianza...).
 - Acceso directo al **Aurora Lab** y reinicio del progreso.
 
 ### Accesibilidad
 
-Volumen de música y efectos, velocidad del texto (incluida instantánea), **subtítulos de sonidos**, **alto contraste**, **reducir destellos**, **reducir sacudidas**, **modo sin tiempo**, controles táctiles (auto/siempre/nunca), escalado de píxel entero y remapeo de teclas. Todos los menús se pueden usar con teclado, mando, ratón o pantalla táctil.
+Volumen de música y efectos, velocidad del texto (incluida instantánea), **subtítulos de sonidos**, **alto contraste**, **reducir destellos**, **reducir sacudidas**, **modo sin tiempo**, **ayuda de combate** (+2 células y jefes más lentos), controles táctiles (auto/siempre/nunca), escalado de píxel entero y remapeo de teclas. Todos los menús se pueden usar con teclado, mando, ratón o pantalla táctil.
 
 ---
 
@@ -113,6 +142,7 @@ src/
   09_dialogue.js        diálogos con retratos, globos, cinemáticas con generadores
   10_world.js           niveles, física de plataformas, Lía, PÍX y Lumi
   11_entities.js        entidades interactivas (plataformas, puertas, enemigos...)
+  12_combat.js          Lumisable, proyectiles, botín y enemigos nuevos
   12_props.js           decorado animado (molinos, paneles, turbinas, faro...)
   13_codelab.js         editor de bloques, intérprete, traza y diagrama de flujo
   14_worlds.js          simulaciones de cada reto (rejilla, solar, eólica, hidro...)
@@ -122,6 +152,7 @@ src/
   18_codex.js           Atlas Aurora, Chispas y misiones
   19_story_common.js    utilidades de historia y constructor de niveles
   20_… 26_lv_*.js       las islas (niveles, diálogos y puzzles)
+  27_bosses.js          los 10 jefes regionales, sus arenas y el Bestiario
   29_challenges.js      banco de 115 retos del modo docente
   30_lv_faro.js         Faro Aurora, Perfect Zero, final y créditos
   99_main.js            bucle de 60 Hz de paso fijo y arranque
@@ -147,9 +178,10 @@ Requieren [Playwright](https://playwright.dev/) (local o global) con Chromium:
 
 ```bash
 node tools/tests/glyphs.js    # comprueba que las flechas de la fuente apuntan bien (sin navegador)
-node tools/tests/levels.js    # carga los 14 niveles y guarda capturas
+node tools/tests/levels.js    # carga los 14 niveles y las 10 arenas de jefe y guarda capturas
 node tools/tests/puzzles.js   # resuelve los puzzles principales y construye los 115 retos
 node tools/tests/presets.js   # cada reto de código empieza armado pero sin resolver, y su solución funciona
+node tools/tests/bosses.js    # sable (tajos, pulso, parada, rebote, recarga) y los 10 jefes de principio a fin
 node tools/tests/walk.js      # recorre la campaña completa hasta el epílogo
 node tools/tests/menus.js     # abre todas las pantallas de menú
 ```

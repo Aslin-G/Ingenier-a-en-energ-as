@@ -16,7 +16,7 @@ const { chromium, gameFile, outDir } = require('./_pw');
     const L = [];
     const waitIdle = async (ms = 15000) => { const t0 = performance.now(); while (performance.now() - t0 < ms) { const top = LL.Scenes.top(); if (!LL.Cut.active && top && top.lv && !Trans_busy()) return true; await sleep(40); } return false; };
     const Trans_busy = () => false;
-    LL.G.autoDialog = true; LL.G.autoWin = true;
+    LL.G.autoDialog = true; LL.G.autoWin = true; LL.G.noDamage = true;
     LL.Game.newGame();
     await sleep(900);
     const regions = ['festival', 'puerto', 'valle', 'solaria', 'aeris', 'hydria', 'bioloop', 'gea', 'h2', 'bateria', 'prisma', 'faro', 'faro_top'];

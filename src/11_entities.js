@@ -304,6 +304,9 @@ class Exit extends Entity {
     const lv = this.lv;
     if (this.cfg.cond && !this.cfg.cond(lv)) { Cut.run(() => this.cfg.blocked ? this.cfg.blocked(lv) : talk([['pix', 'Todavía no podemos irnos. Algo sigue sin energía aquí.']])); return; }
     if (this.cfg.run) { Cut.run(() => this.cfg.run(lv)); return; }
+    // al final de cada isla espera su jefe
+    const bk = lv.def.region;
+    if (lv.key === bk && BOSSES[bk] && !flag('boss_' + bk) && LEVELS['jefe_' + bk]) { Cut.run(() => bossGate(lv, bk)); return; }
     Game.toMap();
   }
   update(dt) { super.update(dt); if (this.cfg.auto && rectHit(this.lv.player, this) && !Cut.active) this.interact(); }
@@ -325,6 +328,8 @@ class Vent extends Entity {
   update(dt) {
     super.update(dt); this.stT += dt;
     if (this.state === 'STARTING' && this.stT > 1.2) this.setState('RUNNING');
+    // el diagnóstico dura 1,5 s de juego (antes usaba un temporizador real que seguía corriendo en pausa)
+    if (this.state === 'DIAGNOSTIC' && this.stT > 1.5) this.setState('OFF');
     if (this.state === 'RUNNING' && this.cfg.overheat && this.stT > this.cfg.overheat) this.setState('FAULT');
     if (this.state === 'RUNNING' && Math.random() < 0.6) Particles.spawn({ x: this.x + rand(3, 13), y: this.y, vy: rand(-120, -80), vx: rand(-8, 8), life: 0.9, type: 'fade', size: 3, color: 'rgba(255,255,255,0.6)', drag: 0.99 });
     if (this.state === 'FAULT' && Math.random() < 0.2) Particles.spawn({ x: this.x + 8, y: this.y, vy: -30, life: 0.5, type: 'spark', color: PAL.coral });
@@ -333,7 +338,7 @@ class Vent extends Entity {
   windRect() { return this.state === 'RUNNING' ? { x: this.x + 2, y: this.y - (this.cfg.height || 6) * TILE, w: 12, h: (this.cfg.height || 6) * TILE } : null; }
   onAbility(ab) {
     if (ab !== 'shift' && ab !== 'link') { Bark.say('pix', 'Este respiradero cambia de estado con STATE SHIFT.'); return; }
-    if (this.state === 'FAULT') { this.setState('DIAGNOSTIC'); Bark.say('pix', 'FAULT → DIAGNÓSTICO. Nunca directo a RUNNING.'); setTimeout(() => { if (this.state === 'DIAGNOSTIC') this.setState('OFF'); }, 1500); return; }
+    if (this.state === 'FAULT') { this.setState('DIAGNOSTIC'); Bark.say('pix', 'FAULT → DIAGNÓSTICO. Nunca directo a RUNNING.'); return; }
     const next = Vent.FLOW[this.state];
     if (this.state === 'STARTING') { Bark.say('pix', 'Está ARRANCANDO. Hay que esperar a que termine la transición.'); return; }
     this.setState(next);
@@ -458,44 +463,112 @@ const SPARK_OPS = {
 
 // ---------- Enemigos conceptuales ----------
 function makeEnemy(lv, x, y, cfg) {
+  let e;
   switch (cfg.type) {
-    case 'bugglin': return new Bugglin(lv, x, y, cfg);
-    case 'loopling': return new Loopling(lv, x, y, cfg);
-    case 'shadowif': return new ShadowIf(lv, x, y, cfg);
-    case 'drainer': return new Drainer(lv, x, y, cfg);
-    case 'chaos': return new ChaosPacket(lv, x, y, cfg);
-    case 'overflow': return new Overflow(lv, x, y, cfg);
+    case 'loopling': e = new Loopling(lv, x, y, cfg); break;
+    case 'shadowif': e = new ShadowIf(lv, x, y, cfg); break;
+    case 'drainer': e = new Drainer(lv, x, y, cfg); break;
+    case 'chaos': e = new ChaosPacket(lv, x, y, cfg); break;
+    case 'overflow': e = new Overflow(lv, x, y, cfg); break;
+    case 'hopper': e = new Hopper(lv, x, y, cfg); break;
+    case 'flyer': e = new Zumbyte(lv, x, y, cfg); break;
+    case 'charger': e = new ToroOhm(lv, x, y, cfg); break;
+    case 'turret': e = new Torretin(lv, x, y, cfg); break;
+    default: e = new Bugglin(lv, x, y, cfg);
   }
-  return new Bugglin(lv, x, y, cfg);
+  e.type = cfg.type || 'bugglin';
+  if (cfg.face) e.face = cfg.face;
+  return e;
 }
+// Enemigo base: vida, retroceso al recibir golpes, destello, «!» al descubrir a Lía,
+// y pausa durante las cinemáticas (nadie ataca mientras se habla)
 class Enemy extends Entity {
-  constructor(lv, x, y, w, h, cfg) { super(lv, x, y, w, h); this.cfg = cfg; this.hostile = true; this.face = -1; this.id = cfg.id; }
+  constructor(lv, x, y, w, h, cfg) {
+    super(lv, x, y, w, h); this.cfg = cfg; this.hostile = true; this.face = -1; this.id = cfg.id;
+    this.hp = this.maxHp = cfg.hp || 2; this.flashT = 0; this.kbx = 0; this.hpShowT = 0; this.invT = 0; this.excl = 0; this.stunT = 0;
+  }
+  update(dt) {
+    super.update(dt);
+    this.flashT = Math.max(0, this.flashT - dt); this.hpShowT = Math.max(0, this.hpShowT - dt); this.invT = Math.max(0, this.invT - dt); this.excl = Math.max(0, this.excl - dt);
+    this.paused = (Cut.active && !Cut.free) || this.lv.frozen;
+    if (this.kbx) {
+      if (!this.physKnock && !this.noKnock) {
+        const nx = this.x + this.kbx * dt, ax = this.kbx > 0 ? nx + this.w : nx;
+        if (!this.lv.solidAt(Math.floor(ax / TILE), Math.floor((this.y + this.h / 2) / TILE))) this.x = nx;
+      }
+      this.kbx = approach(this.kbx, 0, 700 * dt);
+    }
+  }
+  notice() { if (this.excl <= 0 && !this.noticed) { this.excl = 0.6; this.noticed = true; if (Math.random() < 0.6) foeBark(this, 'see'); } }
+  vulnBonus() { return this.stunT > 0 ? 1 : 0; }
+  // golpe del sable (o de un pulso / proyectil devuelto)
+  onHit(h) {
+    if (this.dead || !this.hostile || this.invT > 0) return false;
+    if (this.guard && this.guard(h)) {
+      AudioSys.sfx('clang'); this.kbx = (h.dir || 0) * 50; this.flashT = 0.05;
+      Particles.burst(this.x + this.w / 2 - (h.dir || 0) * this.w / 2, this.y + this.h / 2, 6, { colors: [PAL.white, PAL.sun], min: 30, max: 80, type: 'spark', lmax: 0.3 });
+      hitstop(this.lv, 0.04); return 'block';
+    }
+    const dmg = (h.dmg || 1) + (h.crit ? 1 : 0) + this.vulnBonus();
+    this.hp -= dmg; this.flashT = 0.12; this.invT = 0.1; this.hpShowT = 2.2;
+    if (!this.noKnock) this.kbx = (h.dir || 0) * (h.kb || 110) * (this.heavy ? 0.35 : 1);
+    const cx = this.x + this.w / 2, cy = this.y + this.h / 2;
+    Particles.burst(cx, cy, h.crit ? 12 : 7, { colors: [PAL.white, saberColor(this.lv), this.skin ? this.skin[0] : PAL.violet], min: 30, max: 100, angle: (h.dir || 0) < 0 ? Math.PI : 0, spread: 1.1, type: 'spark', lmax: 0.35 });
+    if (h.crit) { AudioSys.sfx('crit'); Particles.text(cx, this.y - 10, '¡CRÍTICO!', PAL.teal); }
+    else AudioSys.sfx('hitE');
+    if (this.hp <= 0) { hitstop(this.lv, 0.09); FX.shake(1.5, 0.12); this.debug(); }
+    else { hitstop(this.lv, 0.05); if (this.onHurt) this.onHurt(h); if (Math.random() < 0.3) foeBark(this, 'hurt'); }
+    return true;
+  }
   stompCheck() {
     const p = this.lv.player;
-    if (!rectHit(p, this)) return false;
-    if (p.vy > 40 && p.y + p.h - this.y < 10) { p.vy = -200; this.debug(); return true; }
+    if (this.paused || !rectHit(p, this)) return false;
+    if (p.vy > 40 && p.y + p.h - this.y < 10) { p.vy = -200; this.invT = 0; this.onHit({ dmg: 2, dir: 0, kind: 'stomp', kb: 0 }); return true; }
     p.hurt(this); return true;
   }
   debug() {
+    if (this.dead) return;
     this.dead = true; this.hostile = false;
     AudioSys.sfx('debug'); addXP(8); addMastery('debugging', 1.5);
     Particles.burst(this.x + this.w / 2, this.y + this.h / 2, 14, { colors: [PAL.violet, PAL.lime, PAL.white], min: 20, max: 70, type: 'bit' });
     Particles.text(this.x + this.w / 2, this.y - 6, this.fixText || '¡depurado!', PAL.lime);
-    this.lv.addEntity(new FreedCritter(this.lv, this.x, this.y, this.freeKind || 'ladybug'));
+    this.lv.addEntity(new FreedCritter(this.lv, this.x, this.y, this.freeKind || 'ladybug', this.skin));
+    dropLoot(this);
+    G.save.stats.foes = (G.save.stats.foes || 0) + 1;
+    if (this.type && !G.save.codex['e_' + this.type] && CODEX['e_' + this.type]) unlockCodex('e_' + this.type);
     if (this.cfg.onDebug) this.cfg.onDebug(this.lv);
+    if (!flag('saberTips') && G.save.stats.foes >= 2) {
+      setFlag('saberTips');
+      Toast.show('Mantén ' + bindName('attack') + ' para cargar un PULSO · ↓ + ' + bindName('attack') + ' en el aire: rebote', PAL.sun, 5);
+    }
   }
   bounce(p) { p.vx = -p.face * 150; p.vy = -120; }
 }
+// Al depurarse, cada enemigo vuelve a ser una criatura feliz (y a veces da las gracias)
 class FreedCritter extends Entity {
-  constructor(lv, x, y, kind) { super(lv, x, y, 8, 6); this.kind = kind; this.life = 3; }
+  constructor(lv, x, y, kind, skin) { super(lv, x, y, 8, 6); this.kind = kind; this.skin = skin; this.life = 3; if (Math.random() < 0.35 && !Cut.active) Bark.say(this, choice(FREED_LINES), 1.6); }
   update(dt) { super.update(dt); this.life -= dt; this.y -= 25 * dt; this.x += Math.sin(this.t * 4) * 20 * dt; if (this.life <= 0) this.dead = true; }
-  draw(g, cx, cy) { const s = Spr.enemy.ladybug[Math.floor(this.t * 8) % 2]; g.drawImage(s.r, Math.round(this.x - cx), Math.round(this.y - cy)); }
+  draw(g, cx, cy) {
+    const x = Math.round(this.x - cx), y = Math.round(this.y - cy);
+    if (this.life < 0.6 && Math.floor(this.life * 12) % 2) return;
+    if (this.kind === 'bot') {
+      const c = this.skin ? this.skin[0] : PAL.teal;
+      pcircle(g, x + 4, y + 3, 4, OUTLINE); pcircle(g, x + 4, y + 3, 3, c);
+      px(g, x + 3, y + 3, OUTLINE); px(g, x + 5, y + 2, OUTLINE); px(g, x + 6, y + 3, OUTLINE); // ojo feliz y guiño
+      const wf = Math.floor(this.t * 16) % 2; rect(g, x - 1, y + wf, 2, 1, '#E8F4FF'); rect(g, x + 8, y + wf, 2, 1, '#E8F4FF');
+      if (Math.floor(this.t * 3) % 2) { px(g, x + 9, y - 3, PAL.pink); px(g, x + 11, y - 3, PAL.pink); rect(g, x + 9, y - 2, 3, 1, PAL.pink); px(g, x + 10, y - 1, PAL.pink); }
+      return;
+    }
+    const s = Spr.enemy.ladybug[Math.floor(this.t * 8) % 2]; g.drawImage(s.r, x, y);
+  }
 }
 class Bugglin extends Enemy {
   constructor(lv, x, y, cfg) { super(lv, x + 3, y + 9, 10, 7, cfg); this.speed = cfg.speed || 25; this.fixText = '¡instrucción reparada!'; }
   update(dt) {
     super.update(dt);
+    if (this.paused) return;
     const lv = this.lv;
+    if (!this.noticed && Math.abs(lv.player.cx - this.x) < 90 && Math.abs(lv.player.y - this.y) < 40) this.notice();
     const nx = this.x + this.face * this.speed * dt;
     const aheadX = this.face > 0 ? nx + this.w : nx;
     const wall = lv.solidAt(Math.floor(aheadX / TILE), Math.floor((this.y + 3) / TILE));
@@ -508,10 +581,13 @@ class Bugglin extends Enemy {
   lensInfo() { return ['BUGGLIN', '{v}intercambia el orden{/}', 'salta encima: {g}depurar{/}']; }
 }
 class Loopling extends Enemy {
-  constructor(lv, x, y, cfg) { super(lv, x, y, 12, 12, cfg); this.ox = x + 2; this.oy = y + 2; this.r = (cfg.r || 2.5) * TILE; this.exitA = cfg.exitA || 1.2; this.a = 0; this.iter = 0; this.stopped = false; this.freeKind = 'ladybug'; }
+  constructor(lv, x, y, cfg) { super(lv, x, y, 12, 12, cfg); this.ox = x + 2; this.oy = y + 2; this.r = (cfg.r || 2.5) * TILE; this.exitA = cfg.exitA || 1.2; this.a = 0; this.iter = 0; this.stopped = false; this.freeKind = 'ladybug'; this.noKnock = true; }
+  // un bucle sin salida no se detiene a golpes: hay que encontrar su condición de salida
+  guard() { if (!flag('looplingTip')) { setFlag('looplingTip'); Bark.say('pix', '¡Los golpes no rompen un bucle infinito! Activa la Lente (' + bindName('lens') + ') y toca su nodo SALIDA.', 4); } return true; }
   update(dt) {
     super.update(dt);
     if (this.stopped) { this.y += Math.sin(this.t * 2) * 0.1; return; }
+    if (this.paused) return;
     const prevA = this.a;
     this.a += dt * (this.cfg.speed || 2.2);
     if (Math.floor(prevA / (Math.PI * 2)) !== Math.floor(this.a / (Math.PI * 2))) this.iter++;
@@ -551,6 +627,7 @@ class ShadowIf extends Enemy {
   constructor(lv, x, y, cfg) { super(lv, x + 1, y, 14, 14, cfg); this.oy = y; this.freeKind = 'ladybug'; this.fixText = '¡condición corregida!'; }
   update(dt) {
     super.update(dt);
+    if (this.paused) return;
     // flota por encima de su sitio (nunca atraviesa el suelo)
     this.y = this.oy - 4 - (Math.sin(this.t * 1.5) * 0.5 + 0.5) * (this.cfg.amp || 20);
     const p = this.lv.player;
@@ -571,6 +648,7 @@ class Drainer extends Enemy {
   constructor(lv, x, y, cfg) { super(lv, x, y, 10, 9, cfg); this.oy = y; this.ox = x; this.freeKind = 'ladybug'; this.fixText = '¡energía devuelta!'; this.priority = cfg.priority || 3; }
   update(dt) {
     super.update(dt);
+    if (this.paused) return;
     const p = this.lv.player;
     const d = dist(p.cx, p.y + 10, this.x + 5, this.y + 5);
     if (d < 90) { this.x += sign(p.cx - this.x - 5) * 18 * dt; this.y += sign(p.y + 6 - this.y) * 12 * dt; }
@@ -587,9 +665,10 @@ class Drainer extends Enemy {
   lensInfo() { return ['DRAINER', 'energia -= 60/s', '{p}PRIORITY DASH{/} lo atraviesa']; }
 }
 class ChaosPacket extends Enemy {
-  constructor(lv, x, y, cfg) { super(lv, x + 4, y + 4, 8, 6, cfg); this.vx = cfg.vx || 40; this.vy = 0; this.freeKind = 'ladybug'; this.fixText = '¡datos ordenados!'; }
+  constructor(lv, x, y, cfg) { super(lv, x + 4, y + 4, 8, 6, cfg); this.vx = cfg.vx || 40; this.vy = 0; this.freeKind = 'ladybug'; this.fixText = '¡datos ordenados!'; this.hp = this.maxHp = 1; }
   update(dt) {
     super.update(dt);
+    if (this.paused) return;
     const lv = this.lv;
     this.vy += 500 * dt;
     const nx = this.x + this.vx * dt;
@@ -607,9 +686,16 @@ class ChaosPacket extends Enemy {
   lensInfo() { return ['CHAOS PACKET', '{o}desordena listas{/}']; }
 }
 class Overflow extends Enemy {
-  constructor(lv, x, y, cfg) { super(lv, x, y + 8, 16, 8, cfg); this.size = 4; this.base = y + 16; this.cx0 = x + 8; this.phase = 0; this.freeKind = 'ladybug'; this.fixText = '¡capacidad respetada!'; }
+  constructor(lv, x, y, cfg) { super(lv, x, y + 8, 16, 8, cfg); this.size = 4; this.base = y + 16; this.cx0 = x + 8; this.phase = 0; this.freeKind = 'ladybug'; this.fixText = '¡capacidad respetada!'; this.noKnock = true; this.hp = this.maxHp = 1; }
+  // grande: cada tajo libera capacidad; pequeño: se depura
+  onHit(h) {
+    if (this.dead || this.invT > 0) return false;
+    if (this.size > 9 && h.kind !== 'pulse') { this.size = Math.max(4, this.size - 4); this.invT = 0.12; this.flashT = 0.1; AudioSys.sfx('hitE'); Particles.text(this.cx0, this.base - 30, 'capacidad −', PAL.sun); hitstop(this.lv, 0.04); return true; }
+    return super.onHit(h);
+  }
   update(dt) {
     super.update(dt);
+    if (this.paused) return;
     this.size += dt * (this.cfg.rate || 2.5);
     if (this.size > (this.cfg.max || 14)) {
       for (let i = 0; i < 6; i++) Particles.spawn({ x: this.cx0, y: this.base - this.size * 2, vx: rand(-80, 80), vy: rand(-160, -60), grav: 400, life: 1, type: 'dot', size: 2, color: PAL.coral });

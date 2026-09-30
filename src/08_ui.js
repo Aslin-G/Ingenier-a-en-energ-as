@@ -163,10 +163,11 @@ const TouchPad = {
       { a: 'right', x: 50, y: 204, w: 36, h: 36, label: '▶' },
       { a: 'up', x: 29, y: 166, w: 36, h: 34, label: '▲' },
       { a: 'down', x: 29, y: 242, w: 36, h: 26, label: '▼' },
-      { a: 'jump', x: 430, y: 206, w: 42, h: 42, label: 'A', col: PAL.lime },
-      { a: 'interact', x: 384, y: 222, w: 38, h: 34, label: 'E', col: PAL.sun },
-      { a: 'ability', x: 438, y: 164, w: 34, h: 34, label: 'Q', col: PAL.pink },
-      { a: 'lens', x: 396, y: 180, w: 32, h: 32, label: 'F', col: PAL.teal },
+      { a: 'jump', x: 432, y: 210, w: 40, h: 40, label: 'A', col: PAL.lime },
+      { a: 'attack', x: 388, y: 222, w: 38, h: 38, label: '⚔', col: PAL.coral },
+      { a: 'interact', x: 352, y: 238, w: 30, h: 28, label: 'E', col: PAL.sun },
+      { a: 'ability', x: 440, y: 170, w: 32, h: 32, label: 'Q', col: PAL.pink },
+      { a: 'lens', x: 402, y: 184, w: 30, h: 30, label: 'F', col: PAL.teal },
       { a: 'pause', x: 446, y: 4, w: 28, h: 18, label: '≡', col: PAL.cream }
     ];
   },
@@ -206,7 +207,7 @@ const TouchPad = {
 
 // ---------- Utilidades de HUD ----------
 function keyHint(g, x, y, action, label, col = PAL.cream) {
-  const k = Input.lastDevice === 'touch' ? ({ jump: 'A', interact: 'E', ability: 'Q', lens: 'F', hint: 'H', pause: '≡', codex: 'C', blueprint: 'B', confirm: 'TOCA', back: '✗' }[action] || action) : bindName(action);
+  const k = Input.lastDevice === 'touch' ? ({ jump: 'A', interact: 'E', attack: '⚔', ability: 'Q', lens: 'F', hint: 'H', pause: '≡', codex: 'C', blueprint: 'B', confirm: 'TOCA', back: '✗' }[action] || action) : bindName(action);
   const kw = textW(k) + 6;
   rect(g, x, y, kw, 11, '#FFF3D7'); rect(g, x, y + 10, kw, 1, '#8C93B8');
   drawText(g, k, x + 3, y + 2, PAL.ink);

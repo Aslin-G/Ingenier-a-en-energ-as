@@ -44,6 +44,8 @@ class Level {
     this.time = 0; this.lens = false; this.lensT = 0; this.weather = def.weather || 'clear'; this.weatherT = 0;
     this.entities = []; this.byId = {}; this.checkpoints = [];
     this.parse(def.map);
+    this.hitstop = 0;
+    populateFoes(this);
     this.bg = getBackground(def.theme);
     this.buildStatic();
     const start = this.findSpawn(spawnId);
@@ -114,6 +116,7 @@ class Level {
       case 'L': return this.addEntity(new Lamp(this, px0, py0));
       case 'a': return this.addEntity(new Critter(this, px0, py0));
       case 'B': return this.addEntity(new Boss(this, px0, py0, cfg));
+      case 'R': return this.addEntity(new RegionBoss(this, px0, py0, cfg));
     }
   }
   get(id) { return this.byId[id]; }
@@ -250,6 +253,8 @@ class Level {
   }
   // ---------- actualización ----------
   update(dt) {
+    // pausa de impacto: el mundo se congela un instante tras un golpe
+    if (this.hitstop > 0) { this.hitstop -= dt; Bark.update(dt); return; }
     this.time += dt;
     this.banner = Math.max(0, this.banner - dt);
     const control = (!Cut.active || Cut.free) && !this.frozen;
@@ -271,7 +276,10 @@ class Level {
         if (rectHit(this.player, r)) { const d = Math.abs(e.x + e.w / 2 - this.player.x - this.player.w / 2); if (d < bd) { bd = d; best = e; } }
       }
       this.nearby = best;
-      if (best && Input.hit('interact')) { Input.consume(); this.player.anim = 'interact'; this.player.animT = 0.3; best.interact(); }
+      // E siempre habla/usa; el botón de ataque también, si no hay peligro cerca
+      if (best && (Input.hit('interact') || (Input.hit('attack') && !this.dangerNear()))) { Input.consume(); this.player.atk = null; this.player.anim = 'interact'; this.player.animT = 0.3; best.interact(); }
+      // presentación del Lumisable la primera vez que aparece un enemigo
+      if (!flag('saberIntro') && !Cut.active && !this.def.noHud && this.dangerNear(170)) { setFlag('saberIntro'); Cut.run(() => saberIntro(this)); }
     }
     // disparadores
     if (this.def.triggers) for (const tr of this.def.triggers) {
@@ -362,15 +370,15 @@ class Level {
     g.drawImage(this.staticCv, cx, cy, W, H, 0, 0, W, H);
     this.drawDynamicTiles(g, cx, cy);
     // entidades de fondo
-    for (const e of this.entities) if (e.layer === -1 && e.draw && this.onScreen(e, cx, cy)) e.draw(g, cx, cy);
-    for (const e of this.entities) if (!e.layer && e.draw && this.onScreen(e, cx, cy)) e.draw(g, cx, cy);
+    for (const e of this.entities) if (e.layer === -1 && e.draw && this.onScreen(e, cx, cy)) drawEntity(g, e, cx, cy);
+    for (const e of this.entities) if (!e.layer && e.draw && this.onScreen(e, cx, cy)) drawEntity(g, e, cx, cy);
     if (this.ghost) this.ghost.draw(g, cx, cy);
     if (this.def.extraDraw) this.def.extraDraw(this, g, cx, cy);
     if (this.eclipseAt) { drawEclipseFigure(g, this.eclipseAt.x - cx, this.eclipseAt.y - cy, this.time, 2); if (Math.random() < 0.5) Particles.spawn({ x: this.eclipseAt.x + rand(-10, 10), y: this.eclipseAt.y + rand(0, 26), vy: -10, life: 0.5, type: 'dot', color: PAL.violet }); }
     this.lumi.draw(g, cx, cy);
     this.player.draw(g, cx, cy);
     this.pix.draw(g, cx, cy);
-    for (const e of this.entities) if (e.layer === 1 && e.draw && this.onScreen(e, cx, cy)) e.draw(g, cx, cy);
+    for (const e of this.entities) if (e.layer === 1 && e.draw && this.onScreen(e, cx, cy)) drawEntity(g, e, cx, cy);
     this.drawWater(g, cx, cy);
     Particles.draw(g, cx, cy, false, 0);
     // iluminación
@@ -378,6 +386,7 @@ class Level {
     const p = this.player;
     Light.add(p.x + p.w / 2 - cx, p.y + 8 - cy, 70, 0.9);
     Light.add(this.lumi.x + 3 - cx, this.lumi.y + 3 - cy, 50 + this.lumi.glow * 20, 1, this.lumi.color);
+    if (p.atk || p.chargeT > 0.3) Light.add(p.cx + p.face * 10 - cx, p.y + 8 - cy, 56, 0.9, saberColor(this));
     for (const e of this.entities) if (e.light && this.onScreen(e, cx, cy, 80)) { const l = e.light(); if (l) Light.add(l.x - cx, l.y - cy, l.r, l.a == null ? 1 : l.a, l.c); }
     if (this.def.lights) this.def.lights(this, cx, cy);
     const dk = this.darkness();
@@ -392,6 +401,7 @@ class Level {
     Particles.draw(g, cx, cy, true, 1);
     if (this.lensT > 0.01) this.drawLensOverlay(g, cx, cy);
     for (const e of this.entities) if (e.drawOverlay && this.onScreen(e, cx, cy, 40)) e.drawOverlay(g, cx, cy);
+    for (const e of this.entities) if (e instanceof Enemy && !e.dead && (e.excl > 0 || e.hpShowT > 0 || e.stunT > 0) && this.onScreen(e, cx, cy)) drawFoeUI(g, e, cx, cy);
     // textos flotantes: primero se reservan HUD y aviso de interacción, luego globos y etiquetas de la Lente
     this.layoutLabels(cx, cy);
     Bark.draw(g, cx, cy, id => id === 'pix' ? this.pix : id === 'lia' ? this.player : id === 'lumi' ? this.lumi : this.byId[id]);
@@ -400,7 +410,9 @@ class Level {
   layoutLabels(cx, cy) {
     Labels.reset();
     if (!this.def.noHud) {
-      Labels.reserve(0, 0, 150, 22); Labels.reserve(W - 80, 0, 80, 17);
+      Labels.reserve(0, 0, this.hudW || 150, 22); Labels.reserve(W - 80, 0, 80, 17);
+      if (this.rboss && this.rboss.showBar) Labels.reserve(W / 2 - 104, 0, 208, 26);
+      if (this.rboss && this.rboss.showBar && this.lensT > 0.05 && this.rboss.codeRect) { const r = this.rboss.codeRect; Labels.reserve(r.x, r.y, r.w, r.h); }
       const obj = this.def.objective ? this.def.objective(this) : null;
       if (obj && (!Cut.active || Cut.free)) Labels.reserve(0, H - 20, Math.min(260, textW(obj) + 20) + 6, 20);
     }
@@ -684,9 +696,12 @@ class Player {
     this.lv = lv; this.x = x; this.y = y; this.w = 10; this.h = 20;
     this.vx = 0; this.vy = 0; this.face = 1; this.onGround = false; this.coyote = 0; this.buffer = 0;
     this.climbing = false; this.inWater = false; this.gliding = false; this.anim = 'idle'; this.animT = 0; this.frameT = 0;
-    this.cells = 3; this.maxCells = 3; this.inv = 0; this.energy = 100; this.shieldOn = false; this.shieldArmed = false;
+    // células: 3 + 1 por cada 3 fragmentos de los jefes (+2 con la ayuda de combate)
+    this.maxCells = 3 + Math.floor((G.save.cellShards || 0) / 3) + (G.save.settings.assist ? 2 : 0);
+    this.cells = this.maxCells; this.inv = 0; this.energy = 100; this.shieldOn = false; this.shieldArmed = false;
     this.dashT = 0; this.landT = 0; this.stepT = 0; this.idleT = 0; this.onPlat = null; this.celebrateT = 0;
     this.shieldRule = G.save.shieldRule || 0;
+    this.initCombat();
   }
   get cx() { return this.x + this.w / 2; }
   tileRectSolid(x, y, w, h) {
@@ -742,9 +757,15 @@ class Player {
     this.onGround = true; this.vy = 0; this.coyote = PHYS.coyote; this.gliding = false;
   }
   hurt(src) {
-    if (this.inv > 0 || this.dashT > 0) return;
+    if (this.inv > 0 || this.dashT > 0 || G.noDamage || (Cut.active && !Cut.free)) return;
     if (this.shieldOn) { AudioSys.sfx('shield'); Particles.burst(this.cx, this.y + 10, 10, { color: PAL.orange, min: 30, max: 60 }); if (src && src.bounce) src.bounce(this); return; }
-    this.cells--; this.inv = 1.3; this.vy = -180; this.vx = -this.face * 120;
+    // el golpe empuja lejos de quien lo dio
+    const sx = src && src.x != null ? src.x + (src.w || 0) / 2 : null;
+    const dir = sx != null && Math.abs(sx - this.cx) > 1 ? sign(this.cx - sx) : -this.face;
+    this.cells--; this.inv = 1.3; this.vy = -180; this.vx = dir * 150; this.hurtT = 0.28;
+    if (src && src.knockPlayer) src.knockPlayer(this);
+    this.atk = null; this.chargeT = 0; this.chargeReady = false; this.healT = 0;
+    hitstop(this.lv, 0.07);
     AudioSys.sfx('hurt'); FX.shake(3, 0.25); FX.flash('#FF6B6B', 0.25);
     this.anim = 'hurt'; this.animT = 0.4;
     this.lv.lumi.mood = 'fear'; this.lv.lumi.moodT = 2;
@@ -759,6 +780,8 @@ class Player {
     const up = control && Input.down('up'), down = control && Input.down('down');
     const jumpHit = control && Input.hit('jump'), jumpDown = control && Input.down('jump');
     const running = control && Input.down('run');
+    // sable de luz
+    this.updateCombat(dt, control);
     // plataforma móvil
     if (this.onPlat && this.onPlat.dx) this.moveX(this.onPlat.dx);
     // agua
@@ -791,11 +814,16 @@ class Player {
       return this.post(dt);
     }
     // horizontal
-    const maxS = (running ? PHYS.run : PHYS.walk) * (this.inWater ? 0.6 : 1);
+    // al atacar en el suelo se planta un poco (el golpe «pesa»); en el aire se mantiene el impulso
+    const slow = this.atk && this.onGround ? 0.55 : this.healT > 0 ? 0 : 1;
+    const maxS = (running ? PHYS.run : PHYS.walk) * (this.inWater ? 0.6 : 1) * slow;
     const target = ax * maxS;
     const acc = this.onGround ? (ax !== 0 ? PHYS.accG : PHYS.decG) : PHYS.accA;
-    this.vx = approach(this.vx, target, acc * dt);
-    if (ax !== 0) this.face = ax > 0 ? 1 : -1;
+    // retroceso breve tras un golpe: el impulso aleja a Lía de lo que la dañó
+    this.hurtT = Math.max(0, (this.hurtT || 0) - dt);
+    if (this.hurtT > 0) this.vx = approach(this.vx, 0, 220 * dt);
+    else this.vx = approach(this.vx, target, acc * dt);
+    if (ax !== 0 && !this.atk && this.hurtT <= 0) this.face = ax > 0 ? 1 : -1;
     // viento
     let lift = 0;
     const tMid = lv.tile(Math.floor(this.cx / TILE), Math.floor((this.y + this.h / 2) / TILE));
@@ -868,14 +896,13 @@ class Player {
       const cond = this.shieldCondition();
       if (cond && this.energy > 0) { this.shieldOn = true; this.energy -= (this.shieldRule === 1 ? 45 : 30) * dt; if (this.energy <= 0) { this.energy = 0; this.shieldArmed = false; Bark.say('pix', 'Escudo sin energía. ¿Quizás la condición era demasiado amplia?'); } }
     }
-    if (!this.shieldOn) this.energy = Math.min(100, this.energy + (lv.power > 0.3 ? 18 : 10) * dt);
+    // la energía se recarga sola hasta 60; el resto se gana golpeando con el sable y con los orbes
+    if (!this.shieldOn && this.energy < PASSIVE_ENERGY_CAP) this.energy = Math.min(PASSIVE_ENERGY_CAP, this.energy + (lv.power > 0.3 ? 18 : 10) * dt);
     if (Input.hit('ability') && ab) {
       if (lv.def.abilityHook && lv.def.abilityHook(lv, ab)) return;
       switch (ab) {
         case 'spark': if (!lv.ghost || lv.ghost.done) Scenes.push(new SparkEditorScene(lv)); else Bark.say('pix', 'Espera a que termine el eco actual.'); break;
-        case 'shield':
-          if (this.shieldArmed && this.shieldHoldT === undefined) { }
-          Scenes.push(new ShieldRuleScene(this)); break;
+        case 'shield': Scenes.push(new ShieldRuleScene(this)); break;
         case 'glide': Bark.say('pix', 'MIENTRAS mantengas SALTO en el aire: planear. ¡Un bucle con condición!'); break;
         case 'dash':
           if (this.energy >= 20) {
@@ -909,6 +936,9 @@ class Player {
   post(dt) {
     // animación
     if (this.animT > 0 && ['interact', 'hurt', 'ability', 'program', 'celebrate', 'surprise'].includes(this.anim)) { }
+    else if (this.atk && !this.climbing) this.anim = this.atk.kind === 'up' ? 'slashUp' : this.atk.kind === 'down' ? 'slashDown' : 'slash';
+    else if (this.chargeT > 0.15 && !this.climbing && !this.inWater && this.onGround) this.anim = 'charge';
+    else if (this.healT > 0.05) this.anim = 'ability';
     else if (this.celebrateT > 0) { this.celebrateT -= dt; this.anim = 'celebrate'; }
     else if (this.climbing) this.anim = 'climb';
     else if (this.inWater) this.anim = 'swim';
@@ -936,7 +966,11 @@ class Player {
     const fps = { walk: 11, run: 14, climb: 6, swim: 4, interact: 8, program: 5, celebrate: 4 }[this.anim] || 8;
     const t = this.animClock || 0;
     let f;
-    if (this.anim === 'idle' || !Spr.lia[this.anim]) {
+    if (this.atk && Spr.lia[this.anim] && this.anim.startsWith('slash')) {
+      // fotograma según el avance del tajo: preparación, golpe, seguimiento
+      const k = this.atk.t / this.atk.def.dur;
+      f = Math.min(A.length - 1, k < 0.12 ? 0 : k < 0.55 ? 1 : 2);
+    } else if (this.anim === 'idle' || !Spr.lia[this.anim]) {
       // respiración lenta (ciclo de 2,4 s) + parpadeo ocasional
       const breath = (t % 2.4) > 1.3 ? 1 : 0;
       f = (this.blinkT < 0 ? 2 : 0) + breath;
@@ -944,6 +978,7 @@ class Player {
     const fr = this.face > 0 ? A[f].r : A[f].l;
     const dx = Math.round(this.x + this.w / 2 - fr.width / 2 - cx), dy = Math.round(this.y + this.h - fr.height + 1 - cy);
     g.drawImage(fr, dx, dy);
+    this.drawSaber(g, cx, cy);
     if (this.shieldOn || this.shieldArmed) {
       const r = 15, sx = this.cx - cx, sy = this.y + 10 - cy;
       if (this.shieldOn) { g.globalAlpha = 0.5 + Math.sin(this.lv.time * 20) * 0.2; pring(g, sx, sy, r, PAL.orange); pring(g, sx, sy, r - 1, PAL.sun); g.globalAlpha = 0.15; pcircle(g, sx, sy, r - 2, PAL.sun); g.globalAlpha = 1; }
@@ -1003,7 +1038,7 @@ class PixCompanion {
 class LumiCompanion {
   constructor(lv) { this.lv = lv; this.x = 0; this.y = 0; this.w = 7; this.h = 7; this.t = 0; this.mood = 'n'; this.moodT = 0; this.glow = 0.5; this.color = PAL.sun; this.stay = null; this.hidden = false; }
   update(dt) {
-    this.t += dt; this.moodT = Math.max(0, this.moodT - dt);
+    this.t += dt; this.moodT = Math.max(0, this.moodT - dt); this.slashT = Math.max(0, (this.slashT || 0) - dt);
     const p = this.lv.player;
     if (this.moodT <= 0) this.mood = flag('lumiSad') ? 'sad' : this.lv.power >= 1 ? 'happy' : this.lv.darkness() > 0.45 ? 'fear' : 'n';
     let tx = p.cx + p.face * 10 - 3, ty = p.y + 2;
@@ -1026,6 +1061,8 @@ class LumiCompanion {
     const x = Math.round(this.x - cx), y = Math.round(this.y - cy);
     const shapeI = this.mood === 'fear' ? 1 : this.mood === 'happy' ? Math.floor(this.t * 2.5) % 2 * 2 : 0;
     g.globalAlpha = 0.25; pcircle(g, x + 3, y + 3, 5 + Math.round(this.glow * 3), this.color); g.globalAlpha = 1;
+    // Lumi presta su luz al sable: destella con cada tajo
+    if (this.slashT > 0) { g.globalAlpha = this.slashT / 0.3; pring(g, x + 3, y + 3, 6 + Math.round((0.3 - this.slashT) * 20), '#FFFFFF'); g.globalAlpha = 1; }
     drawLumiShape(g, x, y, Spr.lumi[shapeI], this.color, shade(this.color, -0.25), true, this.mood === 'happy' ? 'happy' : this.mood === 'sad' ? 'sleep' : 'n');
   }
 }
@@ -1038,6 +1075,7 @@ Level.prototype.gameOver = function () {
     yield C.title('La red perdió estabilidad.', 'Recalculando ruta...', 2.4, PAL.coral);
     lv.respawn();
     lv.frozen = false;
+    if (lv.rboss) yield* bossRetry(lv);
   });
 };
 Level.prototype.fellOut = function () {
@@ -1053,7 +1091,8 @@ Level.prototype.respawn = function () {
   const p = this.player;
   const cp = this.checkpoints.filter(c => c.active).pop();
   const s = cp ? { x: cp.x + 3, y: cp.y - 4 } : this.spawn;
-  p.x = s.x; p.y = s.y; p.vx = p.vy = 0; p.cells = p.maxCells; p.inv = 1.5; p.energy = 100;
+  p.x = s.x; p.y = s.y; p.vx = p.vy = 0; p.cells = p.maxCells; p.inv = 1.5; p.energy = 100; p.atk = null; p.chargeT = 0;
+  for (const e of this.entities) if (e instanceof Shot || e instanceof BossHazard) e.dead = true;
   this.snapCamera();
   Particles.burst(p.cx, p.y + 10, 20, { colors: [PAL.sun, PAL.teal], min: 20, max: 60 });
 };

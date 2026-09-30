@@ -131,6 +131,20 @@ const AudioSys = {
       case 'spark': T({ f: rand(1500, 2500), dur: 0.02, type: 'square', vol: 0.03 }); break;
       case 'select': T({ f: 740, dur: 0.04, type: 'square', vol: 0.05, lp: 3500 }); break;
       case 'steam': N({ ff: 5000, ft: 'highpass', dur: 0.4, vol: 0.08, a: 0.05 }); break;
+      // ---- combate: sable de luz ----
+      case 'slash': N({ ff: 5200 + p * 400, ff2: 900, ft: 'bandpass', q: 2, dur: 0.13, vol: 0.1 }); T({ f: 420 + p * 60, f2: 880 + p * 90, dur: 0.09, type: 'sawtooth', vol: 0.035, lp: 2600 }); break;
+      case 'hitE': T({ f: 190, f2: 70, dur: 0.1, type: 'square', vol: 0.1, lp: 1800 }); N({ ff: 2600, ff2: 600, dur: 0.08, vol: 0.1 }); T({ f: 1500, dur: 0.03, type: 'square', vol: 0.04, delay: 0.02 }); break;
+      case 'crit': T({ f: 1318, dur: 0.06, type: 'triangle', vol: 0.08 }); T({ f: 1975, dur: 0.1, type: 'triangle', vol: 0.07, delay: 0.05 }); N({ ff: 3000, ff2: 500, dur: 0.12, vol: 0.1 }); break;
+      case 'clang': T({ f: 1760, dur: 0.14, type: 'triangle', vol: 0.07 }); T({ f: 2637, dur: 0.1, type: 'sine', vol: 0.04 }); N({ ff: 6000, ft: 'highpass', dur: 0.06, vol: 0.05 }); this.caption('[clang]'); break;
+      case 'parry': [0, 7, 12].forEach((s, i) => T({ f: 988 * Math.pow(2, s / 12), dur: 0.09, type: 'triangle', vol: 0.08, delay: i * 0.03 })); N({ ff: 8000, ft: 'highpass', dur: 0.12, vol: 0.06 }); this.caption('[¡parada perfecta!]'); break;
+      case 'chargeUp': T({ f: 220 + p * 400, dur: 0.05, type: 'triangle', vol: 0.03 }); break;
+      case 'pulse': T({ f: 1200, f2: 160, dur: 0.35, type: 'sawtooth', vol: 0.07, lp: 3000 }); N({ ff: 4000, ff2: 300, dur: 0.35, vol: 0.12 }); this.caption('[pulso de luz]'); break;
+      case 'heal': [0, 4, 7, 12].forEach((s, i) => T({ f: 784 * Math.pow(2, s / 12), dur: 0.08, type: 'sine', vol: 0.07, delay: i * 0.05 })); this.caption('[energía recuperada]'); break;
+      case 'shot': T({ f: 900, f2: 500, dur: 0.08, type: 'square', vol: 0.045, lp: 3000 }); break;
+      case 'roar': T({ f: 110, f2: 55, dur: 0.7, type: 'sawtooth', vol: 0.09, lp: 700, vib: 9, vibDepth: 12 }); N({ ff: 700, ff2: 200, dur: 0.7, vol: 0.1, a: 0.08 }); this.caption('[rugido del jefe]'); break;
+      case 'stun': for (let i = 0; i < 5; i++) T({ f: 1400 - i * 150, dur: 0.05, type: 'square', vol: 0.045, delay: i * 0.05, lp: 3500 }); this.caption('[jefe aturdido]'); break;
+      case 'bossDown': N({ ff: 1200, ff2: 60, dur: 1.2, vol: 0.2 }); T({ f: 220, f2: 40, dur: 1.1, type: 'sawtooth', vol: 0.08, lp: 900 }); [0, 4, 7, 12].forEach((s, i) => T({ f: 523 * Math.pow(2, s / 12), dur: 0.2, type: 'triangle', vol: 0.07, delay: 0.9 + i * 0.1 })); this.caption('[jefe depurado]'); break;
+      case 'warn': T({ f: 880, dur: 0.07, type: 'square', vol: 0.05, lp: 2500 }); T({ f: 880, dur: 0.07, type: 'square', vol: 0.05, delay: 0.12, lp: 2500 }); break;
     }
   },
   // ---------- música ----------

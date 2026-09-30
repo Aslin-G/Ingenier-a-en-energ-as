@@ -15,7 +15,7 @@ const PROG_KEYS = MASTERY_KEYS.slice(0, 11), ENERGY_KEYS = MASTERY_KEYS.slice(11
 
 const DEFAULT_SETTINGS = () => ({
   musicVol: 0.55, sfxVol: 0.8, textSpeed: 1, highContrast: false, reduceFlash: false, reduceShake: false,
-  touch: 'auto', noTimer: false, captions: true, pixelPerfect: false, bindings: null, confidence: true
+  touch: 'auto', noTimer: false, captions: true, pixelPerfect: false, bindings: null, confidence: true, assist: false
 });
 
 function newSave() {
@@ -27,7 +27,10 @@ function newSave() {
     settings: DEFAULT_SETTINGS(),
     regions: {}, cosmetics: { owned: {}, worn: {} }, achievements: {},
     stats: { puzzles: 0, firstTry: 0, hints: 0, fails: 0, runs: 0, lensFinds: 0, playTime: 0, infiniteLoops: 0, confHighWrong: 0 },
-    attempts: {}, teacherUnlocked: false, labUnlocked: false, lastRegion: 'puerto'
+    attempts: {}, teacherUnlocked: false, labUnlocked: false, lastRegion: 'puerto',
+    // combate: fragmentos de célula (3 = +1 célula), intentos por jefe, y si la isla siguiente
+    // exige vencer al jefe (las partidas anteriores a los jefes no quedan bloqueadas)
+    cellShards: 0, bossTries: {}, bossGate: true
   };
 }
 
@@ -46,6 +49,7 @@ const Save = {
       if (!raw) return false;
       const data = JSON.parse(raw);
       const base = newSave();
+      if (data.bossGate === undefined) data.bossGate = false;
       // fusión defensiva para versiones antiguas
       for (const k in base) if (data[k] === undefined) data[k] = base[k];
       data.settings = Object.assign(DEFAULT_SETTINGS(), data.settings || {});
@@ -53,7 +57,7 @@ const Save = {
       data.stats = Object.assign(base.stats, data.stats || {});
       data.collectibles = Object.assign(base.collectibles, data.collectibles || {});
       G.save = data;
-      if (data.settings.bindings) Input.bindings = Object.assign(JSON.parse(JSON.stringify(DEFAULT_BINDINGS)), data.settings.bindings);
+      if (data.settings.bindings) Input.bindings = mergeBindings(data.settings.bindings);
       return true;
     } catch (e) { return false; }
   },
@@ -63,7 +67,7 @@ const Save = {
       if (!raw) return;
       const data = JSON.parse(raw);
       if (data.settings) G.save.settings = Object.assign(DEFAULT_SETTINGS(), data.settings);
-      if (data.settings && data.settings.bindings) Input.bindings = Object.assign(JSON.parse(JSON.stringify(DEFAULT_BINDINGS)), data.settings.bindings);
+      if (data.settings && data.settings.bindings) Input.bindings = mergeBindings(data.settings.bindings);
       if (data.teacherUnlocked) G.save.teacherUnlocked = true;
       if (data.labUnlocked) G.save.labUnlocked = true;
     } catch (e) { }
@@ -88,6 +92,13 @@ const Save = {
   },
   flash: 0
 };
+
+// teclas guardadas + teclas nuevas por defecto; X y J pasaron de «usar» a «atacar»
+function mergeBindings(saved) {
+  const b = Object.assign(JSON.parse(JSON.stringify(DEFAULT_BINDINGS)), saved);
+  if (!saved.attack) { b.attack = DEFAULT_BINDINGS.attack.slice(); b.interact = (b.interact || []).filter(c => !b.attack.includes(c)); if (!b.interact.length) b.interact = ['KeyE']; }
+  return b;
+}
 
 // ---------- banderas de historia ----------
 const flag = k => !!G.save.storyFlags[k];
@@ -138,7 +149,9 @@ const ACHIEVEMENTS = {
   curious: { name: 'CURIOSIDAD INFINITA', desc: 'Leíste 25 entradas del Atlas Aurora.' },
   humble: { name: 'HUMILDAD ALGORÍTMICA', desc: 'Admitiste duda y aun así acertaste.' },
   lab: { name: 'CIENTÍFICA DEL LAB', desc: 'Comparaste tres experimentos en Aurora Lab.' },
-  sidequests: { name: 'VECINA EJEMPLAR', desc: 'Completaste 10 misiones secundarias.' }
+  sidequests: { name: 'VECINA EJEMPLAR', desc: 'Completaste 10 misiones secundarias.' },
+  parry: { name: 'REFLEJOS DE LUZ', desc: 'Hiciste una parada perfecta con el Lumisable.' },
+  bosses: { name: 'GUARDIANA DEL ARCHIPIÉLAGO', desc: 'Depuraste a los 10 jefes regionales.' }
 };
 function achieve(id) {
   if (G.save.achievements[id] || !ACHIEVEMENTS[id]) return;

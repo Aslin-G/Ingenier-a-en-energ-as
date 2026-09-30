@@ -40,7 +40,7 @@ const Dlg = {
       b.shown = Math.min(b.total, b.shown + cps * dt);
       if (Math.floor(b.shown) !== prev && Math.floor(b.shown) % 2 === 0 && b.sp.voice) AudioSys.sfx('text', b.sp.voice * (1 + (Math.random() - 0.5) * 0.12));
     }
-    const adv = Input.hit('confirm') || Input.hit('interact') || (Input.pointer.pressed && !TouchPad.consumesPointer(Input.pointer.x, Input.pointer.y));
+    const adv = Input.hit('confirm') || Input.hit('interact') || Input.hit('attack') || (Input.pointer.pressed && !TouchPad.consumesPointer(Input.pointer.x, Input.pointer.y));
     const complete = b.shown >= b.total;
     if (b.choices && complete) {
       if (Input.hit('up')) { b.sel = (b.sel + b.choices.length - 1) % b.choices.length; AudioSys.sfx('hover'); }

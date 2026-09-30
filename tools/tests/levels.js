@@ -1,9 +1,10 @@
-// Carga cada nivel directamente (#level=clave), camina un poco, abre la Lente y guarda una captura.
+// Carga cada nivel y cada arena de jefe directamente (#level=clave), camina un poco, abre la Lente y guarda una captura.
 // Uso: node tools/tests/levels.js [clave1,clave2,...]
 const { chromium, gameFile, outDir } = require('./_pw');
 (async () => {
   const file = gameFile, out = outDir + '/lv';
-  const keys = (process.argv[2] || 'festival,puerto,valle,solaria,aeris,hydria,bioloop,gea,h2,bateria,prisma,faro,faro_top,festival_end').split(',');
+  const arenas = 'puerto,valle,solaria,aeris,hydria,bioloop,gea,h2,bateria,prisma'.split(',').map(k => 'jefe_' + k).join(',');
+  const keys = (process.argv[2] || 'festival,puerto,valle,solaria,aeris,hydria,bioloop,gea,h2,bateria,prisma,faro,faro_top,festival_end,' + arenas).split(',');
   const b = await chromium.launch();
   for (const k of keys) {
     const p = await b.newPage({ viewport: { width: 960, height: 540 } });

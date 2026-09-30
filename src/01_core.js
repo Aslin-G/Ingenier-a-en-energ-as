@@ -101,7 +101,7 @@ window.addEventListener('resize', resize);
 const DEFAULT_BINDINGS = {
   left: ['ArrowLeft', 'KeyA'], right: ['ArrowRight', 'KeyD'],
   up: ['ArrowUp', 'KeyW'], down: ['ArrowDown', 'KeyS'],
-  jump: ['Space', 'KeyZ', 'KeyK'], interact: ['KeyE', 'KeyX', 'KeyJ'],
+  jump: ['Space', 'KeyZ', 'KeyK'], interact: ['KeyE'], attack: ['KeyX', 'KeyJ'],
   ability: ['KeyQ', 'KeyL'], lens: ['KeyF'], blueprint: ['KeyB'], codex: ['KeyC'],
   hint: ['KeyH'], pause: ['Escape', 'KeyP'], run: ['ShiftLeft', 'ShiftRight'],
   confirm: ['Enter', 'NumpadEnter', 'Space'], back: ['Escape', 'Backspace'],
@@ -153,7 +153,8 @@ const Input = {
     if (Math.abs(ax) > 0.35) this.gpAxisX = 0; // se traduce a izquierda/derecha
     this.gp.left = b(14) || ax < -0.35; this.gp.right = b(15) || ax > 0.35;
     this.gp.up = b(12) || ay < -0.5; this.gp.down = b(13) || ay > 0.5;
-    this.gp.jump = b(0); this.gp.confirm = b(0); this.gp.interact = b(2); this.gp.back = b(1);
+    // X ataca (y habla/usa si no hay peligro cerca); B también habla/usa
+    this.gp.jump = b(0); this.gp.confirm = b(0); this.gp.attack = b(2); this.gp.interact = b(1); this.gp.back = b(1);
     this.gp.ability = b(3); this.gp.lens = b(4); this.gp.hint = b(5); this.gp.pause = b(9);
     this.gp.codex = b(8); this.gp.run = b(7) || b(6); this.gp.swap = b(11); this.gp.blueprint = b(10);
     for (const k in this.gp) if (this.gp[k]) { this.lastDevice = 'gamepad'; break; }
@@ -226,8 +227,9 @@ function keyName(code) {
   return code;
 }
 const bindName = a => {
+  if (Input.lastDevice === 'touch') { const t = { attack: '⚔', jump: 'A', interact: 'E', ability: 'Q', lens: 'F' }[a]; if (t) return t; }
   if (Input.lastDevice === 'gamepad') {
-    return { jump: 'A', interact: 'X', ability: 'Y', lens: 'LB', hint: 'RB', pause: 'START', confirm: 'A', back: 'B', codex: 'SELECT' }[a] || a;
+    return { jump: 'A', interact: 'B', attack: 'X', ability: 'Y', lens: 'LB', hint: 'RB', pause: 'START', confirm: 'A', back: 'B', codex: 'SELECT' }[a] || a;
   }
   return keyName((Input.bindings[a] || [])[0]);
 };

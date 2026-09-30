@@ -124,6 +124,11 @@ function buildLia(cos = {}) {
   A.climb = mk([{ armUp: true, legA: 0, legB: 0, liftA: 2, expr: 'focus' }, { armUp: false, liftB: 2, expr: 'focus' }]);
   A.swim = mk([{ legA: 2, legB: -2, arm: 2, hair: 2, bob: 1 }, { legA: -2, legB: 2, arm: -1, hair: 3, bob: 0 }]);
   A.glide = mk([{ armUp: true, legA: -1, legB: 1, liftA: 1, liftB: 1, hair: 3, expr: 'happy' }]);
+  // Lumisable: preparación, golpe y seguimiento (la hoja se dibuja aparte, con la luz de Lumi)
+  A.slash = mk([{ armUp: true, arm: 0, expr: 'focus', legA: 1, legB: -1 }, { arm: 3, expr: 'focus', legA: 2, legB: -2, hair: 1 }, { arm: 2, expr: 'focus', legA: 2, legB: -2, hair: 2 }]);
+  A.slashUp = mk([{ arm: 1, expr: 'focus', bob: 1 }, { armUp: true, arm: 2, expr: 'focus', bob: -1, liftA: 1 }, { armUp: true, arm: 1, expr: 'focus' }]);
+  A.slashDown = mk([{ armUp: true, liftA: 2, liftB: 1, expr: 'focus', hair: -1 }, { arm: 2, liftA: 2, liftB: 2, expr: 'focus', hair: -2 }, { arm: 2, liftA: 1, liftB: 2, expr: 'focus', hair: -2 }]);
+  A.charge = mk([{ arm: -1, expr: 'focus', legA: 2, legB: -2, squash: 1 }]);
   return A;
 }
 
@@ -486,6 +491,7 @@ function portraitPix(expr, quiet) {
   return c;
 }
 function portraitGeneric(kind, expr) {
+  if (kind.startsWith('boss_') && BOSSES[kind.slice(5)]) return bossPortrait(kind.slice(5), expr);
   const c = makeCanvas(32, 32), g = c.g;
   if (kind === 'eclipse') {
     for (let i = 0; i < 70; i++) { const a = rand(0, 6.28), r = Math.pow(Math.random(), 0.6) * 13; rect(g, 16 + Math.cos(a) * r * 0.8, 17 + Math.sin(a) * r, 2, 2, choice(['#5B3A8C', '#9B76FF', '#3A2466', '#C9B2FF'])); }
