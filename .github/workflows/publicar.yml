@@ -1,0 +1,83 @@
+# Publica el juego en GitHub Pages cada vez que se sube un cambio.
+# Compila src/ con tools/build.js, comprueba que index.html y lumina_loop.html
+# son el mismo juego y publica. Funciona con las dos formas de configurar
+# GitHub Pages (Settings → Pages → Source):
+#   · «GitHub Actions»: se despliega directamente desde este flujo.
+#   · «Deploy from a branch»: se pide a GitHub Pages que reconstruya la rama.
+name: Publicar el juego
+
+on:
+  push:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  construir:
+    runs-on: ubuntu-latest
+    outputs:
+      modo: ${{ steps.modo.outputs.modo }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Compilar el juego desde src/
+        run: node tools/build.js
+      - name: Comprobar que index.html y lumina_loop.html son el mismo juego
+        run: cmp index.html lumina_loop.html
+      - name: Comprobar que los archivos subidos coinciden con src/
+        run: git diff --stat --exit-code -- index.html lumina_loop.html || echo "::warning::Los HTML subidos no coincidían con src/; se publica la versión recién compilada."
+      - name: Ver cómo publica GitHub Pages
+        id: modo
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          modo=$(gh api "repos/${{ github.repository }}/pages" --jq .build_type 2>/dev/null || echo ninguno)
+          echo "modo=$modo" >> "$GITHUB_OUTPUT"
+          echo "GitHub Pages publica en modo: $modo"
+      - name: Preparar el sitio
+        run: |
+          mkdir -p _site
+          cp index.html lumina_loop.html _site/
+          touch _site/.nojekyll
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+  publicar-desde-actions:
+    needs: construir
+    if: needs.construir.outputs.modo == 'workflow'
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.despliegue.outputs.page_url }}
+    steps:
+      - id: despliegue
+        uses: actions/deploy-pages@v4
+
+  publicar-desde-rama:
+    needs: construir
+    if: needs.construir.outputs.modo == 'legacy'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Pedir a GitHub Pages que publique la última versión de la rama
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh api -X POST "repos/${{ github.repository }}/pages/builds" --jq .status
+          for i in $(seq 1 30); do
+            sleep 10
+            estado=$(gh api "repos/${{ github.repository }}/pages/builds/latest" --jq .status)
+            echo "Estado de la publicación: $estado"
+            if [ "$estado" = "built" ]; then exit 0; fi
+            if [ "$estado" = "errored" ]; then exit 1; fi
+          done
+          echo "La publicación sigue en curso; revisa Settings → Pages."

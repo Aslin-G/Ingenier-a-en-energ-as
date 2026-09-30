@@ -8,9 +8,9 @@ Videojuego educativo de plataformas, combate y puzzles en **pixel art animado**,
 
 ## Cómo jugar
 
-1. Abre **`lumina_loop.html`** en un navegador moderno (Chrome, Edge, Firefox o Safari). Funciona sin conexión y desde `file://`.
+1. Abre **`index.html`** (o `lumina_loop.html`, que es el mismo juego) en un navegador moderno (Chrome, Edge, Firefox o Safari). Funciona sin conexión y desde `file://`.
 2. Elige **NUEVA PARTIDA**. La partida se guarda sola en `localStorage` (clave `luminaLoopSave`).
-3. `index.html` solo redirige a `lumina_loop.html`, así que el juego se puede publicar tal cual en GitHub Pages o en cualquier servidor estático.
+3. **Publicación automática**: cada vez que se sube un cambio, el flujo `.github/workflows/publicar.yml` compila `src/`, comprueba que `index.html` y `lumina_loop.html` son idénticos y publica en GitHub Pages. Si en *Settings → Pages → Source* está elegido «GitHub Actions», despliega directamente; si está «Deploy from a branch», pide a Pages que reconstruya la rama.
 
 ### Controles
 
@@ -127,8 +127,10 @@ Volumen de música y efectos, velocidad del texto (incluida instantánea), **sub
 ## Estructura del proyecto
 
 ```
-lumina_loop.html        ← el juego completo (un solo archivo, generado)
-index.html              ← lanzador que redirige a lumina_loop.html
+index.html              ← el juego completo (un solo archivo, generado): lo que publica GitHub Pages
+lumina_loop.html        ← copia idéntica de index.html (enlaces antiguos)
+.nojekyll               ← GitHub Pages publica los archivos tal cual
+.github/workflows/      ← publicación automática en GitHub Pages
 src/
   shell.html            plantilla HTML (lienzo 480×270 y estilos)
   01_core.js            lienzo, paleta, utilidades, entrada (teclado, puntero, táctil, mando)
@@ -170,7 +172,7 @@ No hay dependencias. Con Node.js 16 o superior:
 node tools/build.js      # o: npm run build
 ```
 
-Los módulos `src/NN_*.js` se concatenan en orden numérico dentro de una única función autoejecutable y se insertan en `src/shell.html`.
+Los módulos `src/NN_*.js` se concatenan en orden numérico dentro de una única función autoejecutable, se insertan en `src/shell.html` y el resultado se escribe **a la vez** en `index.html` y `lumina_loop.html`. Nunca se editan esos HTML a mano: se edita `src/` y se compila.
 
 ### Pruebas automáticas
 
