@@ -32,7 +32,9 @@ function newSave() {
     // exige vencer al jefe (las partidas anteriores a los jefes no quedan bloqueadas)
     cellShards: 0, bossTries: {}, bossGate: true,
     // cerraduras de código resueltas y núcleos de forja ganados
-    locks: {}, forgeCores: 0
+    locks: {}, forgeCores: 0,
+    // cartas del Atlas (repaso espaciado), racha de repaso y reto del día
+    cards: {}, review: { streak: 0, best: 0, last: null, coreDay: null }, daily: {}
   };
 }
 
@@ -155,7 +157,9 @@ const ACHIEVEMENTS = {
   parry: { name: 'REFLEJOS DE LUZ', desc: 'Hiciste una parada perfecta con el Lumisable.' },
   bosses: { name: 'GUARDIANA DEL ARCHIPIÉLAGO', desc: 'Depuraste a los 10 jefes regionales.' },
   reader: { name: 'LECTORA DE CÓDIGO', desc: 'Predijiste 5 cerraduras de código al primer intento.' },
-  locksmith: { name: 'CERRAJERA DE AURORA', desc: 'Abriste 10 cerraduras de código.' }
+  locksmith: { name: 'CERRAJERA DE AURORA', desc: 'Abriste 10 cerraduras de código.' },
+  memory: { name: 'MEMORIA DE ORO', desc: 'Llevaste 5 cartas del Atlas al nivel ORO.' },
+  streak: { name: 'CONSTANCIA', desc: 'Repasaste tus cartas 3 días seguidos.' }
 };
 function achieve(id) {
   if (G.save.achievements[id] || !ACHIEVEMENTS[id]) return;

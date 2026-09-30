@@ -563,6 +563,9 @@ class MapScene {
     AudioSys.playSong('map'); AudioSys.ambient('sea');
     UI.nav = false;
     if (MAP_EVENTS) { const ev = MAP_EVENTS.find(e => !flag(e.flag) && e.cond()); if (ev) { setFlag(ev.flag); Cut.run(ev.run); } }
+    // aviso de repaso: una vez por visita al mapa
+    const due = Cards.due().length;
+    if (due) Toast.show('◆ ' + due + ' carta' + (due > 1 ? 's' : '') + ' del Atlas lista' + (due > 1 ? 's' : '') + ' para repasar (CARTAS)', PAL.sun, 3.5);
   }
   update(dt) {
     this.t += dt;
@@ -577,6 +580,7 @@ class MapScene {
     if (Input.hit('confirm') || Input.hit('interact')) this.go();
     if (Input.hit('pause')) { Input.consume(); Scenes.push(new PauseScene(null)); }
     if (Input.hit('codex')) Scenes.push(new CodexScene());
+    if (Input.hit('swap')) Scenes.push(new CardsScene());
     if (Input.pointer.pressed) {
       const P = Input.pointer;
       if (P.y < H - 40) REGIONS.forEach((r, i) => { if (Math.abs(P.x - r.x) < 30 && P.y > r.y - 34 && P.y < r.y + 20 && unlocked(r.key)) { if (this.sel === i) this.go(); else { this.sel = i; AudioSys.sfx('select'); } } });
@@ -704,13 +708,16 @@ class MapScene {
       const boss = beaten ? '♦ ' + BOSSES[r.key].name + ' depurado' : on ? '! Jefe: te espera en la salida' : '♦ Jefe: ' + BOSSES[r.key].name;
       drawText(g, fitText(boss, tw - textW(chTxt)), tx + textW(chTxt), y0 + 24, beaten ? PAL.sun : on ? PAL.coral : '#8C93B8');
     }
-    // botones
-    UI.nav = false;
+    // botones (el mapa no usa foco de teclado; las ventanas abiertas encima sí)
+    if (Scenes.top() === this) UI.nav = false;
     const bx = W - 158;
     if (UI.btn(g, 'mgo', bx, y0 + 4, 76, 14, '▶ VIAJAR', { primary: true, color: PAL.lime, disabled: !un })) this.go();
     if (UI.btn(g, 'mtaller', bx + 80, y0 + 4, 74, 14, 'TALLER', { icon: 'home', color: PAL.orange })) Scenes.push(new TallerScene());
     if (UI.btn(g, 'matlas', bx, y0 + 20, 76, 14, 'ATLAS (C)', { color: PAL.teal })) Scenes.push(new CodexScene());
-    if (UI.btn(g, 'mmast', bx + 80, y0 + 20, 74, 14, 'DOMINIO', { color: PAL.lime })) Scenes.push(new MasteryScene());
+    // cartas del Atlas: el botón late si hay repasos pendientes
+    const due = Cards.due().length;
+    if (UI.btn(g, 'mcards', bx + 80, y0 + 20, 74, 14, due ? '◆ CARTAS ' + due : 'CARTAS (R)', { color: due ? PAL.sun : PAL.lime, tip: 'Cartas del Atlas, repaso y reto del día' })) Scenes.push(new CardsScene());
+    if (due) { g.globalAlpha = 0.35 + Math.sin(this.t * 5) * 0.3; strokeRect(g, bx + 78, y0 + 18, 78, 18, PAL.sun); g.globalAlpha = 1; }
     UI.drawTooltip(g);
   }
 }
@@ -794,6 +801,8 @@ class TeacherScene {
         if (UI.btn(g, 'tm' + id, 40, 42 + i * 30, 140, 18, l, { color: id === 'reset' ? PAL.coral : id === 'jefe' ? PAL.orange : PAL.teal })) this.pick(id);
         drawPara(g, d, 190, 46 + i * 30, 260, PAL.cream);
       });
+      // el reto del día es el mismo para toda la clase: quien lo supera ve este código
+      drawText(g, 'Reto del día: ' + dailyChallenge().title + ' · código ' + dailyCode(), 12, H - 16, PAL.pink);
       if (UI.btn(g, 'tmback', W - 70, H - 20, 64, 14, 'VOLVER', {})) { Scenes.pop(); }
     } else if (this.page === 'isla') {
       REGIONS.forEach((r, i) => { if (UI.btn(g, 'ti' + r.key, 30 + (i % 3) * 144, 50 + Math.floor(i / 3) * 40, 136, 30, r.name, { color: r.col })) { G.save.started = true; G.save.teacherAll = true; G.save.teacherUnlocked = true; setFlag('prologueDone'); for (let k = 0; k < i; k++) { setFlag('restored_' + REGIONS[k].key); setFlag('boss_' + REGIONS[k].key); } grantAbilitiesUpTo(r.key); Save.write(); UI.nav = false; Game.startLevel(LEVEL_OF_REGION[r.key] || r.key); } });
