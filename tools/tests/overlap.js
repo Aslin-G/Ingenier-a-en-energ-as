@@ -52,7 +52,7 @@ const ok = (cond, msg) => { console.log((cond ? '  ok   ' : '  FALLO') + ' ' + m
   for (const k of cfgs) await audit('puzzle ' + k, k => LL.Scenes.push(LL.makePuzzleScene(LL.cfg[k], () => {})), k, 150);
   // 2) banco de retos
   const nCh = await p.evaluate(() => LL.CHALLENGES.length);
-  for (let i = 0; i < nCh; i++) await audit('reto #' + i, i => LL.Scenes.push(LL.makePuzzleScene(LL.CHALLENGES[i].make(), () => {})), i, 60);
+  for (let i = 0; i < nCh; i++) await audit('reto #' + i, i => { const c = LL.CHALLENGES[i], cfg = c.make(); cfg.title = c.title; LL.Scenes.push(LL.makePuzzleScene(cfg, () => {})); }, i, 60);  // como launchChallenge
   // 3) simuladores al empezar y a mitad
   const sims = await p.evaluate(() => Object.keys(LL.SIMS));
   for (const k of sims) {
