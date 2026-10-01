@@ -1,5 +1,7 @@
 # Lumina Loop: documento de diseño
 
+**Autor: Aslin Gonzalo Botello Plata** · © 2026 · ver [`AUTORIA.md`](../AUTORIA.md).
+
 Este documento resume cómo se llevaron al juego la **especificación técnica y pedagógica** (`LUMINA_LOOP_AGENT_IMPLEMENTATION.md`) y la **biblia narrativa** (`LUMINA_LOOP_STORY_BIBLE.md`), y qué decisiones creativas se tomaron por el camino.
 
 ---

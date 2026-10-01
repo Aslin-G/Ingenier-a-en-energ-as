@@ -46,7 +46,7 @@ jobs:
       - name: Preparar el sitio
         run: |
           mkdir -p _site
-          cp index.html lumina_loop.html _site/
+          cp index.html lumina_loop.html llms.txt AUTORIA.md _site/
           touch _site/.nojekyll
       - uses: actions/upload-pages-artifact@v3
         with:

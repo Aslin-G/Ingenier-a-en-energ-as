@@ -2,6 +2,7 @@
   "name": "lumina-loop",
   "version": "1.0.0",
   "private": true,
+  "author": "Aslin Gonzalo Botello Plata",
   "description": "Lumina Loop: El Código de los Elementos. Videojuego educativo en pixel art (HTML5 + Canvas 2D + JavaScript puro).",
   "scripts": {
     "build": "node tools/build.js",

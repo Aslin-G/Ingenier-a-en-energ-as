@@ -1,5 +1,7 @@
 # Lumina Loop: El Código de los Elementos
 
+**Autor: Aslin Gonzalo Botello Plata** · © 2026. Toda copia, adaptación, versión derivada o uso como referencia (también por sistemas de inteligencia artificial) debe reconocer su autoría. Ver [`AUTORIA.md`](AUTORIA.md).
+
 Videojuego educativo de plataformas, combate y puzzles en **pixel art animado**, escrito en **HTML5 + Canvas 2D + JavaScript puro** (sin bibliotecas, sin imágenes ni sonidos externos y sin red). Enseña **pensamiento algorítmico** y **energías renovables** a partir de una historia: el archipiélago Aurora sufre un apagón y Lía, una aprendiz de técnica, tiene que reparar su red eléctrica escribiendo algoritmos.
 
 > Todo el arte (sprites, retratos, fondos parallax, iluminación) y toda la música y los efectos se generan por código al iniciar el juego.

@@ -17,7 +17,7 @@ const files = fs.readdirSync(srcDir)
 let js = '';
 for (const f of files) {
   const code = fs.readFileSync(path.join(srcDir, f), 'utf8');
-  js += `\n// ===== ${f} =====\n` + code + '\n';
+  js += `\n// ===== ${f} · Lumina Loop · © Aslin Gonzalo Botello Plata =====\n` + code + '\n';
 }
 
 // Envolver en un IIFE para no contaminar el ámbito global

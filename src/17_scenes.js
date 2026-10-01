@@ -394,6 +394,7 @@ class TitleScene {
     });
     drawText(g, 'Teclado · Mando · Táctil', W / 2, 238, '#C9D2F0', { align: 'center', shadow: PAL.ink });
     drawText(g, 'v1.1 · HTML5 + Canvas + JS puro', W - 6, H - 10, 'rgba(255,243,215,0.6)', { align: 'right' });
+    drawText(g, '© ' + AUTORIA.autor, 6, H - 10, 'rgba(255,243,215,0.6)');
   }
   pick(id) {
     AudioSys.unlock();

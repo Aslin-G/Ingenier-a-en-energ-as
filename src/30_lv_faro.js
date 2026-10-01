@@ -544,6 +544,7 @@ class CreditsScene {
     if (this.post) return this.drawPost(g);
     const lines = [
       ['LUMINA LOOP', 'title'], ['El Código de los Elementos', 'sub'], ['', ''],
+      ['UN JUEGO CREADO POR', 'h'], [AUTORIA.autor, 'txt'], ['', ''],
       ['Un videojuego educativo sobre algoritmos', 'txt'], ['y energías alternativas.', 'txt'], ['', ''],
       ['PROTAGONISTAS', 'h'], ['Lía Loop · PÍX · Lumi', 'txt'], ['', 'v0'],
       ['EL EQUIPO', 'h'], ['Teó, constructor y ancla', 'txt'], ['', 'v1'],
@@ -552,7 +553,7 @@ class CreditsScene {
       ['LOS SISTEMAS', 'h'], ['AURORA · Eclipse · Perfect Zero → Prisma', 'txt'], ['', 'v8'], ['', 'v9'],
       ['CÓMO SE HIZO', 'h'], ['HTML5 · Canvas 2D · JavaScript puro', 'txt'], ['Web Audio API · localStorage', 'txt'], ['Todo el arte, la música y los sonidos', 'txt'], ['se generan con código. Sin imágenes ni archivos externos.', 'txt'], ['', ''],
       ['TU PROGRESO', 'h'], [`${REGIONS.filter(r => restored(r.key)).length}/11 islas · ${Object.keys(G.save.collectibles.chispas).length}/${Object.keys(CHISPAS).length} chispas · ${Object.keys(G.save.achievements).length} logros`, 'txt'], [`${G.save.stats.puzzles} retos resueltos · nivel ${G.save.level}`, 'txt'], ['', ''],
-      ['No diseñamos sistemas para un mundo perfecto.', 'q'], ['Los diseñamos para un mundo que cambia.', 'q'], ['', ''], ['GRACIAS POR JUGAR', 'title']
+      ['No diseñamos sistemas para un mundo perfecto.', 'q'], ['Los diseñamos para un mundo que cambia.', 'q'], ['', ''], ['GRACIAS POR JUGAR', 'title'], ['', ''], ['© ' + AUTORIA.anio + ' ' + AUTORIA.autor, 'txt']
     ];
     let y = H + 10 - this.t * 22;
     for (const [txt, kind] of lines) {
