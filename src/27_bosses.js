@@ -376,6 +376,9 @@ function* bossDefeatScene(b) {
     if (s % 3 === 0) { lv.player.refreshCells(); lv.player.cells = lv.player.maxCells; AudioSys.sfx('fanfare'); yield C.title('¡NUEVA CÉLULA DE LUZ!', '3 fragmentos de célula = +1 célula máxima', 3, PAL.sun); }
     else { AudioSys.sfx('chispa'); yield C.title('FRAGMENTO DE CÉLULA ' + (s % 3) + '/3', 'Con 3 fragmentos, Lía gana una célula más', 2.6, PAL.sun); }
     G.save.bossTries[key] = 0;
+    // cada jefe enseña un poder nuevo del Lumisable
+    const pw = powerOfBoss(key);
+    if (pw && grantPower(pw.id)) { lv.player.refreshCells(); yield C.scene(done => new PowerCardScene(pw, done)); }
     const done = Object.keys(BOSSES).filter(k => flag('boss_' + k)).length;
     if (done >= Object.keys(BOSSES).length) achieve('bosses');
   }

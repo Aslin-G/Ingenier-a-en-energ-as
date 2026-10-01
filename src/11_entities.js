@@ -16,7 +16,7 @@ class Checkpoint extends Entity {
       this.active = true;
       G.save.checkpoint = { level: this.lv.key, idx: this.idx };
       G.save.scene = this.lv.key;
-      this.lv.player.cells = this.lv.player.maxCells;
+      this.lv.player.cells = this.lv.player.maxCells; this.lv.bpUsed = false;
       AudioSys.sfx('checkpoint'); Save.write();
       Particles.burst(this.x + 8, this.y + 4, 16, { colors: [PAL.sun, PAL.teal, PAL.pink], min: 20, max: 60, type: 'star' });
       Toast.show('Punto de control · progreso guardado', PAL.teal, 1.8);

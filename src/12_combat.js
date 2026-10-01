@@ -12,7 +12,10 @@ const SABER = {
   f2: { dur: 0.25, act: [0.02, 0.12], a0: 50, a1: -105, box: [0, -6, 25, 26], dmg: 1, kb: 120, len: 15 },
   f3: { dur: 0.34, act: [0.04, 0.17], a0: -165, a1: 75, box: [-4, -9, 32, 32], dmg: 2, kb: 220, len: 19 },
   up: { dur: 0.27, act: [0.02, 0.14], a0: 15, a1: -195, box: [-14, -22, 28, 26], dmg: 1, kb: 80, len: 15 },
-  down: { dur: 0.27, act: [0.01, 0.16], a0: 10, a1: 170, box: [-12, 14, 24, 24], dmg: 1, kb: 50, len: 15 }
+  down: { dur: 0.27, act: [0.01, 0.16], a0: 10, a1: 170, box: [-12, 14, 24, 24], dmg: 1, kb: 50, len: 15 },
+  // poderes: torbellino (bucle de tajos alrededor) y embestida (pipeline correr → impulso → tajo)
+  spin: { dur: 0.42, act: [0.02, 0.36], a0: -90, a1: 630, box: [-22, -12, 44, 40], dmg: 2, kb: 160, len: 16 },
+  rush: { dur: 0.3, act: [0.0, 0.26], a0: -20, a1: 20, box: [-4, -4, 34, 26], dmg: 2, kb: 220, len: 18 }
 };
 const CHARGE_TIME = 0.65, PASSIVE_ENERGY_CAP = 60;
 // mejoras de la Forja del Lumisable (cada una es un concepto: ver 29_forge.js)
@@ -23,7 +26,10 @@ const healCost = () => forged('cells') ? 40 : 50;
 const healTime = () => forged('cells') ? 0.7 : 0.9;
 
 // color del sable: es la luz de Lumi (cambia con su emoción)
-function saberColor(lv) { const c = lv && lv.lumi ? lv.lumi.color : PAL.sun; return typeof c === 'string' && c[0] === '#' && c.length === 7 ? c : PAL.sun; }
+function saberColor(lv) {
+  if (lv && lv.player && lv.player.overload) return Math.floor(Time.t * 10) % 2 ? '#FFFFFF' : PAL.coral;
+  const c = lv && lv.lumi ? lv.lumi.color : PAL.sun; return typeof c === 'string' && c[0] === '#' && c.length === 7 ? c : PAL.sun;
+}
 
 // ---------- Pausa de impacto: congela el mundo unos milisegundos para que el golpe «pese» ----------
 function hitstop(lv, t) { if (lv) lv.hitstop = Math.max(lv.hitstop || 0, t); }
@@ -76,8 +82,14 @@ Player.prototype.updateCombat = function (dt, control) {
     let kind;
     if (down && !this.onGround && !this.inWater) kind = 'down';
     else if (up && !this.inWater) kind = 'up';
+    // TAJO TORBELLINO: en el aire con SALTO mantenido
+    else if (hasPower('spin') && !this.onGround && !this.inWater && Input.down('jump')) kind = 'spin';
+    // EMBESTIDA DE LUZ: corriendo por el suelo
+    else if (hasPower('rush') && this.onGround && !this.inWater && Input.down('run') && Math.abs(this.vx) > 40) kind = 'rush';
     else { this.combo = this.comboT > 0 ? (this.combo % 3) + 1 : 1; kind = 'f' + this.combo; }
     this.startAttack(kind);
+    if (kind === 'spin') { this.vy = Math.min(this.vy, -40); AudioSys.sfx('wind'); }
+    if (kind === 'rush') { this.dashT = 0.24; this.dashDir = this.face; this.inv = Math.max(this.inv, 0.35); AudioSys.sfx('dash'); }
     this.chargeT = 0; this.chargeReady = false; this.healT = 0;
   }
   // pulso cargado: mantener el ataque tras el tajo
@@ -128,7 +140,8 @@ Player.prototype.resolveHits = function () {
     if (e.parryWindow && e.parryWindow() && a.t < (forged('parry') ? 0.2 : 0.13)) { e.onParry(this); parryFx(this, e); landed = true; continue; }
     const crit = lv.lensT > 0.5 && e.weakPoint !== false;
     // Tajo final (forja): el tercer tajo del combo pesa más
-    const res = e.onHit({ dmg: d.dmg + (a.kind === 'f3' && forged('finisher') ? 1 : 0), dir: a.face, kind: a.kind, kb: d.kb, crit, t: a.t, src: 'saber' });
+    const bonus = (a.kind === 'f3' && forged('finisher') ? 1 : 0) + (this.overload ? 1 : 0);
+    const res = e.onHit({ dmg: d.dmg + bonus, dir: a.face, kind: a.kind, kb: d.kb, crit, t: a.t, src: 'saber' });
     if (res) { landed = true; if (res === 'block') blocked = true; }
   }
   // rebote sobre pinchos con el tajo hacia abajo
@@ -163,6 +176,8 @@ Player.prototype.firePulse = function () {
   this.energy -= pulseCost();
   const dir = this.face;
   lv.addEntity(new LumenWave(lv, dir > 0 ? this.x + this.w : this.x - 14, this.y - 1, dir, saberColor(lv)));
+  // PULSO DOBLE: la misma función, llamada hacia atrás
+  if (hasPower('twin')) lv.addEntity(new LumenWave(lv, dir > 0 ? this.x - 14 : this.x + this.w, this.y - 1, -dir, saberColor(lv)));
   AudioSys.sfx('pulse'); FX.shake(1, 0.12);
   this.vx -= dir * 60;
   this.atk = null; this.startAttack('f3'); this.atk.hits = new Set(lv.entities); // solo animación: el pulso hace el daño
@@ -171,7 +186,7 @@ Player.prototype.firePulse = function () {
 Player.prototype.drawSaber = function (g, cx, cy) {
   const col = saberColor(this.lv), a = this.atk;
   if (a) {
-    const d = a.def, k = clamp(a.t / (d.act[1] + 0.03), 0, 1), e = easeOut(k);
+    const d = a.def, k = clamp(a.t / (d.act[1] + 0.03), 0, 1), e = a.kind === 'spin' ? k : easeOut(k);
     const ang = d.a0 + (d.a1 - d.a0) * e;
     const pv = this.saberPivot(a.kind);
     const X = Math.round(pv.x - cx), Y = Math.round(pv.y - cy);
@@ -279,11 +294,29 @@ function wallAhead(e, dir) {
 
 // ---------- Pulso Lumen (ataque cargado) ----------
 class LumenWave extends Entity {
-  constructor(lv, x, y, dir, col) { super(lv, x, y, 14, 22); this.dir = dir; this.col = col; this.life = 0.8; this.hits = new Set(); this.layer = 1; this.t = 0; }
+  constructor(lv, x, y, dir, col) {
+    // RAYO SOLAR: más grande y el doble de daño
+    const big = hasPower('sunbeam');
+    super(lv, x, big ? y - 6 : y, 14, big ? 34 : 22); this.dir = dir; this.col = col; this.life = 0.8; this.hits = new Set(); this.layer = 1; this.t = 0;
+    this.dmg = big ? 6 : 3; this.big = big; this.seek = hasPower('seeker'); this.vy = 0;
+    if (this.seek) this.life = 1.1;
+  }
   update(dt) {
     super.update(dt); this.life -= dt;
     if (this.life <= 0) { this.dead = true; return; }
     this.x += this.dir * 260 * dt;
+    // RAYO BUSCADOR: se curva hacia el enemigo más cercano que tenga delante
+    if (this.seek) {
+      let best = null, bd = 240;
+      for (const e of this.lv.entities) {
+        if (e.dead || !e.hostile || !e.onHit || e instanceof Shot || this.hits.has(e)) continue;
+        const ex = e.x + (e.w || 0) / 2, ey = e.y + (e.h || 0) / 2, dx = (ex - this.x - 7) * this.dir;
+        if (dx < -10) continue;
+        const d = Math.hypot(ex - this.x - 7, ey - this.y - this.h / 2); if (d < bd) { bd = d; best = { ex, ey }; }
+      }
+      if (best) this.vy = approach(this.vy, clamp(best.ey - this.y - this.h / 2, -1, 1) * 160, 520 * dt); else this.vy *= 0.9;
+      this.y += this.vy * dt;
+    }
     const lv = this.lv, fx = this.dir > 0 ? this.x + this.w : this.x;
     if (lv.solidAt(Math.floor(fx / TILE), Math.floor((this.y + this.h / 2) / TILE))) { Particles.burst(fx, this.y + 11, 12, { color: this.col, min: 30, max: 80, type: 'star' }); this.dead = true; return; }
     for (const e of lv.entities) {
@@ -291,7 +324,7 @@ class LumenWave extends Entity {
       const r = e.hitRect ? e.hitRect() : e; if (!r || !rectHit(this, r)) continue;
       this.hits.add(e);
       if (e instanceof Shot) { if (!e.friendly) e.pop(); continue; }
-      e.onHit({ dmg: 3, dir: this.dir, kind: 'pulse', kb: 170, crit: lv.lensT > 0.5, src: 'pulse' });
+      e.onHit({ dmg: this.dmg, dir: this.dir, kind: 'pulse', kb: 170, crit: lv.lensT > 0.5, src: 'pulse' });
     }
     if (Math.random() < 0.8) Particles.spawn({ x: this.x + 7 - this.dir * 6, y: this.y + rand(2, 20), vx: -this.dir * 30, life: 0.3, type: 'fade', size: 2, color: this.col });
   }
@@ -299,14 +332,16 @@ class LumenWave extends Entity {
     const x = Math.round(this.x - cx), y = Math.round(this.y - cy), d = this.dir;
     const a = clamp(this.life / 0.3, 0, 1);
     g.globalAlpha = a;
-    for (let i = 0; i < 22; i++) {
-      const bow = Math.round(Math.sin(i / 21 * Math.PI) * 6);
+    const n = this.h;
+    if (this.big) { g.globalAlpha = a * 0.35; rect(g, x - 2, y, 18, n, PAL.sun); g.globalAlpha = a; }
+    for (let i = 0; i < n; i++) {
+      const bow = Math.round(Math.sin(i / (n - 1) * Math.PI) * (this.big ? 9 : 6));
       const bx = d > 0 ? x + 4 + bow : x + 9 - bow;
       rect(g, bx - d * 2, y + i, 2, 1, this.col); px(g, bx, y + i, '#FFFFFF'); px(g, bx + d, y + i, this.col);
     }
     g.globalAlpha = 1;
   }
-  light() { return { x: this.x + 7, y: this.y + 11, r: 55, c: this.col }; }
+  light() { return { x: this.x + 7, y: this.y + this.h / 2, r: this.big ? 80 : 55, c: this.big ? PAL.sun : this.col }; }
 }
 
 // ---------- Proyectiles (de enemigos y jefes; casi todos se pueden devolver con el sable) ----------
@@ -758,7 +793,7 @@ function populateFoes(lv) {
 
 // recalcula las células máximas (fragmentos de jefes y ayuda de combate)
 Player.prototype.refreshCells = function () {
-  const m = 3 + Math.floor((G.save.cellShards || 0) / 3) + (G.save.settings.assist ? 2 : 0);
+  const m = 3 + Math.floor((G.save.cellShards || 0) / 3) + (G.save.settings.assist ? 2 : 0) + (hasPower('cell') ? 1 : 0);
   if (m > this.maxCells) this.cells += m - this.maxCells;
   this.maxCells = m; this.cells = clamp(this.cells, 1, m);
 };

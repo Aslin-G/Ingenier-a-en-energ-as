@@ -85,7 +85,7 @@ const Game = {
     this.startLevel('festival');
   },
   continueGame() {
-    Save.load(); rebuildLia();
+    Save.load(); rebuildLia(); syncPowers();
     const sc = G.save.scene;
     if (LEVELS[sc] && sc !== 'festival') this.startLevel(sc, 'checkpoint');
     else if (flag('prologueDone')) this.toMap();
@@ -115,6 +115,8 @@ class GameplayScene {
     AudioSys.playSong(this.lv.def.music || th.music); AudioSys.ambient(this.lv.def.ambient || th.ambient);
     if (this.lv.def.onEnter) Cut.run(() => this.lv.def.onEnter(this.lv));
     G.save.started = true;
+    // jefes vencidos en partidas anteriores (o abiertos desde el modo docente): su poder llega ahora
+    syncPowers();
   }
   update(dt) {
     const lv = this.lv;
@@ -170,6 +172,9 @@ function drawHUD(g, lv) {
   const eCol = p.chargeReady ? (Math.floor(lv.time * 12) % 2 ? PAL.white : PAL.teal) : p.energy >= healCost() && p.cells < p.maxCells ? PAL.lime : PAL.teal;
   bar(g, 6, 14, bw, 4, p.energy, 100, eCol, '#10162B');
   rect(g, 6 + Math.round(bw * healCost() / 100), 13, 1, 6, 'rgba(255,243,215,0.55)');
+  // estados de los poderes bajo la barra
+  if (p.overload) drawText(g, 'SOBRECARGA', 6, 22, Math.floor(lv.time * 8) % 2 ? PAL.coral : PAL.white, { shadow: PAL.ink });
+  else if (lv.slowT > 0) drawText(g, '⏸ ' + lv.slowT.toFixed(1) + ' s', 6, 22, PAL.lilac, { shadow: PAL.ink });
   // habilidad actual
   const ab = G.save.currentAbility;
   if (ab && hasAbility(ab)) {
@@ -314,12 +319,13 @@ class PauseScene {
       ['a', 'ATLAS AURORA', () => Scenes.push(new CodexScene())],
       ['q', 'MISIONES', () => Scenes.push(new QuestLogScene())],
       ['m', 'MAPA DE DOMINIO', () => Scenes.push(new MasteryScene())],
+      ['o', 'PODERES (' + POWERS.filter(p => hasPower(p.id)).length + '/' + POWERS.length + ')', () => Scenes.push(new PowersScene())],
       ['s', 'AJUSTES', () => Scenes.push(new SettingsScene())],
       ['k', 'CONTROLES', () => Scenes.push(new ControlsScene())],
       flag('prologueDone') && !(this.lv && this.lv.def.noMap) ? ['w', 'VOLVER AL MAPA', () => { UI.nav = false; Game.toMap(this.lv && this.lv.def.region); }] : null,
       ['t', 'MENÚ PRINCIPAL', () => Scenes.push(new ConfirmScene('¿Volver al menú? Se guardará tu progreso en el último punto de control.', () => { Save.write(); Game.toTitle(); }))]
     ].filter(Boolean);
-    opts.forEach(([id, label, fn], i) => { if (UI.btn(g, 'p_' + id, 170, 72 + i * 20, 140, 16, label, { color: i === 0 ? PAL.lime : PAL.teal })) fn(); });
+    opts.forEach(([id, label, fn], i) => { if (UI.btn(g, 'p_' + id, 170, 70 + i * 18, 140, 15, label, { color: i === 0 ? PAL.lime : id === 'o' ? PAL.sun : PAL.teal })) fn(); });
     drawText(g, 'Nivel ' + G.save.level + ' · ' + rankName(), 240, 236, '#8C93B8', { align: 'center' });
   }
 }

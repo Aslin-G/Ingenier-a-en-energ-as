@@ -35,8 +35,8 @@ function newSave() {
     locks: {}, forgeCores: 0,
     // cartas del Atlas (repaso espaciado), racha de repaso y reto del día
     cards: {}, review: { streak: 0, best: 0, last: null, coreDay: null }, daily: {},
-    // mejoras forjadas del Lumisable
-    forge: {}
+    // mejoras forjadas del Lumisable y poderes ganados a los jefes
+    forge: {}, powers: {}
   };
 }
 

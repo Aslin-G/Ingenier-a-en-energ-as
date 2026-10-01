@@ -979,8 +979,8 @@ function newSave() {
     locks: {}, forgeCores: 0,
     // cartas del Atlas (repaso espaciado), racha de repaso y reto del día
     cards: {}, review: { streak: 0, best: 0, last: null, coreDay: null }, daily: {},
-    // mejoras forjadas del Lumisable
-    forge: {}
+    // mejoras forjadas del Lumisable y poderes ganados a los jefes
+    forge: {}, powers: {}
   };
 }
 
@@ -3920,7 +3920,10 @@ class Level {
     if (control && Input.hit('lens') && hasAbility('lens')) { this.lens = !this.lens; AudioSys.sfx(this.lens ? 'debug' : 'click'); }
     this.lensT = approach(this.lensT, this.lens ? 1 : 0, dt * 5);
     this.player.update(dt, control);
-    for (const e of this.entities) if (!e.dead && e.update) e.update(dt);
+    // cámara lenta del PUNTO DE INTERRUPCIÓN: el mundo va al 45 %, Lía a velocidad normal
+    this.slowT = Math.max(0, (this.slowT || 0) - dt);
+    const edt = this.slowT > 0 ? dt * 0.45 : dt;
+    for (const e of this.entities) if (!e.dead && e.update) e.update(edt);
     this.entities = this.entities.filter(e => !e.dead || e.keep);
     if (this.ghost) { this.ghost.update(dt); if (this.ghost.done) this.ghost = null; }
     this.pix.update(dt); this.lumi.update(dt);
@@ -4059,6 +4062,7 @@ class Level {
     }
     // viñeta suave: más marcada de noche y en cuevas
     g.drawImage(Vignette.get(th.sun && !th.sun.moon ? 0.2 : 0.34), 0, 0);
+    if (this.slowT > 0) { g.globalAlpha = Math.min(0.22, this.slowT * 0.2); rect(g, 0, 0, W, H, PAL.violet); g.globalAlpha = 1; }
     Particles.draw(g, cx, cy, true, 1);
     if (this.lensT > 0.01) this.drawLensOverlay(g, cx, cy);
     for (const e of this.entities) if (e.drawOverlay && this.onScreen(e, cx, cy, 40)) e.drawOverlay(g, cx, cy);
@@ -4407,7 +4411,7 @@ class Player {
     this.vx = 0; this.vy = 0; this.face = 1; this.onGround = false; this.coyote = 0; this.buffer = 0;
     this.climbing = false; this.inWater = false; this.gliding = false; this.anim = 'idle'; this.animT = 0; this.frameT = 0;
     // células: 3 + 1 por cada 3 fragmentos de los jefes (+2 con la ayuda de combate)
-    this.maxCells = 3 + Math.floor((G.save.cellShards || 0) / 3) + (G.save.settings.assist ? 2 : 0);
+    this.maxCells = 3 + Math.floor((G.save.cellShards || 0) / 3) + (G.save.settings.assist ? 2 : 0) + (hasPower('cell') ? 1 : 0);
     this.cells = this.maxCells; this.inv = 0; this.energy = 100; this.shieldOn = false; this.shieldArmed = false;
     this.dashT = 0; this.landT = 0; this.stepT = 0; this.idleT = 0; this.onPlat = null; this.celebrateT = 0;
     this.shieldRule = G.save.shieldRule || 0;
@@ -4473,6 +4477,8 @@ class Player {
     const sx = src && src.x != null ? src.x + (src.w || 0) / 2 : null;
     const dir = sx != null && Math.abs(sx - this.cx) > 1 ? sign(this.cx - sx) : -this.face;
     this.cells--; this.inv = forged('guard') ? 1.9 : 1.3; this.vy = -180; this.vx = dir * 150; this.hurtT = 0.28;
+    // poder PUNTO DE INTERRUPCIÓN: con 1 célula el mundo se ralentiza (una vez por punto de control)
+    if (hasPower('breakpoint') && this.cells === 1 && !this.lv.bpUsed) { this.lv.bpUsed = true; this.lv.slowT = 4; Particles.text(this.cx, this.y - 16, '⏸ PUNTO DE INTERRUPCIÓN', PAL.lilac); AudioSys.sfx('debug'); }
     if (src && src.knockPlayer) src.knockPlayer(this);
     this.atk = null; this.chargeT = 0; this.chargeReady = false; this.healT = 0;
     hitstop(this.lv, 0.07);
@@ -4557,7 +4563,13 @@ class Player {
       if (this.onGround && down && this.standingOnOneWay()) { this.dropThrough = true; this.dropT = 0.2; this.buffer = 0; }
       else if (this.coyote > 0 || this.onGround) { this.vy = -PHYS.jumpV; this.onGround = false; this.coyote = 0; this.buffer = 0; AudioSys.sfx('jump'); Particles.burst(this.cx, this.y + this.h, 4, { color: '#FFF3D7', min: 10, max: 30, angle: Math.PI / 2, spread: 1.4, lmin: 0.2, lmax: 0.3 }); }
       else if (this.inWater) { this.vy = -PHYS.swimV; this.buffer = 0; AudioSys.sfx('splash'); }
+      // poder DOBLE SALTO: saltar() → saltar()
+      else if (jumpHit && hasPower('djump') && !this.usedDJ) {
+        this.vy = -PHYS.jumpV * 0.92; this.usedDJ = true; this.buffer = 0; this.gliding = false; AudioSys.sfx('jump');
+        Particles.burst(this.cx, this.y + this.h, 10, { colors: [PAL.teal, PAL.white], min: 20, max: 60, angle: Math.PI / 2, spread: 1.6, lmax: 0.35, type: 'star' });
+      }
     }
+    if (this.onGround || this.climbing || this.inWater) this.usedDJ = false;
     if (this.inWater && up) this.vy = Math.max(this.vy - 500 * dt, -90);
     if (this.dropT > 0) { this.dropT -= dt; if (this.dropT <= 0) this.dropThrough = false; }
     // mover
@@ -4608,6 +4620,10 @@ class Player {
     }
     // la energía se recarga sola hasta 60; el resto se gana golpeando con el sable y con los orbes
     if (!this.shieldOn && this.energy < PASSIVE_ENERGY_CAP) this.energy = Math.min(PASSIVE_ENERGY_CAP, this.energy + (lv.power > 0.3 ? 18 : 10) * dt);
+    // poder RECARGA SOLAR: la energía sigue subiendo sola hasta 100
+    if (hasPower('solar') && !this.shieldOn && this.energy >= PASSIVE_ENERGY_CAP && this.energy < 100) this.energy = Math.min(100, this.energy + 4 * dt);
+    // poder ESTADO SOBRECARGA: NORMAL → SOBRECARGA con la energía llena; vuelve a NORMAL bajo 70
+    if (hasPower('overload')) { if (!this.overload && this.energy >= 100) { this.overload = true; AudioSys.sfx('chargeUp', 1); Particles.text(this.cx, this.y - 10, 'SOBRECARGA', PAL.coral); } else if (this.overload && this.energy < 70) this.overload = false; }
     if (Input.hit('ability') && ab) {
       if (lv.def.abilityHook && lv.def.abilityHook(lv, ab)) return;
       switch (ab) {
@@ -4685,7 +4701,9 @@ class Player {
       const breath = (t % 2.4) > 1.3 ? 1 : 0;
       f = (this.blinkT < 0 ? 2 : 0) + breath;
     } else f = Math.floor(t * fps) % A.length;
-    const fr = this.face > 0 ? A[f].r : A[f].l;
+    // en el torbellino Lía gira (alterna de lado muy rápido)
+    const spinFlip = this.atk && this.atk.kind === 'spin' && Math.floor(this.atk.t / 0.07) % 2 === 1;
+    const fr = (this.face > 0) !== spinFlip ? A[f].r : A[f].l;
     const dx = Math.round(this.x + this.w / 2 - fr.width / 2 - cx), dy = Math.round(this.y + this.h - fr.height + 1 - cy);
     g.drawImage(fr, dx, dy);
     this.drawSaber(g, cx, cy);
@@ -4827,7 +4845,7 @@ class Checkpoint extends Entity {
       this.active = true;
       G.save.checkpoint = { level: this.lv.key, idx: this.idx };
       G.save.scene = this.lv.key;
-      this.lv.player.cells = this.lv.player.maxCells;
+      this.lv.player.cells = this.lv.player.maxCells; this.lv.bpUsed = false;
       AudioSys.sfx('checkpoint'); Save.write();
       Particles.burst(this.x + 8, this.y + 4, 16, { colors: [PAL.sun, PAL.teal, PAL.pink], min: 20, max: 60, type: 'star' });
       Toast.show('Punto de control · progreso guardado', PAL.teal, 1.8);
@@ -5546,7 +5564,10 @@ const SABER = {
   f2: { dur: 0.25, act: [0.02, 0.12], a0: 50, a1: -105, box: [0, -6, 25, 26], dmg: 1, kb: 120, len: 15 },
   f3: { dur: 0.34, act: [0.04, 0.17], a0: -165, a1: 75, box: [-4, -9, 32, 32], dmg: 2, kb: 220, len: 19 },
   up: { dur: 0.27, act: [0.02, 0.14], a0: 15, a1: -195, box: [-14, -22, 28, 26], dmg: 1, kb: 80, len: 15 },
-  down: { dur: 0.27, act: [0.01, 0.16], a0: 10, a1: 170, box: [-12, 14, 24, 24], dmg: 1, kb: 50, len: 15 }
+  down: { dur: 0.27, act: [0.01, 0.16], a0: 10, a1: 170, box: [-12, 14, 24, 24], dmg: 1, kb: 50, len: 15 },
+  // poderes: torbellino (bucle de tajos alrededor) y embestida (pipeline correr → impulso → tajo)
+  spin: { dur: 0.42, act: [0.02, 0.36], a0: -90, a1: 630, box: [-22, -12, 44, 40], dmg: 2, kb: 160, len: 16 },
+  rush: { dur: 0.3, act: [0.0, 0.26], a0: -20, a1: 20, box: [-4, -4, 34, 26], dmg: 2, kb: 220, len: 18 }
 };
 const CHARGE_TIME = 0.65, PASSIVE_ENERGY_CAP = 60;
 // mejoras de la Forja del Lumisable (cada una es un concepto: ver 29_forge.js)
@@ -5557,7 +5578,10 @@ const healCost = () => forged('cells') ? 40 : 50;
 const healTime = () => forged('cells') ? 0.7 : 0.9;
 
 // color del sable: es la luz de Lumi (cambia con su emoción)
-function saberColor(lv) { const c = lv && lv.lumi ? lv.lumi.color : PAL.sun; return typeof c === 'string' && c[0] === '#' && c.length === 7 ? c : PAL.sun; }
+function saberColor(lv) {
+  if (lv && lv.player && lv.player.overload) return Math.floor(Time.t * 10) % 2 ? '#FFFFFF' : PAL.coral;
+  const c = lv && lv.lumi ? lv.lumi.color : PAL.sun; return typeof c === 'string' && c[0] === '#' && c.length === 7 ? c : PAL.sun;
+}
 
 // ---------- Pausa de impacto: congela el mundo unos milisegundos para que el golpe «pese» ----------
 function hitstop(lv, t) { if (lv) lv.hitstop = Math.max(lv.hitstop || 0, t); }
@@ -5610,8 +5634,14 @@ Player.prototype.updateCombat = function (dt, control) {
     let kind;
     if (down && !this.onGround && !this.inWater) kind = 'down';
     else if (up && !this.inWater) kind = 'up';
+    // TAJO TORBELLINO: en el aire con SALTO mantenido
+    else if (hasPower('spin') && !this.onGround && !this.inWater && Input.down('jump')) kind = 'spin';
+    // EMBESTIDA DE LUZ: corriendo por el suelo
+    else if (hasPower('rush') && this.onGround && !this.inWater && Input.down('run') && Math.abs(this.vx) > 40) kind = 'rush';
     else { this.combo = this.comboT > 0 ? (this.combo % 3) + 1 : 1; kind = 'f' + this.combo; }
     this.startAttack(kind);
+    if (kind === 'spin') { this.vy = Math.min(this.vy, -40); AudioSys.sfx('wind'); }
+    if (kind === 'rush') { this.dashT = 0.24; this.dashDir = this.face; this.inv = Math.max(this.inv, 0.35); AudioSys.sfx('dash'); }
     this.chargeT = 0; this.chargeReady = false; this.healT = 0;
   }
   // pulso cargado: mantener el ataque tras el tajo
@@ -5662,7 +5692,8 @@ Player.prototype.resolveHits = function () {
     if (e.parryWindow && e.parryWindow() && a.t < (forged('parry') ? 0.2 : 0.13)) { e.onParry(this); parryFx(this, e); landed = true; continue; }
     const crit = lv.lensT > 0.5 && e.weakPoint !== false;
     // Tajo final (forja): el tercer tajo del combo pesa más
-    const res = e.onHit({ dmg: d.dmg + (a.kind === 'f3' && forged('finisher') ? 1 : 0), dir: a.face, kind: a.kind, kb: d.kb, crit, t: a.t, src: 'saber' });
+    const bonus = (a.kind === 'f3' && forged('finisher') ? 1 : 0) + (this.overload ? 1 : 0);
+    const res = e.onHit({ dmg: d.dmg + bonus, dir: a.face, kind: a.kind, kb: d.kb, crit, t: a.t, src: 'saber' });
     if (res) { landed = true; if (res === 'block') blocked = true; }
   }
   // rebote sobre pinchos con el tajo hacia abajo
@@ -5697,6 +5728,8 @@ Player.prototype.firePulse = function () {
   this.energy -= pulseCost();
   const dir = this.face;
   lv.addEntity(new LumenWave(lv, dir > 0 ? this.x + this.w : this.x - 14, this.y - 1, dir, saberColor(lv)));
+  // PULSO DOBLE: la misma función, llamada hacia atrás
+  if (hasPower('twin')) lv.addEntity(new LumenWave(lv, dir > 0 ? this.x - 14 : this.x + this.w, this.y - 1, -dir, saberColor(lv)));
   AudioSys.sfx('pulse'); FX.shake(1, 0.12);
   this.vx -= dir * 60;
   this.atk = null; this.startAttack('f3'); this.atk.hits = new Set(lv.entities); // solo animación: el pulso hace el daño
@@ -5705,7 +5738,7 @@ Player.prototype.firePulse = function () {
 Player.prototype.drawSaber = function (g, cx, cy) {
   const col = saberColor(this.lv), a = this.atk;
   if (a) {
-    const d = a.def, k = clamp(a.t / (d.act[1] + 0.03), 0, 1), e = easeOut(k);
+    const d = a.def, k = clamp(a.t / (d.act[1] + 0.03), 0, 1), e = a.kind === 'spin' ? k : easeOut(k);
     const ang = d.a0 + (d.a1 - d.a0) * e;
     const pv = this.saberPivot(a.kind);
     const X = Math.round(pv.x - cx), Y = Math.round(pv.y - cy);
@@ -5813,11 +5846,29 @@ function wallAhead(e, dir) {
 
 // ---------- Pulso Lumen (ataque cargado) ----------
 class LumenWave extends Entity {
-  constructor(lv, x, y, dir, col) { super(lv, x, y, 14, 22); this.dir = dir; this.col = col; this.life = 0.8; this.hits = new Set(); this.layer = 1; this.t = 0; }
+  constructor(lv, x, y, dir, col) {
+    // RAYO SOLAR: más grande y el doble de daño
+    const big = hasPower('sunbeam');
+    super(lv, x, big ? y - 6 : y, 14, big ? 34 : 22); this.dir = dir; this.col = col; this.life = 0.8; this.hits = new Set(); this.layer = 1; this.t = 0;
+    this.dmg = big ? 6 : 3; this.big = big; this.seek = hasPower('seeker'); this.vy = 0;
+    if (this.seek) this.life = 1.1;
+  }
   update(dt) {
     super.update(dt); this.life -= dt;
     if (this.life <= 0) { this.dead = true; return; }
     this.x += this.dir * 260 * dt;
+    // RAYO BUSCADOR: se curva hacia el enemigo más cercano que tenga delante
+    if (this.seek) {
+      let best = null, bd = 240;
+      for (const e of this.lv.entities) {
+        if (e.dead || !e.hostile || !e.onHit || e instanceof Shot || this.hits.has(e)) continue;
+        const ex = e.x + (e.w || 0) / 2, ey = e.y + (e.h || 0) / 2, dx = (ex - this.x - 7) * this.dir;
+        if (dx < -10) continue;
+        const d = Math.hypot(ex - this.x - 7, ey - this.y - this.h / 2); if (d < bd) { bd = d; best = { ex, ey }; }
+      }
+      if (best) this.vy = approach(this.vy, clamp(best.ey - this.y - this.h / 2, -1, 1) * 160, 520 * dt); else this.vy *= 0.9;
+      this.y += this.vy * dt;
+    }
     const lv = this.lv, fx = this.dir > 0 ? this.x + this.w : this.x;
     if (lv.solidAt(Math.floor(fx / TILE), Math.floor((this.y + this.h / 2) / TILE))) { Particles.burst(fx, this.y + 11, 12, { color: this.col, min: 30, max: 80, type: 'star' }); this.dead = true; return; }
     for (const e of lv.entities) {
@@ -5825,7 +5876,7 @@ class LumenWave extends Entity {
       const r = e.hitRect ? e.hitRect() : e; if (!r || !rectHit(this, r)) continue;
       this.hits.add(e);
       if (e instanceof Shot) { if (!e.friendly) e.pop(); continue; }
-      e.onHit({ dmg: 3, dir: this.dir, kind: 'pulse', kb: 170, crit: lv.lensT > 0.5, src: 'pulse' });
+      e.onHit({ dmg: this.dmg, dir: this.dir, kind: 'pulse', kb: 170, crit: lv.lensT > 0.5, src: 'pulse' });
     }
     if (Math.random() < 0.8) Particles.spawn({ x: this.x + 7 - this.dir * 6, y: this.y + rand(2, 20), vx: -this.dir * 30, life: 0.3, type: 'fade', size: 2, color: this.col });
   }
@@ -5833,14 +5884,16 @@ class LumenWave extends Entity {
     const x = Math.round(this.x - cx), y = Math.round(this.y - cy), d = this.dir;
     const a = clamp(this.life / 0.3, 0, 1);
     g.globalAlpha = a;
-    for (let i = 0; i < 22; i++) {
-      const bow = Math.round(Math.sin(i / 21 * Math.PI) * 6);
+    const n = this.h;
+    if (this.big) { g.globalAlpha = a * 0.35; rect(g, x - 2, y, 18, n, PAL.sun); g.globalAlpha = a; }
+    for (let i = 0; i < n; i++) {
+      const bow = Math.round(Math.sin(i / (n - 1) * Math.PI) * (this.big ? 9 : 6));
       const bx = d > 0 ? x + 4 + bow : x + 9 - bow;
       rect(g, bx - d * 2, y + i, 2, 1, this.col); px(g, bx, y + i, '#FFFFFF'); px(g, bx + d, y + i, this.col);
     }
     g.globalAlpha = 1;
   }
-  light() { return { x: this.x + 7, y: this.y + 11, r: 55, c: this.col }; }
+  light() { return { x: this.x + 7, y: this.y + this.h / 2, r: this.big ? 80 : 55, c: this.big ? PAL.sun : this.col }; }
 }
 
 // ---------- Proyectiles (de enemigos y jefes; casi todos se pueden devolver con el sable) ----------
@@ -6292,7 +6345,7 @@ function populateFoes(lv) {
 
 // recalcula las células máximas (fragmentos de jefes y ayuda de combate)
 Player.prototype.refreshCells = function () {
-  const m = 3 + Math.floor((G.save.cellShards || 0) / 3) + (G.save.settings.assist ? 2 : 0);
+  const m = 3 + Math.floor((G.save.cellShards || 0) / 3) + (G.save.settings.assist ? 2 : 0) + (hasPower('cell') ? 1 : 0);
   if (m > this.maxCells) this.cells += m - this.maxCells;
   this.maxCells = m; this.cells = clamp(this.cells, 1, m);
 };
@@ -6315,6 +6368,130 @@ function* saberIntro(lv) {
     ['lia', 'Depurar a espadazos. Vega estaría... ¿orgullosa?', 'risa']
   ]);
   unlockCodex('e_lumisable');
+}
+
+
+// ===== 12_powers.js =====
+// =====================================================================
+//  PODERES DEL LUMISABLE: uno nuevo por cada jefe depurado
+//  Cada poder ES el concepto de su isla convertido en una forma de jugar:
+//  el doble salto es una secuencia (saltar → saltar), el punto de
+//  interrupción congela el mundo como un depurador, el pulso doble es una
+//  función llamada dos veces... Se presentan con una tarjeta al vencer al
+//  jefe y se consultan en Pausa → PODERES.
+// =====================================================================
+const POWERS = [
+  { id: 'djump', boss: 'puerto', name: 'DOBLE SALTO', concept: 'Secuencia', code: 'saltar() → saltar()', desc: 'En el aire, pulsa SALTO otra vez: un segundo salto.', how: 'jump', howText: 'en el aire', color: PAL.teal },
+  { id: 'breakpoint', boss: 'valle', name: 'PUNTO DE INTERRUPCIÓN', concept: 'Depuración', code: 'SI células = 1 → pausar(mundo)', desc: 'Al quedarte con 1 célula, el mundo va a cámara lenta 4 s para que puedas reaccionar (una vez por punto de control).', how: null, howText: 'automático', color: PAL.lilac },
+  { id: 'sunbeam', boss: 'solaria', name: 'RAYO SOLAR', concept: 'Condicionales', code: 'SI pulso_cargado → daño × 2', desc: 'El pulso cargado se vuelve un rayo más grande que hace el doble de daño.', how: 'attack', howText: 'mantén y suelta', color: PAL.sun },
+  { id: 'spin', boss: 'aeris', name: 'TAJO TORBELLINO', concept: 'Bucles', code: 'REPETIR 3 VECES: girar + tajo', desc: 'En el aire, MANTÉN SALTO y pulsa ATAQUE: giras golpeando todo a tu alrededor.', how: 'attack', howText: 'en el aire con SALTO', color: PAL.aqua },
+  { id: 'twin', boss: 'hydria', name: 'PULSO DOBLE', concept: 'Funciones', code: 'pulso(delante) · pulso(detrás)', desc: 'El pulso cargado se lanza hacia delante y hacia atrás a la vez.', how: 'attack', howText: 'mantén y suelta', color: PAL.sky },
+  { id: 'cell', boss: 'bioloop', name: 'CÉLULA EXTRA', concept: 'Listas', code: 'células.agregar(1)', desc: 'Tu lista de células crece: +1 célula máxima.', how: null, howText: 'siempre activo', color: PAL.lime },
+  { id: 'overload', boss: 'gea', name: 'ESTADO SOBRECARGA', concept: 'Estados', code: 'energía = 100 → SOBRECARGA', desc: 'Con la energía llena, el sable entra en SOBRECARGA: brilla y cada golpe hace +1 de daño hasta bajar de 70.', how: null, howText: 'llena la energía', color: PAL.coral },
+  { id: 'rush', boss: 'h2', name: 'EMBESTIDA DE LUZ', concept: 'Pipelines', code: 'correr → impulso → tajo', desc: 'Corriendo, pulsa ATAQUE: embistes hacia delante cortando todo y sin recibir daño.', how: 'run', howText: '+ ATAQUE', color: PAL.orange },
+  { id: 'seeker', boss: 'bateria', name: 'RAYO BUSCADOR', concept: 'Búsqueda', code: 'objetivo ← enemigo_más_cercano()', desc: 'El pulso cargado busca y persigue al enemigo más cercano.', how: 'attack', howText: 'mantén y suelta', color: PAL.pink },
+  { id: 'solar', boss: 'prisma', name: 'RECARGA SOLAR', concept: 'Microred', code: 'MIENTRAS energía < 100: +4/s', desc: 'Tu propia microred: la energía se recarga sola hasta llenarse.', how: null, howText: 'automático', color: PAL.violet }
+];
+const hasPower = id => !!(G.save.powers && G.save.powers[id]);
+const powerOfBoss = key => POWERS.find(p => p.boss === key);
+function grantPower(id) {
+  G.save.powers = G.save.powers || {};
+  if (G.save.powers[id]) return false;
+  G.save.powers[id] = true;
+  const lv = G.run.level;
+  if (id === 'cell' && lv && lv.player) { lv.player.refreshCells(); lv.player.cells = lv.player.maxCells; }
+  return true;
+}
+// partidas anteriores: los jefes ya vencidos dan su poder al cargar
+function syncPowers() {
+  const got = [];
+  for (const p of POWERS) if (flag('boss_' + p.boss) && grantPower(p.id)) got.push(p.name);
+  if (got.length) Toast.show('★ Poderes desbloqueados: ' + got.join(', '), PAL.sun, 5);
+  return got;
+}
+
+// ---------- tarjeta al conseguir un poder ----------
+function drawPowerIcon(g, p, x, y, r, t, locked) {
+  const col = locked ? '#3A4068' : p.color;
+  for (let k = r; k > 3; k -= 4) { g.globalAlpha = locked ? 0.4 : 0.25 + 0.15 * Math.sin(t * 4 + k); pring(g, x, y, k, col); }
+  g.globalAlpha = 1;
+  pcircle(g, x, y, Math.max(4, r - 8), shade(col, -0.35)); pcircle(g, x, y, Math.max(3, r - 10), col);
+  const s = POWERS.indexOf(p);
+  // glifo distinto para cada poder
+  const gl = ['↑', '⏸', '☀', '↻', '⇄', '♥', '⚡', '»', '◎', '✦'][s] || '★', sc = r >= 26 ? 2 : 1;
+  drawText(g, locked ? '?' : gl, x, y - 3 * sc, locked ? '#8C93B8' : PAL.white, { align: 'center', outline: shade(col, -0.6), scale: sc });
+}
+class PowerCardScene {
+  constructor(p, done) { this.p = p; this.done = done; this.t = 0; this.opaque = false; }
+  update(dt) {
+    this.t += dt;
+    if (G.autoDialog) { Scenes.pop(); this.done(true); return; }
+    if (this.t > 0.2 && this.t < 0.25) AudioSys.sfx('fanfare');
+    if (this.t > 1 && (Input.hit('confirm') || Input.hit('interact') || Input.hit('attack') || Input.pointer.pressed)) { Input.consume(); Scenes.pop(); this.done(true); }
+    if (Math.random() < 0.6) Particles.spawn({ x: rand(110, 370), y: rand(50, 210), vy: -24, life: 1, type: 'star', color: this.p.color, screen: true });
+  }
+  draw(g) {
+    const p = this.p, k = easeBack(clamp(this.t * 2, 0, 1));
+    g.globalAlpha = Math.min(0.75, this.t * 2); rect(g, 0, 0, W, H, '#05070F'); g.globalAlpha = 1;
+    const w = 320, h = 168, x = (W - w) / 2, y = (H - h) / 2 + (1 - k) * 60;
+    panel(g, x, y, w, h, { border: p.color, accent: p.color, accentW: 80 });
+    drawPowerIcon(g, p, x + 44, y + 58, 30, this.t, false);
+    drawText(g, '¡NUEVO PODER DEL LUMISABLE!', x + 88, y + 12, PAL.cream);
+    drawText(g, p.name, x + 88, y + 26, p.color, { scale: p.name.length > 14 ? 1 : 2, outline: '#10162B' });
+    drawText(g, 'Concepto: ' + p.concept, x + 88, y + (p.name.length > 14 ? 40 : 46), PAL.sun);
+    rect(g, x + 88, y + 58, w - 100, 12, '#0B1020'); drawText(g, p.code, x + 92, y + 61, PAL.lime);
+    drawPara(g, p.desc, x + 88, y + 76, w - 100, PAL.cream, { lh: 10 });
+    if (p.how) keyHint(g, x + 14, y + h - 22, p.how, p.howText, PAL.cream);
+    else drawText(g, p.howText.toUpperCase(), x + 14, y + h - 20, '#8C93B8');
+    drawText(g, 'Continuar ▶', x + w - 10, y + h - 20, PAL.lime, { align: 'right' });
+    Particles.draw(g, 0, 0, true);
+  }
+}
+
+// ---------- Pausa → PODERES: los 10 poderes y cómo se consiguen ----------
+class PowersScene {
+  constructor() { this.opaque = false; this.t = 0; this.sel = 0; }
+  update(dt) {
+    this.t += dt;
+    if (Input.hit('right')) this.sel = (this.sel + 1) % POWERS.length;
+    if (Input.hit('left')) this.sel = (this.sel + POWERS.length - 1) % POWERS.length;
+    if (Input.hit('down')) this.sel = (this.sel + 5) % POWERS.length;
+    if (Input.hit('up')) this.sel = (this.sel + 5) % POWERS.length;
+    if (this.t > 0.2 && (Input.hit('back') || Input.hit('pause'))) { Input.consume(); Scenes.pop(); }
+    const P = Input.pointer;
+    if (P.pressed) POWERS.forEach((p, i) => { const x = 60 + (i % 5) * 90, y = 60 + Math.floor(i / 5) * 64; if (Math.abs(P.x - x) < 43 && P.y > y - 27 && P.y < y + 39) this.sel = i; });
+  }
+  draw(g) {
+    rect(g, 0, 0, W, H, 'rgba(5,7,15,0.9)');
+    panel(g, 10, 6, 460, 258, { border: PAL.sun, accent: PAL.sun, accentW: 80 });
+    const n = POWERS.filter(p => hasPower(p.id)).length;
+    drawText(g, 'PODERES DEL LUMISABLE · ' + n + '/' + POWERS.length, 240, 12, PAL.sun, { align: 'center' });
+    drawText(g, 'Cada jefe depurado te enseña un poder: su concepto convertido en una forma de jugar.', 240, 24, '#8C93B8', { align: 'center' });
+    POWERS.forEach((p, i) => {
+      const x = 60 + (i % 5) * 90, y = 60 + Math.floor(i / 5) * 64, on = hasPower(p.id);
+      if (this.sel === i) { rect(g, x - 43, y - 27, 86, 66, '#18214A'); strokeRect(g, x - 43, y - 27, 86, 66, PAL.sun); }
+      drawPowerIcon(g, p, x, y, 20, this.t + i, !on);
+      // nombres largos en dos líneas (cortando por el espacio más cercano al centro)
+      const name = on ? p.name : '???';
+      if (textW(name) <= 86) drawText(g, name, x, y + 24, on ? p.color : '#565E8C', { align: 'center' });
+      else {
+        const sp = [...name].map((c, k) => c === ' ' ? k : -1).filter(k => k > 0).sort((a, b) => Math.abs(a - name.length / 2) - Math.abs(b - name.length / 2))[0];
+        drawText(g, fitText(name.slice(0, sp), 86), x, y + 22, p.color, { align: 'center' });
+        drawText(g, fitText(name.slice(sp + 1), 86), x, y + 31, p.color, { align: 'center' });
+      }
+    });
+    // ficha del poder elegido
+    const p = POWERS[this.sel], on = hasPower(p.id), R = REGIONS[regionIdx(p.boss)], D = BOSSES[p.boss];
+    panel(g, 22, 176, 436, 70, { bg: '#0B1020', border: on ? p.color : '#2A3570', flat: true });
+    drawText(g, on ? p.name : 'PODER BLOQUEADO', 30, 182, on ? p.color : '#8C93B8');
+    drawText(g, 'Concepto: ' + p.concept, 450, 182, PAL.sun, { align: 'right' });
+    if (on) {
+      drawText(g, p.code, 30, 194, PAL.lime);
+      drawPara(g, p.desc, 30, 206, 300, PAL.cream, { lh: 10 });
+      if (p.how) keyHint(g, 340, 228, p.how, p.howText, PAL.cream); else drawText(g, p.howText, 450, 232, '#8C93B8', { align: 'right' });
+    } else drawPara(g, 'Depura a ' + (D ? D.name : 'su jefe') + ' (' + (R ? R.name : '') + ') para conseguirlo.', 30, 198, 410, '#C9D2F0', { lh: 10 });
+    drawText(g, '← → elegir · ESC volver', 450, 250, '#565E8C', { align: 'right' });
+  }
 }
 
 
@@ -9432,7 +9609,7 @@ const Game = {
     this.startLevel('festival');
   },
   continueGame() {
-    Save.load(); rebuildLia();
+    Save.load(); rebuildLia(); syncPowers();
     const sc = G.save.scene;
     if (LEVELS[sc] && sc !== 'festival') this.startLevel(sc, 'checkpoint');
     else if (flag('prologueDone')) this.toMap();
@@ -9462,6 +9639,8 @@ class GameplayScene {
     AudioSys.playSong(this.lv.def.music || th.music); AudioSys.ambient(this.lv.def.ambient || th.ambient);
     if (this.lv.def.onEnter) Cut.run(() => this.lv.def.onEnter(this.lv));
     G.save.started = true;
+    // jefes vencidos en partidas anteriores (o abiertos desde el modo docente): su poder llega ahora
+    syncPowers();
   }
   update(dt) {
     const lv = this.lv;
@@ -9517,6 +9696,9 @@ function drawHUD(g, lv) {
   const eCol = p.chargeReady ? (Math.floor(lv.time * 12) % 2 ? PAL.white : PAL.teal) : p.energy >= healCost() && p.cells < p.maxCells ? PAL.lime : PAL.teal;
   bar(g, 6, 14, bw, 4, p.energy, 100, eCol, '#10162B');
   rect(g, 6 + Math.round(bw * healCost() / 100), 13, 1, 6, 'rgba(255,243,215,0.55)');
+  // estados de los poderes bajo la barra
+  if (p.overload) drawText(g, 'SOBRECARGA', 6, 22, Math.floor(lv.time * 8) % 2 ? PAL.coral : PAL.white, { shadow: PAL.ink });
+  else if (lv.slowT > 0) drawText(g, '⏸ ' + lv.slowT.toFixed(1) + ' s', 6, 22, PAL.lilac, { shadow: PAL.ink });
   // habilidad actual
   const ab = G.save.currentAbility;
   if (ab && hasAbility(ab)) {
@@ -9661,12 +9843,13 @@ class PauseScene {
       ['a', 'ATLAS AURORA', () => Scenes.push(new CodexScene())],
       ['q', 'MISIONES', () => Scenes.push(new QuestLogScene())],
       ['m', 'MAPA DE DOMINIO', () => Scenes.push(new MasteryScene())],
+      ['o', 'PODERES (' + POWERS.filter(p => hasPower(p.id)).length + '/' + POWERS.length + ')', () => Scenes.push(new PowersScene())],
       ['s', 'AJUSTES', () => Scenes.push(new SettingsScene())],
       ['k', 'CONTROLES', () => Scenes.push(new ControlsScene())],
       flag('prologueDone') && !(this.lv && this.lv.def.noMap) ? ['w', 'VOLVER AL MAPA', () => { UI.nav = false; Game.toMap(this.lv && this.lv.def.region); }] : null,
       ['t', 'MENÚ PRINCIPAL', () => Scenes.push(new ConfirmScene('¿Volver al menú? Se guardará tu progreso en el último punto de control.', () => { Save.write(); Game.toTitle(); }))]
     ].filter(Boolean);
-    opts.forEach(([id, label, fn], i) => { if (UI.btn(g, 'p_' + id, 170, 72 + i * 20, 140, 16, label, { color: i === 0 ? PAL.lime : PAL.teal })) fn(); });
+    opts.forEach(([id, label, fn], i) => { if (UI.btn(g, 'p_' + id, 170, 70 + i * 18, 140, 15, label, { color: i === 0 ? PAL.lime : id === 'o' ? PAL.sun : PAL.teal })) fn(); });
     drawText(g, 'Nivel ' + G.save.level + ' · ' + rankName(), 240, 236, '#8C93B8', { align: 'center' });
   }
 }
@@ -13538,6 +13721,9 @@ function* bossDefeatScene(b) {
     if (s % 3 === 0) { lv.player.refreshCells(); lv.player.cells = lv.player.maxCells; AudioSys.sfx('fanfare'); yield C.title('¡NUEVA CÉLULA DE LUZ!', '3 fragmentos de célula = +1 célula máxima', 3, PAL.sun); }
     else { AudioSys.sfx('chispa'); yield C.title('FRAGMENTO DE CÉLULA ' + (s % 3) + '/3', 'Con 3 fragmentos, Lía gana una célula más', 2.6, PAL.sun); }
     G.save.bossTries[key] = 0;
+    // cada jefe enseña un poder nuevo del Lumisable
+    const pw = powerOfBoss(key);
+    if (pw && grantPower(pw.id)) { lv.player.refreshCells(); yield C.scene(done => new PowerCardScene(pw, done)); }
     const done = Object.keys(BOSSES).filter(k => flag('boss_' + k)).length;
     if (done >= Object.keys(BOSSES).length) achieve('bosses');
   }
@@ -16541,7 +16727,7 @@ class CreditsScene {
 // Navegación con teclado por escena: los menús la activan, el juego no
 [TitleScene, PauseScene, SettingsScene, RemapScene, CodexScene, TeacherScene, TallerScene, ConfirmScene, QuestLogScene, SparkEditorScene, ShieldRuleScene, CodeLabScene, PuzzleBase].forEach(K => K.prototype.nav = true);
 // los avisos (MISIÓN, ATLAS, XP...) se muestran al volver al juego, no encima de puzzles o menús
-[PuzzleBase, CodeLabScene, CodexScene, SettingsScene, RemapScene, QuestLogScene, MasteryScene, LabScene, TallerScene, ControlsScene, BlueprintScene, ConceptCardScene, AbilityCardScene, CardsScene, ReviewScene, TraceScene, ForgeScene, ForgeTrialScene, LockHelpScene].forEach(K => K.prototype.hideToasts = true);
+[PuzzleBase, CodeLabScene, CodexScene, SettingsScene, RemapScene, QuestLogScene, MasteryScene, LabScene, TallerScene, ControlsScene, BlueprintScene, ConceptCardScene, AbilityCardScene, CardsScene, ReviewScene, TraceScene, ForgeScene, ForgeTrialScene, LockHelpScene, SparkEditorScene, ShieldRuleScene, PowersScene, PowerCardScene].forEach(K => K.prototype.hideToasts = true);
 [GameplayScene, MapScene, ChispaScene, AbilityCardScene, ConceptCardScene, MasteryScene, ControlsScene, BlueprintScene].forEach(K => K.prototype.nav = false);
 
 const STEP = 1 / 60;
@@ -16585,10 +16771,10 @@ function boot() {
 
 // Interfaz mínima para depuración y pruebas automáticas
 window.LL = {
-  G, Game, Scenes, HD, LEVELS, textW, LockHelpScene, SimScene, SIMS, SIM_SOLAR, VariableLabScene, FORGE, forged, ForgeScene, ForgeTrialScene, pulseCost, healCost, Cards, cardQuestion, CardsScene, ReviewScene, CARD_BANK, CARD_META, dailyChallenge, dailyCode, launchDaily, makeLockQuestion, LOCK_GEN, CodeLock, TraceScene, buildLevel: (k, sp) => new Level(k, sp), Save, Input, UI, Cut, flag, setFlag, CODEX, QUESTS, CHALLENGES, REGIONS, makePuzzleScene, Particles, AudioSys, BOSSES, makeEnemy, unlocked, MapArt,
+  G, Game, Scenes, HD, LEVELS, textW, POWERS, hasPower, grantPower, syncPowers, PowersScene, PowerCardScene, LockHelpScene, SimScene, SIMS, SIM_SOLAR, VariableLabScene, FORGE, forged, ForgeScene, ForgeTrialScene, pulseCost, healCost, Cards, cardQuestion, CardsScene, ReviewScene, CARD_BANK, CARD_META, dailyChallenge, dailyCode, launchDaily, makeLockQuestion, LOCK_GEN, CodeLock, TraceScene, buildLevel: (k, sp) => new Level(k, sp), Save, Input, UI, Cut, flag, setFlag, CODEX, QUESTS, CHALLENGES, REGIONS, makePuzzleScene, Particles, AudioSys, BOSSES, makeEnemy, unlocked, MapArt,
   cfg: { CFG_FEST_BOOT, CFG_PUERTO_ROUTE, CFG_PUERTO_CHAIN, CFG_PUERTO_CARRERA, CFG_VALLE_RUTA, CFG_VALLE_SACOS, CFG_VALLE_MOLINO, CFG_SOL_FLOW, CFG_SOL_FLORES, CFG_SOL_SENSOR, CFG_SOL_MATRIZ, CFG_SOL_NUBE, CFG_AERIS_MOLINO, CFG_AERIS_VIENTO, CFG_AERIS_BUCLE, CFG_HYD_FORJA, CFG_HYD_RIO, CFG_HYD_DUP, cfgBioSorter, CFG_BIO_LISTA, CFG_BIO_MERCADO, CFG_GEA_FSM, CFG_GEA_AISLADA, CFG_GEA_CRISTAL, CFG_H2_PIPE, CFG_H2_BARCO, CFG_BAT_SORT, CFG_BAT_SEARCH, CFG_BAT_BETA, CFG_BAT_BUG, CFG_PRISMA_MG, CFG_PRISMA_FEST, CFG_PRISMA_SINSOL, pzPhaseCfg },
   A,
-  S: { TitleScene, PauseScene, SettingsScene, RemapScene, CodexScene, TeacherScene, TallerScene, QuestLogScene, MasteryScene, MapScene, LabScene, ControlsScene, BlueprintScene, ConfirmScene, SparkEditorScene, ShieldRuleScene, Shot, RegionBoss }
+  S: { TitleScene, PauseScene, SettingsScene, RemapScene, CodexScene, TeacherScene, TallerScene, QuestLogScene, MasteryScene, MapScene, LabScene, ControlsScene, BlueprintScene, ConfirmScene, SparkEditorScene, ShieldRuleScene, Shot, RegionBoss, LumenWave }
 };
 try { boot(); } catch (e) {
   console.error(e);

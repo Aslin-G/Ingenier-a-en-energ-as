@@ -271,7 +271,10 @@ class Level {
     if (control && Input.hit('lens') && hasAbility('lens')) { this.lens = !this.lens; AudioSys.sfx(this.lens ? 'debug' : 'click'); }
     this.lensT = approach(this.lensT, this.lens ? 1 : 0, dt * 5);
     this.player.update(dt, control);
-    for (const e of this.entities) if (!e.dead && e.update) e.update(dt);
+    // cámara lenta del PUNTO DE INTERRUPCIÓN: el mundo va al 45 %, Lía a velocidad normal
+    this.slowT = Math.max(0, (this.slowT || 0) - dt);
+    const edt = this.slowT > 0 ? dt * 0.45 : dt;
+    for (const e of this.entities) if (!e.dead && e.update) e.update(edt);
     this.entities = this.entities.filter(e => !e.dead || e.keep);
     if (this.ghost) { this.ghost.update(dt); if (this.ghost.done) this.ghost = null; }
     this.pix.update(dt); this.lumi.update(dt);
@@ -410,6 +413,7 @@ class Level {
     }
     // viñeta suave: más marcada de noche y en cuevas
     g.drawImage(Vignette.get(th.sun && !th.sun.moon ? 0.2 : 0.34), 0, 0);
+    if (this.slowT > 0) { g.globalAlpha = Math.min(0.22, this.slowT * 0.2); rect(g, 0, 0, W, H, PAL.violet); g.globalAlpha = 1; }
     Particles.draw(g, cx, cy, true, 1);
     if (this.lensT > 0.01) this.drawLensOverlay(g, cx, cy);
     for (const e of this.entities) if (e.drawOverlay && this.onScreen(e, cx, cy, 40)) e.drawOverlay(g, cx, cy);
@@ -758,7 +762,7 @@ class Player {
     this.vx = 0; this.vy = 0; this.face = 1; this.onGround = false; this.coyote = 0; this.buffer = 0;
     this.climbing = false; this.inWater = false; this.gliding = false; this.anim = 'idle'; this.animT = 0; this.frameT = 0;
     // células: 3 + 1 por cada 3 fragmentos de los jefes (+2 con la ayuda de combate)
-    this.maxCells = 3 + Math.floor((G.save.cellShards || 0) / 3) + (G.save.settings.assist ? 2 : 0);
+    this.maxCells = 3 + Math.floor((G.save.cellShards || 0) / 3) + (G.save.settings.assist ? 2 : 0) + (hasPower('cell') ? 1 : 0);
     this.cells = this.maxCells; this.inv = 0; this.energy = 100; this.shieldOn = false; this.shieldArmed = false;
     this.dashT = 0; this.landT = 0; this.stepT = 0; this.idleT = 0; this.onPlat = null; this.celebrateT = 0;
     this.shieldRule = G.save.shieldRule || 0;
@@ -824,6 +828,8 @@ class Player {
     const sx = src && src.x != null ? src.x + (src.w || 0) / 2 : null;
     const dir = sx != null && Math.abs(sx - this.cx) > 1 ? sign(this.cx - sx) : -this.face;
     this.cells--; this.inv = forged('guard') ? 1.9 : 1.3; this.vy = -180; this.vx = dir * 150; this.hurtT = 0.28;
+    // poder PUNTO DE INTERRUPCIÓN: con 1 célula el mundo se ralentiza (una vez por punto de control)
+    if (hasPower('breakpoint') && this.cells === 1 && !this.lv.bpUsed) { this.lv.bpUsed = true; this.lv.slowT = 4; Particles.text(this.cx, this.y - 16, '⏸ PUNTO DE INTERRUPCIÓN', PAL.lilac); AudioSys.sfx('debug'); }
     if (src && src.knockPlayer) src.knockPlayer(this);
     this.atk = null; this.chargeT = 0; this.chargeReady = false; this.healT = 0;
     hitstop(this.lv, 0.07);
@@ -908,7 +914,13 @@ class Player {
       if (this.onGround && down && this.standingOnOneWay()) { this.dropThrough = true; this.dropT = 0.2; this.buffer = 0; }
       else if (this.coyote > 0 || this.onGround) { this.vy = -PHYS.jumpV; this.onGround = false; this.coyote = 0; this.buffer = 0; AudioSys.sfx('jump'); Particles.burst(this.cx, this.y + this.h, 4, { color: '#FFF3D7', min: 10, max: 30, angle: Math.PI / 2, spread: 1.4, lmin: 0.2, lmax: 0.3 }); }
       else if (this.inWater) { this.vy = -PHYS.swimV; this.buffer = 0; AudioSys.sfx('splash'); }
+      // poder DOBLE SALTO: saltar() → saltar()
+      else if (jumpHit && hasPower('djump') && !this.usedDJ) {
+        this.vy = -PHYS.jumpV * 0.92; this.usedDJ = true; this.buffer = 0; this.gliding = false; AudioSys.sfx('jump');
+        Particles.burst(this.cx, this.y + this.h, 10, { colors: [PAL.teal, PAL.white], min: 20, max: 60, angle: Math.PI / 2, spread: 1.6, lmax: 0.35, type: 'star' });
+      }
     }
+    if (this.onGround || this.climbing || this.inWater) this.usedDJ = false;
     if (this.inWater && up) this.vy = Math.max(this.vy - 500 * dt, -90);
     if (this.dropT > 0) { this.dropT -= dt; if (this.dropT <= 0) this.dropThrough = false; }
     // mover
@@ -959,6 +971,10 @@ class Player {
     }
     // la energía se recarga sola hasta 60; el resto se gana golpeando con el sable y con los orbes
     if (!this.shieldOn && this.energy < PASSIVE_ENERGY_CAP) this.energy = Math.min(PASSIVE_ENERGY_CAP, this.energy + (lv.power > 0.3 ? 18 : 10) * dt);
+    // poder RECARGA SOLAR: la energía sigue subiendo sola hasta 100
+    if (hasPower('solar') && !this.shieldOn && this.energy >= PASSIVE_ENERGY_CAP && this.energy < 100) this.energy = Math.min(100, this.energy + 4 * dt);
+    // poder ESTADO SOBRECARGA: NORMAL → SOBRECARGA con la energía llena; vuelve a NORMAL bajo 70
+    if (hasPower('overload')) { if (!this.overload && this.energy >= 100) { this.overload = true; AudioSys.sfx('chargeUp', 1); Particles.text(this.cx, this.y - 10, 'SOBRECARGA', PAL.coral); } else if (this.overload && this.energy < 70) this.overload = false; }
     if (Input.hit('ability') && ab) {
       if (lv.def.abilityHook && lv.def.abilityHook(lv, ab)) return;
       switch (ab) {
@@ -1036,7 +1052,9 @@ class Player {
       const breath = (t % 2.4) > 1.3 ? 1 : 0;
       f = (this.blinkT < 0 ? 2 : 0) + breath;
     } else f = Math.floor(t * fps) % A.length;
-    const fr = this.face > 0 ? A[f].r : A[f].l;
+    // en el torbellino Lía gira (alterna de lado muy rápido)
+    const spinFlip = this.atk && this.atk.kind === 'spin' && Math.floor(this.atk.t / 0.07) % 2 === 1;
+    const fr = (this.face > 0) !== spinFlip ? A[f].r : A[f].l;
     const dx = Math.round(this.x + this.w / 2 - fr.width / 2 - cx), dy = Math.round(this.y + this.h - fr.height + 1 - cy);
     g.drawImage(fr, dx, dy);
     this.drawSaber(g, cx, cy);
