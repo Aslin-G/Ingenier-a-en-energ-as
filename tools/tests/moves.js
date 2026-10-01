@@ -98,6 +98,25 @@ const ok = (cond, msg) => { console.log((cond ? '  ok   ' : '  FALLO') + ' ' + m
   });
   ok(!air.onGround && air.kind === 'up', 'en el aire, ↑ + ataque es el tajo hacia arriba');
 
+  // 6) energía: el escudo bloquea 3 golpes y se agota; la recarga sola es lenta y se pausa al gastar
+  const en = await p.evaluate(async () => {
+    const sleep = ms => new Promise(r => setTimeout(r, ms));
+    const lv = LL.G.run.level, pl = lv.player; LL.G.noDamage = false;
+    pl.cells = pl.maxCells; pl.energy = 100; pl.shieldRule = 1; pl.shieldArmed = true; LL.G.save.abilities.shield = true;
+    await sleep(80);
+    const out = { on: pl.shieldOn, e: [] };
+    for (let i = 0; i < 3; i++) { pl.inv = 0; pl.hurt({ x: pl.x + 20, w: 4 }); out.e.push(Math.round(pl.energy)); await sleep(30); }
+    out.broken = !pl.shieldArmed; out.cells0 = pl.cells;
+    pl.inv = 0; pl.hurt({ x: pl.x + 20, w: 4 }); out.cells1 = pl.cells;
+    pl.energy = 0; pl.regenDelay = 0; pl.spend(0); await sleep(1500); out.afterPause = pl.energy;
+    await sleep(2000); out.after = pl.energy;
+    LL.G.noDamage = true; pl.inv = 0; pl.cells = pl.maxCells;
+    return out;
+  });
+  ok(en.on && en.e[0] <= 70 && en.broken, `el escudo bloquea pero cada golpe gasta un tercio (${en.e.join(' → ')}) y al 3.º se rompe`);
+  ok(en.cells1 === en.cells0 - 1, 'con el escudo roto el siguiente golpe quita una célula');
+  ok(en.afterPause < 0.5 && en.after > 2 && en.after < 12, `tras gastar energía la recarga espera y luego sube despacio (${en.afterPause.toFixed(1)} → ${en.after.toFixed(1)})`);
+
   ok(errs.length === 0, 'sin errores de consola' + (errs.length ? '\n     ' + errs.join('\n     ') : ''));
   await b.close();
   console.log(fails ? `${fails} FALLO(S)` : 'MOVIMIENTOS OK');

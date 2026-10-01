@@ -69,19 +69,19 @@ const ok = (cond, msg) => { console.log((cond ? '  ok   ' : '  FALLO') + ' ' + m
     w.dead = true; foe.dead = true;
     // TORBELLINO: en el aire con SALTO mantenido + ATAQUE
     await toGround(); await sleep(400);
-    pl.atk = null; pl.atkCD = 0; lift(); pl.usedDJ = true;
+    pl.atk = null; pl.atkCD = 0; pl.energy = 100; lift(); pl.usedDJ = true;
     LL.Input.keys.KeyZ = true; await sleep(30); await tap('KeyX'); await sleep(30);
     out.spin = pl.atk && pl.atk.kind; LL.Input.keys.KeyZ = false; LL.Input.releasedCodes.KeyZ = true;
     await toGround(); await sleep(500);
     // EMBESTIDA: corriendo + ATAQUE
-    pl.atk = null; pl.atkCD = 0;
+    pl.atk = null; pl.atkCD = 0; pl.energy = 100;
     LL.Input.keys.ShiftLeft = true; LL.Input.keys.ArrowRight = true; await sleep(350);
     await tap('KeyX'); await sleep(20);
     out.rush = { kind: pl.atk && pl.atk.kind, dash: pl.dashT > 0, inv: pl.inv > 0 };
     LL.Input.keys.ShiftLeft = false; LL.Input.keys.ArrowRight = false;
     await sleep(500);
     // RECARGA SOLAR: con la energía en 60 sigue subiendo sola
-    pl.energy = 60; pl.overload = false; await sleep(1000);
+    pl.energy = 50; pl.regenDelay = 0; pl.overload = false; await sleep(1000);
     out.solar = pl.energy;
     // SOBRECARGA: con 100 se activa, hace +1 de daño y se apaga bajo 70
     pl.energy = 100; await sleep(60);
@@ -108,7 +108,7 @@ const ok = (cond, msg) => { console.log((cond ? '  ok   ' : '  FALLO') + ' ' + m
   ok(r.seek.foeAbove && r.seek.dy < -2, `RAYO BUSCADOR: la onda se curva hacia el enemigo (dy ${r.seek.dy.toFixed(1)})`);
   ok(r.spin === 'spin', 'TAJO TORBELLINO: en el aire con SALTO + ATAQUE (' + r.spin + ')');
   ok(r.rush.kind === 'rush' && r.rush.dash && r.rush.inv, 'EMBESTIDA DE LUZ: corriendo + ATAQUE embiste sin recibir daño (' + r.rush.kind + ')');
-  ok(r.solar > 63, `RECARGA SOLAR: la energía pasa de 60 a ${r.solar.toFixed(1)} en 1 s`);
+  ok(r.solar > 51, `RECARGA SOLAR: la energía pasa de 50 a ${r.solar.toFixed(1)} en 1 s`);
   ok(r.over && r.overDmg === 2 && !r.overOff, `SOBRECARGA: se activa con 100, tajo de ${r.overDmg} de daño y se apaga bajo 70`);
 
   // tarjeta del poder y pantalla de Pausa → PODERES

@@ -4589,7 +4589,14 @@ class Player {
   }
   hurt(src) {
     if (this.inv > 0 || this.dashT > 0 || G.noDamage || (Cut.active && !Cut.free)) return;
-    if (this.shieldOn) { AudioSys.sfx('shield'); Particles.burst(this.cx, this.y + 10, 10, { color: PAL.orange, min: 30, max: 60 }); if (src && src.bounce) src.bounce(this); return; }
+    // escudo: bloquea el golpe pero cuesta un tercio de la energía (3 golpes lo agotan)
+    if (this.shieldOn) {
+      AudioSys.sfx('shield'); Particles.burst(this.cx, this.y + 10, 10, { color: PAL.orange, min: 30, max: 60 }); if (src && src.bounce) src.bounce(this);
+      this.spend(ENERGY.shieldHit); this.inv = Math.max(this.inv, 0.45); FX.shake(1.5, 0.15);
+      Particles.text(this.cx, this.y - 6, '−' + ENERGY.shieldHit + ' energía', PAL.orange);
+      if (this.energy <= 0) { this.shieldArmed = false; this.shieldOn = false; AudioSys.sfx('fail'); Bark.say('pix', '¡El escudo se rompió! Sin energía no hay condición que valga.'); }
+      return;
+    }
     // el golpe empuja lejos de quien lo dio
     const sx = src && src.x != null ? src.x + (src.w || 0) / 2 : null;
     const dir = sx != null && Math.abs(sx - this.cx) > 1 ? sign(this.cx - sx) : -this.face;
@@ -4746,12 +4753,15 @@ class Player {
     this.shieldOn = false;
     if (this.shieldArmed && hasAbility('shield')) {
       const cond = this.shieldCondition();
-      if (cond && this.energy > 0) { this.shieldOn = true; this.energy -= (this.shieldRule === 1 ? 45 : 30) * dt; if (this.energy <= 0) { this.energy = 0; this.shieldArmed = false; Bark.say('pix', 'Escudo sin energía. ¿Quizás la condición era demasiado amplia?'); } }
+      if (cond && this.energy > 0) { this.shieldOn = true; this.energy -= (this.shieldRule === 1 ? 22 : this.shieldRule === 2 ? 12 : 10) * dt; this.regenDelay = Math.max(this.regenDelay || 0, 0.5); if (this.energy <= 0) { this.energy = 0; this.shieldArmed = false; Bark.say('pix', 'Escudo sin energía. ¿Quizás la condición era demasiado amplia?'); } }
     }
     // la energía se recarga sola hasta 60; el resto se gana golpeando con el sable y con los orbes
-    if (!this.shieldOn && this.energy < PASSIVE_ENERGY_CAP) this.energy = Math.min(PASSIVE_ENERGY_CAP, this.energy + (lv.power > 0.3 ? 18 : 10) * dt);
-    // poder RECARGA SOLAR: la energía sigue subiendo sola hasta 100
-    if (hasPower('solar') && !this.shieldOn && this.energy >= PASSIVE_ENERGY_CAP && this.energy < 100) this.energy = Math.min(100, this.energy + 4 * dt);
+    // (más despacio, y en pausa unos segundos después de gastar energía)
+    this.regenDelay = Math.max(0, (this.regenDelay || 0) - dt);
+    const canRegen = !this.shieldOn && this.regenDelay <= 0;
+    if (canRegen && this.energy < PASSIVE_ENERGY_CAP) this.energy = Math.min(PASSIVE_ENERGY_CAP, this.energy + (lv.power > 0.3 ? ENERGY.regen : ENERGY.regenDark) * dt);
+    // poder RECARGA SOLAR: la energía sigue subiendo sola hasta 100 (despacio)
+    if (hasPower('solar') && canRegen && this.energy >= PASSIVE_ENERGY_CAP && this.energy < 100) this.energy = Math.min(100, this.energy + 2 * dt);
     // poder ESTADO SOBRECARGA: NORMAL → SOBRECARGA con la energía llena; vuelve a NORMAL bajo 70
     if (hasPower('overload')) { if (!this.overload && this.energy >= 100) { this.overload = true; AudioSys.sfx('chargeUp', 1); Particles.text(this.cx, this.y - 10, 'SOBRECARGA', PAL.coral); } else if (this.overload && this.energy < 70) this.overload = false; }
     if (Input.hit('ability') && ab) {
@@ -4761,8 +4771,8 @@ class Player {
         case 'shield': Scenes.push(new ShieldRuleScene(this)); break;
         case 'glide': Bark.say('pix', 'MIENTRAS mantengas SALTO en el aire: planear. ¡Un bucle con condición!'); break;
         case 'dash':
-          if (this.energy >= 20) {
-            this.energy -= 20; this.dashT = 0.2; this.dashDir = this.face; this.inv = Math.max(this.inv, 0.25); AudioSys.sfx('dash');
+          if (this.energy >= 25) {
+            this.spend(25); this.dashT = 0.2; this.dashDir = this.face; this.inv = Math.max(this.inv, 0.25); AudioSys.sfx('dash');
             const tgt = lv.entities.filter(e => e.priority != null && !e.dead && Math.abs(e.y - this.y) < 40 && (e.x - this.x) * this.face > 0 && Math.abs(e.x - this.x) < 110).sort((a, b) => b.priority - a.priority)[0];
             if (tgt) { this.dashDir = sign(tgt.x - this.x) || this.face; Particles.text(tgt.x + 4, tgt.y - 6, 'PRIORIDAD ' + tgt.priority, PAL.pink); }
           } else Bark.say('pix', 'Energía insuficiente para el Dash. Recarga cerca de la luz.');
@@ -5708,11 +5718,13 @@ const SABER = {
   // GANCHO (↑ + ataque en el suelo): salta hacia arriba con un arco de luz en forma de gancho
   hook: { dur: 0.38, act: [0.03, 0.28], a0: 60, a1: -215, box: [-8, -28, 30, 44], dmg: 2, kb: 120, len: 18 }
 };
-const CHARGE_TIME = 0.65, PASSIVE_ENERGY_CAP = 60;
+const CHARGE_TIME = 0.65, PASSIVE_ENERGY_CAP = 50;
+// energía: la recarga sola llega hasta 50, despacio, y se detiene un rato después de gastar
+const ENERGY = { regen: 4.5, regenDark: 2.5, delay: 2.2, hit: 6, hitForged: 9, shieldHit: 34, spin: 12, rush: 15, twin: 10 };
 // mejoras de la Forja del Lumisable (cada una es un concepto: ver 29_forge.js)
 const forged = k => !!(G.save.forge && G.save.forge[k]);
 // coste del pulso y de la recarga (la forja los abarata)
-const pulseCost = () => forged('pulse') ? 20 : 30;
+const pulseCost = () => (forged('pulse') ? 25 : 35) + (hasPower('twin') ? ENERGY.twin : 0);
 const healCost = () => forged('cells') ? 40 : 50;
 const healTime = () => forged('cells') ? 0.7 : 0.9;
 
@@ -5726,6 +5738,8 @@ function saberColor(lv) {
 function hitstop(lv, t) { if (lv) lv.hitstop = Math.max(lv.hitstop || 0, t); }
 
 // ---------- Lía: sable, pulso, recarga ----------
+// gastar energía: además del coste, la recarga sola se pausa unos segundos
+Player.prototype.spend = function (n) { this.energy = Math.max(0, this.energy - n); this.regenDelay = Math.max(this.regenDelay || 0, ENERGY.delay); };
 Player.prototype.initCombat = function () {
   this.atk = null; this.atkCD = 0; this.combo = 0; this.comboT = 0; this.atkBuf = 0;
   this.chargeT = 0; this.chargeReady = false; this.healT = 0; this.pogoT = 0;
@@ -5780,13 +5794,13 @@ Player.prototype.updateCombat = function (dt, control) {
     else if (up && this.onGround && !this.inWater) kind = 'hook';
     else if (up && !this.inWater) kind = 'up';
     // TAJO TORBELLINO: en el aire con SALTO mantenido
-    else if (hasPower('spin') && !this.onGround && !this.inWater && Input.down('jump')) kind = 'spin';
+    else if (hasPower('spin') && !this.onGround && !this.inWater && Input.down('jump') && this.energy >= ENERGY.spin) kind = 'spin';
     // EMBESTIDA DE LUZ: corriendo por el suelo
-    else if (hasPower('rush') && this.onGround && !this.inWater && Input.down('run') && Math.abs(this.vx) > 40) kind = 'rush';
+    else if (hasPower('rush') && this.onGround && !this.inWater && Input.down('run') && Math.abs(this.vx) > 40 && this.energy >= ENERGY.rush) kind = 'rush';
     else { this.combo = this.comboT > 0 ? (this.combo % 3) + 1 : 1; kind = 'f' + this.combo; }
     this.startAttack(kind);
-    if (kind === 'spin') { this.vy = Math.min(this.vy, -40); AudioSys.sfx('wind'); }
-    if (kind === 'rush') { this.dashT = 0.24; this.dashDir = this.face; this.inv = Math.max(this.inv, 0.35); AudioSys.sfx('dash'); }
+    if (kind === 'spin') { this.spend(ENERGY.spin); this.vy = Math.min(this.vy, -40); AudioSys.sfx('wind'); }
+    if (kind === 'rush') { this.spend(ENERGY.rush); this.dashT = 0.24; this.dashDir = this.face; this.inv = Math.max(this.inv, 0.35); AudioSys.sfx('dash'); }
     if (kind === 'slide') { this.setCrouch(true); this.vx = this.face * 230; AudioSys.sfx('dash'); Particles.burst(this.cx - this.face * 4, this.y + this.h, 8, { color: '#FFF3D7', min: 20, max: 60, angle: Math.PI + (this.face > 0 ? 0.3 : -0.3), spread: 0.8, lmax: 0.35 }); }
     if (kind === 'hook') { this.setCrouch(false); this.vy = -PHYS.jumpV * 1.02; this.onGround = false; this.coyote = 0; this.vx = this.face * 70; AudioSys.sfx('jump'); }
     this.chargeT = 0; this.chargeReady = false; this.healT = 0;
@@ -5813,7 +5827,7 @@ Player.prototype.updateCombat = function (dt, control) {
     this.healT += dt;
     if (Math.random() < 0.6) { const an = rand(0, 6.28); Particles.spawn({ x: this.cx + Math.cos(an) * 18, y: this.y + 10 + Math.sin(an) * 18, vx: -Math.cos(an) * 50, vy: -Math.sin(an) * 50, life: 0.35, type: 'dot', color: PAL.sun }); }
     if (this.healT >= healTime()) {
-      this.healT = 0; this.cells++; this.energy -= healCost();
+      this.healT = 0; this.cells++; this.spend(healCost());
       AudioSys.sfx('heal'); Particles.burst(this.cx, this.y + 8, 16, { colors: [PAL.sun, PAL.white, PAL.orange], min: 20, max: 60, type: 'star' });
       Particles.text(this.cx, this.y - 8, '+1 célula', PAL.sun);
       lv.lumi.mood = 'happy'; lv.lumi.moodT = 1.5;
@@ -5851,7 +5865,7 @@ Player.prototype.resolveHits = function () {
   if (!landed) return;
   if (!a.landed) {
     a.landed = true;
-    if (!blocked) this.energy = Math.min(100, this.energy + (forged('energy') ? 12 : 8));
+    if (!blocked) this.energy = Math.min(100, this.energy + (forged('energy') ? ENERGY.hitForged : ENERGY.hit));
     if (a.kind === 'down') {
       // POGO: rebote hacia arriba
       this.vy = -PHYS.jumpV * 0.95; this.gliding = false; this.pogoT = 0.2; this.coyote = 0;
@@ -5864,7 +5878,7 @@ Player.prototype.resolveHits = function () {
 function parryFx(p, e) {
   const lv = p.lv;
   AudioSys.sfx('parry'); hitstop(lv, 0.12); FX.flash('#FFFFFF', 0.25); FX.shake(2, 0.15);
-  p.inv = Math.max(p.inv, 0.4); p.energy = Math.min(100, p.energy + 12);
+  p.inv = Math.max(p.inv, 0.4); p.energy = Math.min(100, p.energy + 10);
   const x = e.x + (e.w || 10) / 2, y = e.y;
   Particles.text(x, y - 8, '¡PARADA!', PAL.sun);
   Particles.burst(x, y + 6, 14, { colors: [PAL.white, saberColor(lv), PAL.sun], min: 40, max: 110, type: 'spark', lmax: 0.35 });
@@ -5872,7 +5886,7 @@ function parryFx(p, e) {
 }
 Player.prototype.firePulse = function () {
   const lv = this.lv;
-  this.energy -= pulseCost();
+  this.spend(pulseCost());
   const dir = this.face;
   lv.addEntity(new LumenWave(lv, dir > 0 ? this.x + this.w : this.x - 14, this.y - 1, dir, saberColor(lv)));
   // PULSO DOBLE: la misma función, llamada hacia atrás
@@ -6548,13 +6562,13 @@ const POWERS = [
   { id: 'djump', boss: 'puerto', name: 'DOBLE SALTO', concept: 'Secuencia', code: 'saltar() → saltar()', desc: 'En el aire, pulsa SALTO otra vez: un segundo salto.', how: 'jump', howText: 'en el aire', color: PAL.teal },
   { id: 'breakpoint', boss: 'valle', name: 'PUNTO DE INTERRUPCIÓN', concept: 'Depuración', code: 'SI células = 1 → pausar(mundo)', desc: 'Al quedarte con 1 célula, el mundo va a cámara lenta 4 s para que puedas reaccionar (una vez por punto de control).', how: null, howText: 'automático', color: PAL.lilac },
   { id: 'sunbeam', boss: 'solaria', name: 'RAYO SOLAR', concept: 'Condicionales', code: 'SI pulso_cargado → daño × 2', desc: 'El pulso cargado se vuelve un rayo más grande que hace el doble de daño.', how: 'attack', howText: 'mantén y suelta', color: PAL.sun },
-  { id: 'spin', boss: 'aeris', name: 'TAJO TORBELLINO', concept: 'Bucles', code: 'REPETIR 3 VECES: girar + tajo', desc: 'En el aire, MANTÉN SALTO y pulsa ATAQUE: giras golpeando todo a tu alrededor.', how: 'attack', howText: 'en el aire con SALTO', color: PAL.aqua },
-  { id: 'twin', boss: 'hydria', name: 'PULSO DOBLE', concept: 'Funciones', code: 'pulso(delante) · pulso(detrás)', desc: 'El pulso cargado se lanza hacia delante y hacia atrás a la vez.', how: 'attack', howText: 'mantén y suelta', color: PAL.sky },
+  { id: 'spin', boss: 'aeris', name: 'TAJO TORBELLINO', concept: 'Bucles', code: 'REPETIR 3 VECES: girar + tajo', desc: 'En el aire, MANTÉN SALTO y pulsa ATAQUE: giras golpeando todo a tu alrededor (12 de energía).', how: 'attack', howText: 'en el aire con SALTO', color: PAL.aqua },
+  { id: 'twin', boss: 'hydria', name: 'PULSO DOBLE', concept: 'Funciones', code: 'pulso(delante) · pulso(detrás)', desc: 'El pulso cargado se lanza hacia delante y hacia atrás a la vez (cuesta 10 más).', how: 'attack', howText: 'mantén y suelta', color: PAL.sky },
   { id: 'cell', boss: 'bioloop', name: 'CÉLULA EXTRA', concept: 'Listas', code: 'células.agregar(1)', desc: 'Tu lista de células crece: +1 célula máxima.', how: null, howText: 'siempre activo', color: PAL.lime },
   { id: 'overload', boss: 'gea', name: 'ESTADO SOBRECARGA', concept: 'Estados', code: 'energía = 100 → SOBRECARGA', desc: 'Con la energía llena, el sable entra en SOBRECARGA: brilla y cada golpe hace +1 de daño hasta bajar de 70.', how: null, howText: 'llena la energía', color: PAL.coral },
-  { id: 'rush', boss: 'h2', name: 'EMBESTIDA DE LUZ', concept: 'Pipelines', code: 'correr → impulso → tajo', desc: 'Corriendo, pulsa ATAQUE: embistes hacia delante cortando todo y sin recibir daño.', how: 'run', howText: '+ ATAQUE', color: PAL.orange },
+  { id: 'rush', boss: 'h2', name: 'EMBESTIDA DE LUZ', concept: 'Pipelines', code: 'correr → impulso → tajo', desc: 'Corriendo, pulsa ATAQUE: embistes hacia delante cortando todo y sin recibir daño (15 de energía).', how: 'run', howText: '+ ATAQUE', color: PAL.orange },
   { id: 'seeker', boss: 'bateria', name: 'RAYO BUSCADOR', concept: 'Búsqueda', code: 'objetivo ← enemigo_más_cercano()', desc: 'El pulso cargado busca y persigue al enemigo más cercano.', how: 'attack', howText: 'mantén y suelta', color: PAL.pink },
-  { id: 'solar', boss: 'prisma', name: 'RECARGA SOLAR', concept: 'Microred', code: 'MIENTRAS energía < 100: +4/s', desc: 'Tu propia microred: la energía se recarga sola hasta llenarse.', how: null, howText: 'automático', color: PAL.violet }
+  { id: 'solar', boss: 'prisma', name: 'RECARGA SOLAR', concept: 'Microred', code: 'MIENTRAS energía < 100: +2/s', desc: 'Tu propia microred: la energía se recarga sola hasta llenarse.', how: null, howText: 'automático', color: PAL.violet }
 ];
 const hasPower = id => !!(G.save.powers && G.save.powers[id]);
 const powerOfBoss = key => POWERS.find(p => p.boss === key);
@@ -10423,7 +10437,8 @@ function drawHUD(g, lv) {
   // energía: la marca indica lo que cuesta recargar una célula
   const bw = cellsW - 4;
   const eCol = p.chargeReady ? (Math.floor(lv.time * 12) % 2 ? PAL.white : PAL.teal) : p.energy >= healCost() && p.cells < p.maxCells ? PAL.lime : PAL.teal;
-  bar(g, 6, 14, bw, 4, p.energy, 100, eCol, '#10162B');
+  bar(g, 6, 14, bw, 4, p.energy, 100, p.regenDelay > 0 && !p.chargeReady ? shade(eCol, -0.35) : eCol, '#10162B');
+  rect(g, 6 + Math.round(bw * PASSIVE_ENERGY_CAP / 100), 18, 1, 1, '#8C93B8'); // hasta aquí se recarga sola
   rect(g, 6 + Math.round(bw * healCost() / 100), 13, 1, 6, 'rgba(255,243,215,0.55)');
   // estados de los poderes bajo la barra
   if (p.overload) drawText(g, 'SOBRECARGA', 6, 22, Math.floor(lv.time * 8) % 2 ? PAL.coral : PAL.white, { shadow: PAL.ink });
@@ -15819,7 +15834,7 @@ for (const k in BOSSES) {
 Object.assign(CODEX, {
   e_lumisable: {
     cat: 'bestiario', title: 'Lumisable', short: 'Lumi concentra su luz en una hoja. No destruye: depura.', icon: 'star',
-    sections: [['Ataque', 'Tres tajos seguidos hacen un combo. Con ↑ golpeas hacia arriba. En el aire, ↓ + ataque rebota (pogo) sobre enemigos, proyectiles y pinchos.'], ['Pulso', 'Mantén el ataque y suéltalo: una onda de luz que atraviesa enemigos (30 de energía).'], ['Parada', 'Golpea un proyectil justo cuando llega: vuelve hacia quien lo lanzó. Si lo haces al instante, ¡parada perfecta! Algunas embestidas también se paran.'], ['Recarga', 'Quieta, mantén ↓: con 50 de energía Lumi recupera una célula. La energía se gana golpeando y con orbes.'], ['Lente', 'Con la Lente Debug activa, cada golpe es CRÍTICO (+1 de daño) y ves el programa de los jefes.']]
+    sections: [['Ataque', 'Tres tajos seguidos hacen un combo. En el suelo, ↑ + ataque es un GANCHO que te eleva golpeando hacia arriba y ↓ + ataque una BARRIDA a ras de suelo. En el aire, ↑ + ataque golpea arriba y ↓ + ataque rebota (pogo) sobre enemigos, proyectiles y pinchos. Con ↓ te agachas para esquivar disparos altos.'], ['Pulso', 'Mantén el ataque y suéltalo: una onda de luz que atraviesa enemigos (35 de energía).'], ['Parada', 'Golpea un proyectil justo cuando llega: vuelve hacia quien lo lanzó. Si lo haces al instante, ¡parada perfecta! Algunas embestidas también se paran.'], ['Recarga', 'Agachada y quieta (mantén ↓): con 50 de energía Lumi recupera una célula. La energía se gana golpeando y con orbes; sola solo sube hasta 50, despacio, y se pausa un momento después de gastarla.'], ['Lente', 'Con la Lente Debug activa, cada golpe es CRÍTICO (+1 de daño) y ves el programa de los jefes.']]
   },
   e_bugglin: { cat: 'bestiario', title: 'Bugglin', short: 'Escarabajo glitch que intercambia el orden de las cosas.', icon: 'bug', sections: [['Algoritmo', ['REPETIR:', '  caminar()', '  SI pared O borde: girar()']], ['Cómo depurarlo', 'Salta encima o dos tajos.']] },
   e_hopper: { cat: 'bestiario', title: 'Bit Saltarín', short: 'Una bolita eléctrica con antena. Muy entusiasta.', icon: 'bug', sections: [['Algoritmo', ['SI Lía cerca:', '  agacharse()', '  saltar_hacia(Lía)']], ['Cómo depurarlo', 'Cuando se agacha, va a saltar: apártate y golpéalo al aterrizar.'], ['Frase', '"¡Bip! ¡BIP BIP!"']] },

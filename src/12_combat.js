@@ -21,11 +21,13 @@ const SABER = {
   // GANCHO (↑ + ataque en el suelo): salta hacia arriba con un arco de luz en forma de gancho
   hook: { dur: 0.38, act: [0.03, 0.28], a0: 60, a1: -215, box: [-8, -28, 30, 44], dmg: 2, kb: 120, len: 18 }
 };
-const CHARGE_TIME = 0.65, PASSIVE_ENERGY_CAP = 60;
+const CHARGE_TIME = 0.65, PASSIVE_ENERGY_CAP = 50;
+// energía: la recarga sola llega hasta 50, despacio, y se detiene un rato después de gastar
+const ENERGY = { regen: 4.5, regenDark: 2.5, delay: 2.2, hit: 6, hitForged: 9, shieldHit: 34, spin: 12, rush: 15, twin: 10 };
 // mejoras de la Forja del Lumisable (cada una es un concepto: ver 29_forge.js)
 const forged = k => !!(G.save.forge && G.save.forge[k]);
 // coste del pulso y de la recarga (la forja los abarata)
-const pulseCost = () => forged('pulse') ? 20 : 30;
+const pulseCost = () => (forged('pulse') ? 25 : 35) + (hasPower('twin') ? ENERGY.twin : 0);
 const healCost = () => forged('cells') ? 40 : 50;
 const healTime = () => forged('cells') ? 0.7 : 0.9;
 
@@ -39,6 +41,8 @@ function saberColor(lv) {
 function hitstop(lv, t) { if (lv) lv.hitstop = Math.max(lv.hitstop || 0, t); }
 
 // ---------- Lía: sable, pulso, recarga ----------
+// gastar energía: además del coste, la recarga sola se pausa unos segundos
+Player.prototype.spend = function (n) { this.energy = Math.max(0, this.energy - n); this.regenDelay = Math.max(this.regenDelay || 0, ENERGY.delay); };
 Player.prototype.initCombat = function () {
   this.atk = null; this.atkCD = 0; this.combo = 0; this.comboT = 0; this.atkBuf = 0;
   this.chargeT = 0; this.chargeReady = false; this.healT = 0; this.pogoT = 0;
@@ -93,13 +97,13 @@ Player.prototype.updateCombat = function (dt, control) {
     else if (up && this.onGround && !this.inWater) kind = 'hook';
     else if (up && !this.inWater) kind = 'up';
     // TAJO TORBELLINO: en el aire con SALTO mantenido
-    else if (hasPower('spin') && !this.onGround && !this.inWater && Input.down('jump')) kind = 'spin';
+    else if (hasPower('spin') && !this.onGround && !this.inWater && Input.down('jump') && this.energy >= ENERGY.spin) kind = 'spin';
     // EMBESTIDA DE LUZ: corriendo por el suelo
-    else if (hasPower('rush') && this.onGround && !this.inWater && Input.down('run') && Math.abs(this.vx) > 40) kind = 'rush';
+    else if (hasPower('rush') && this.onGround && !this.inWater && Input.down('run') && Math.abs(this.vx) > 40 && this.energy >= ENERGY.rush) kind = 'rush';
     else { this.combo = this.comboT > 0 ? (this.combo % 3) + 1 : 1; kind = 'f' + this.combo; }
     this.startAttack(kind);
-    if (kind === 'spin') { this.vy = Math.min(this.vy, -40); AudioSys.sfx('wind'); }
-    if (kind === 'rush') { this.dashT = 0.24; this.dashDir = this.face; this.inv = Math.max(this.inv, 0.35); AudioSys.sfx('dash'); }
+    if (kind === 'spin') { this.spend(ENERGY.spin); this.vy = Math.min(this.vy, -40); AudioSys.sfx('wind'); }
+    if (kind === 'rush') { this.spend(ENERGY.rush); this.dashT = 0.24; this.dashDir = this.face; this.inv = Math.max(this.inv, 0.35); AudioSys.sfx('dash'); }
     if (kind === 'slide') { this.setCrouch(true); this.vx = this.face * 230; AudioSys.sfx('dash'); Particles.burst(this.cx - this.face * 4, this.y + this.h, 8, { color: '#FFF3D7', min: 20, max: 60, angle: Math.PI + (this.face > 0 ? 0.3 : -0.3), spread: 0.8, lmax: 0.35 }); }
     if (kind === 'hook') { this.setCrouch(false); this.vy = -PHYS.jumpV * 1.02; this.onGround = false; this.coyote = 0; this.vx = this.face * 70; AudioSys.sfx('jump'); }
     this.chargeT = 0; this.chargeReady = false; this.healT = 0;
@@ -126,7 +130,7 @@ Player.prototype.updateCombat = function (dt, control) {
     this.healT += dt;
     if (Math.random() < 0.6) { const an = rand(0, 6.28); Particles.spawn({ x: this.cx + Math.cos(an) * 18, y: this.y + 10 + Math.sin(an) * 18, vx: -Math.cos(an) * 50, vy: -Math.sin(an) * 50, life: 0.35, type: 'dot', color: PAL.sun }); }
     if (this.healT >= healTime()) {
-      this.healT = 0; this.cells++; this.energy -= healCost();
+      this.healT = 0; this.cells++; this.spend(healCost());
       AudioSys.sfx('heal'); Particles.burst(this.cx, this.y + 8, 16, { colors: [PAL.sun, PAL.white, PAL.orange], min: 20, max: 60, type: 'star' });
       Particles.text(this.cx, this.y - 8, '+1 célula', PAL.sun);
       lv.lumi.mood = 'happy'; lv.lumi.moodT = 1.5;
@@ -164,7 +168,7 @@ Player.prototype.resolveHits = function () {
   if (!landed) return;
   if (!a.landed) {
     a.landed = true;
-    if (!blocked) this.energy = Math.min(100, this.energy + (forged('energy') ? 12 : 8));
+    if (!blocked) this.energy = Math.min(100, this.energy + (forged('energy') ? ENERGY.hitForged : ENERGY.hit));
     if (a.kind === 'down') {
       // POGO: rebote hacia arriba
       this.vy = -PHYS.jumpV * 0.95; this.gliding = false; this.pogoT = 0.2; this.coyote = 0;
@@ -177,7 +181,7 @@ Player.prototype.resolveHits = function () {
 function parryFx(p, e) {
   const lv = p.lv;
   AudioSys.sfx('parry'); hitstop(lv, 0.12); FX.flash('#FFFFFF', 0.25); FX.shake(2, 0.15);
-  p.inv = Math.max(p.inv, 0.4); p.energy = Math.min(100, p.energy + 12);
+  p.inv = Math.max(p.inv, 0.4); p.energy = Math.min(100, p.energy + 10);
   const x = e.x + (e.w || 10) / 2, y = e.y;
   Particles.text(x, y - 8, '¡PARADA!', PAL.sun);
   Particles.burst(x, y + 6, 14, { colors: [PAL.white, saberColor(lv), PAL.sun], min: 40, max: 110, type: 'spark', lmax: 0.35 });
@@ -185,7 +189,7 @@ function parryFx(p, e) {
 }
 Player.prototype.firePulse = function () {
   const lv = this.lv;
-  this.energy -= pulseCost();
+  this.spend(pulseCost());
   const dir = this.face;
   lv.addEntity(new LumenWave(lv, dir > 0 ? this.x + this.w : this.x - 14, this.y - 1, dir, saberColor(lv)));
   // PULSO DOBLE: la misma función, llamada hacia atrás

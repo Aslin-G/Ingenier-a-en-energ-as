@@ -172,7 +172,8 @@ function drawHUD(g, lv) {
   // energía: la marca indica lo que cuesta recargar una célula
   const bw = cellsW - 4;
   const eCol = p.chargeReady ? (Math.floor(lv.time * 12) % 2 ? PAL.white : PAL.teal) : p.energy >= healCost() && p.cells < p.maxCells ? PAL.lime : PAL.teal;
-  bar(g, 6, 14, bw, 4, p.energy, 100, eCol, '#10162B');
+  bar(g, 6, 14, bw, 4, p.energy, 100, p.regenDelay > 0 && !p.chargeReady ? shade(eCol, -0.35) : eCol, '#10162B');
+  rect(g, 6 + Math.round(bw * PASSIVE_ENERGY_CAP / 100), 18, 1, 1, '#8C93B8'); // hasta aquí se recarga sola
   rect(g, 6 + Math.round(bw * healCost() / 100), 13, 1, 6, 'rgba(255,243,215,0.55)');
   // estados de los poderes bajo la barra
   if (p.overload) drawText(g, 'SOBRECARGA', 6, 22, Math.floor(lv.time * 8) % 2 ? PAL.coral : PAL.white, { shadow: PAL.ink });

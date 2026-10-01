@@ -824,7 +824,14 @@ class Player {
   }
   hurt(src) {
     if (this.inv > 0 || this.dashT > 0 || G.noDamage || (Cut.active && !Cut.free)) return;
-    if (this.shieldOn) { AudioSys.sfx('shield'); Particles.burst(this.cx, this.y + 10, 10, { color: PAL.orange, min: 30, max: 60 }); if (src && src.bounce) src.bounce(this); return; }
+    // escudo: bloquea el golpe pero cuesta un tercio de la energía (3 golpes lo agotan)
+    if (this.shieldOn) {
+      AudioSys.sfx('shield'); Particles.burst(this.cx, this.y + 10, 10, { color: PAL.orange, min: 30, max: 60 }); if (src && src.bounce) src.bounce(this);
+      this.spend(ENERGY.shieldHit); this.inv = Math.max(this.inv, 0.45); FX.shake(1.5, 0.15);
+      Particles.text(this.cx, this.y - 6, '−' + ENERGY.shieldHit + ' energía', PAL.orange);
+      if (this.energy <= 0) { this.shieldArmed = false; this.shieldOn = false; AudioSys.sfx('fail'); Bark.say('pix', '¡El escudo se rompió! Sin energía no hay condición que valga.'); }
+      return;
+    }
     // el golpe empuja lejos de quien lo dio
     const sx = src && src.x != null ? src.x + (src.w || 0) / 2 : null;
     const dir = sx != null && Math.abs(sx - this.cx) > 1 ? sign(this.cx - sx) : -this.face;
@@ -981,12 +988,15 @@ class Player {
     this.shieldOn = false;
     if (this.shieldArmed && hasAbility('shield')) {
       const cond = this.shieldCondition();
-      if (cond && this.energy > 0) { this.shieldOn = true; this.energy -= (this.shieldRule === 1 ? 45 : 30) * dt; if (this.energy <= 0) { this.energy = 0; this.shieldArmed = false; Bark.say('pix', 'Escudo sin energía. ¿Quizás la condición era demasiado amplia?'); } }
+      if (cond && this.energy > 0) { this.shieldOn = true; this.energy -= (this.shieldRule === 1 ? 22 : this.shieldRule === 2 ? 12 : 10) * dt; this.regenDelay = Math.max(this.regenDelay || 0, 0.5); if (this.energy <= 0) { this.energy = 0; this.shieldArmed = false; Bark.say('pix', 'Escudo sin energía. ¿Quizás la condición era demasiado amplia?'); } }
     }
     // la energía se recarga sola hasta 60; el resto se gana golpeando con el sable y con los orbes
-    if (!this.shieldOn && this.energy < PASSIVE_ENERGY_CAP) this.energy = Math.min(PASSIVE_ENERGY_CAP, this.energy + (lv.power > 0.3 ? 18 : 10) * dt);
-    // poder RECARGA SOLAR: la energía sigue subiendo sola hasta 100
-    if (hasPower('solar') && !this.shieldOn && this.energy >= PASSIVE_ENERGY_CAP && this.energy < 100) this.energy = Math.min(100, this.energy + 4 * dt);
+    // (más despacio, y en pausa unos segundos después de gastar energía)
+    this.regenDelay = Math.max(0, (this.regenDelay || 0) - dt);
+    const canRegen = !this.shieldOn && this.regenDelay <= 0;
+    if (canRegen && this.energy < PASSIVE_ENERGY_CAP) this.energy = Math.min(PASSIVE_ENERGY_CAP, this.energy + (lv.power > 0.3 ? ENERGY.regen : ENERGY.regenDark) * dt);
+    // poder RECARGA SOLAR: la energía sigue subiendo sola hasta 100 (despacio)
+    if (hasPower('solar') && canRegen && this.energy >= PASSIVE_ENERGY_CAP && this.energy < 100) this.energy = Math.min(100, this.energy + 2 * dt);
     // poder ESTADO SOBRECARGA: NORMAL → SOBRECARGA con la energía llena; vuelve a NORMAL bajo 70
     if (hasPower('overload')) { if (!this.overload && this.energy >= 100) { this.overload = true; AudioSys.sfx('chargeUp', 1); Particles.text(this.cx, this.y - 10, 'SOBRECARGA', PAL.coral); } else if (this.overload && this.energy < 70) this.overload = false; }
     if (Input.hit('ability') && ab) {
@@ -996,8 +1006,8 @@ class Player {
         case 'shield': Scenes.push(new ShieldRuleScene(this)); break;
         case 'glide': Bark.say('pix', 'MIENTRAS mantengas SALTO en el aire: planear. ¡Un bucle con condición!'); break;
         case 'dash':
-          if (this.energy >= 20) {
-            this.energy -= 20; this.dashT = 0.2; this.dashDir = this.face; this.inv = Math.max(this.inv, 0.25); AudioSys.sfx('dash');
+          if (this.energy >= 25) {
+            this.spend(25); this.dashT = 0.2; this.dashDir = this.face; this.inv = Math.max(this.inv, 0.25); AudioSys.sfx('dash');
             const tgt = lv.entities.filter(e => e.priority != null && !e.dead && Math.abs(e.y - this.y) < 40 && (e.x - this.x) * this.face > 0 && Math.abs(e.x - this.x) < 110).sort((a, b) => b.priority - a.priority)[0];
             if (tgt) { this.dashDir = sign(tgt.x - this.x) || this.face; Particles.text(tgt.x + 4, tgt.y - 6, 'PRIORIDAD ' + tgt.priority, PAL.pink); }
           } else Bark.say('pix', 'Energía insuficiente para el Dash. Recarga cerca de la luz.');
