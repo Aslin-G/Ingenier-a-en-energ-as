@@ -275,6 +275,8 @@ function drawHUD(g, lv) {
   }
   // barra del mini jefe (durante su pelea)
   if (lv.miniFight) drawMiniHUD(g, lv);
+  // paneles propios del nivel (p. ej., la lista del patio de entrenamiento)
+  if (lv.def.hudDraw) lv.def.hudDraw(lv, g);
   // células de energía (forma de Lumi)
   for (let i = 0; i < p.maxCells; i++) {
     const on = i < p.cells;
@@ -861,67 +863,7 @@ class MapScene {
   }
 }
 
-// ---------------------------------------------------------------------
-//  TALLER DE LÍA (casa base)
-// ---------------------------------------------------------------------
-const COSMETICS = {
-  pack: { name: 'Mochila solar', region: 'solaria', desc: 'Pequeños paneles que brillan al sol.' },
-  cape: { name: 'Capa eólica', region: 'aeris', desc: 'Ondea con cualquier brisa.' },
-  boots: { name: 'Botas hidro', region: 'hydria', desc: 'Impermeables y con estilo.' },
-  goggles: { name: 'Gafas Debug', region: 'gea', desc: 'Las gafas bajadas: modo concentración.' }
-};
-const SOUVENIRS = { puerto: 'faro de juguete', valle: 'molinito', solaria: 'mini panel', aeris: 'cometa', hydria: 'frasco de cascada', bioloop: 'maceta de compost', gea: 'cristal cálido', h2: 'barquito H2', bateria: 'pila de neón', prisma: 'prisma', faro: 'foto del festival' };
-class TallerScene {
-  constructor() { this.opaque = true; this.t = 0; this.prevNav = UI.nav; UI.nav = true; UI.focus = null; }
-  update(dt) { this.t += dt; if (Input.hit('back')) { Input.consume(); UI.nav = this.prevNav; Scenes.pop(); } }
-  draw(g) {
-    vGradient(g, 0, 0, W, H, [[0, '#6B4A2C'], [1, '#4A2A18']], false);
-    for (let x = 0; x < W; x += 24) rect(g, x, 0, 1, 190, '#5A3A20');
-    rect(g, 0, 190, W, 80, '#8B5A3C'); for (let x = 0; x < W; x += 32) rect(g, x, 190, 1, 80, '#6B4A2A');
-    // ventana
-    rect(g, 200, 30, 80, 60, '#1B3A8A'); strokeRect(g, 200, 30, 80, 60, '#3A2010'); rect(g, 239, 30, 2, 60, '#3A2010'); pcircle(g, 260, 50, 5, PAL.cream);
-    drawText(g, 'TALLER DE LÍA', 240, 8, PAL.sun, { align: 'center', scale: 2 });
-    // estantes con recuerdos
-    for (let s = 0; s < 2; s++) rect(g, 20, 70 + s * 50, 160, 4, '#B07A4A');
-    REGIONS.forEach((r, i) => {
-      const x = 28 + (i % 6) * 26, y = 58 + Math.floor(i / 6) * 50;
-      if (restored(r.key)) { rect(g, x, y, 14, 12, shade(r.col, -0.3)); rect(g, x + 2, y + 2, 10, 8, r.col); if (Math.floor(this.t * 2 + i) % 7 === 0) px(g, x + 5, y + 3, '#FFFFFF'); }
-      else strokeRect(g, x, y, 14, 12, '#5A3A20');
-    });
-    drawText(g, 'recuerdos de cada isla', 100, 130, '#E8C8A0', { align: 'center' });
-    // pegatinas (logros)
-    rect(g, 300, 30, 170, 100, '#5A3A2A'); strokeRect(g, 300, 30, 170, 100, '#3A2010');
-    drawText(g, 'PEGATINAS', 385, 34, PAL.pink, { align: 'center' });
-    Object.keys(ACHIEVEMENTS).forEach((k, i) => { const x = 308 + (i % 9) * 18, y = 46 + Math.floor(i / 9) * 18; if (G.save.achievements[k]) { pcircle(g, x + 6, y + 6, 6, hsl(i * 40, 80, 65)); icon(g, 'star', x + 2, y + 2); } else pring(g, x + 6, y + 6, 6, '#7A5A4A'); });
-    const bossesDone = Object.keys(BOSSES).filter(k => flag('boss_' + k)).length;
-    drawText(g, 'Jefes ' + bossesDone + '/' + Object.keys(BOSSES).length + ' · fragmentos ' + ((G.save.cellShards || 0) % 3) + '/3', 385, 116, '#E8C8A0', { align: 'center' });
-    // Lía y PÍX
-    const f = Spr.lia.idle[liaIdleFrame(this.t)];
-    g.drawImage(f.r, 230, 164); g.drawImage(Spr.pix[Math.floor(this.t * 16) % 4].r, 252, 150 + Math.sin(this.t * 3) * 2);
-    PROP_DRAW.workbench(g, 150, 168, { t: this.t, cfg: {} });
-    // armario de cosméticos
-    drawText(g, 'ARMARIO', 20, 150, PAL.sun);
-    Object.keys(COSMETICS).forEach((k, i) => {
-      const c = COSMETICS[k], owned = restored(c.region);
-      const worn = !!G.save.cosmetics.worn[k];
-      if (UI.btn(g, 'cos' + k, 20, 162 + i * 17, 120, 14, owned ? (worn ? '● ' : '○ ') + c.name : '? ? ?', { disabled: !owned, color: worn ? PAL.lime : PAL.teal, tip: owned ? c.desc : 'Se consigue restaurando ' + REGIONS[regionIdx(c.region)].name })) { G.save.cosmetics.worn[k] = !worn; rebuildLia(); AudioSys.sfx('confirm'); Save.write(); }
-    });
-    // postgame
-    if (flag('ending')) {
-      panel(g, 300, 134, 170, 32, { border: PAL.teal });
-      drawPara(g, 'PÍX: "He creado un algoritmo para elegir merienda." LÍA: "¿Por qué tiene 72 condiciones?"', 304, 137, 162, PAL.cream, { lh: 9 });
-    }
-    // laboratorio de simuladores: repetir cualquier simulador ya disponible
-    const simsN = SIM_ORDER.filter(simDone).length;
-    if (UI.btn(g, 'tsims', 300, 170, 170, 18, '⚗ SIMULADORES ' + simsN + '/' + SIM_ORDER.length, { color: PAL.aqua, tip: 'Energía renovable + programación: experimenta cuando quieras' })) Scenes.push(new SimLabScene());
-    // forja del Lumisable: mejoras del sable a cambio de núcleos y de demostrar el concepto
-    const cores = G.save.forgeCores || 0, forgedN = FORGE.filter(f => forged(f.id)).length;
-    if (UI.btn(g, 'tforge', 300, 192, 170, 18, '⚒ FORJA DEL LUMISABLE', { color: PAL.orange, primary: cores > 0 && forgedN < FORGE.length, tip: 'Mejoras del sable: cada una es un concepto' })) Scenes.push(new ForgeScene());
-    drawText(g, '◆ ' + cores + ' núcleos · ' + forgedN + '/' + FORGE.length + ' forjadas', 385, 214, '#E8C8A0', { align: 'center' });
-    if (UI.btn(g, 'tback', W - 70, H - 20, 64, 14, 'VOLVER', { color: PAL.teal })) { UI.nav = this.prevNav; Scenes.pop(); }
-    UI.drawTooltip(g);
-  }
-}
+// (El TALLER DE LÍA y el patio de entrenamiento viven en 29_taller.js)
 
 // ---------------------------------------------------------------------
 //  MODO DOCENTE

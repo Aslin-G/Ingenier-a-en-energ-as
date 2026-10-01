@@ -130,7 +130,7 @@ Player.prototype.updateCombat = function (dt, control) {
     this.healT += dt;
     if (Math.random() < 0.6) { const an = rand(0, 6.28); Particles.spawn({ x: this.cx + Math.cos(an) * 18, y: this.y + 10 + Math.sin(an) * 18, vx: -Math.cos(an) * 50, vy: -Math.sin(an) * 50, life: 0.35, type: 'dot', color: PAL.sun }); }
     if (this.healT >= healTime()) {
-      this.healT = 0; this.cells++; this.spend(healCost());
+      this.healT = 0; this.cells++; this.heals = (this.heals || 0) + 1; this.spend(healCost());
       AudioSys.sfx('heal'); Particles.burst(this.cx, this.y + 8, 16, { colors: [PAL.sun, PAL.white, PAL.orange], min: 20, max: 60, type: 'star' });
       Particles.text(this.cx, this.y - 8, '+1 célula', PAL.sun);
       lv.lumi.mood = 'happy'; lv.lumi.moodT = 1.5;
@@ -256,7 +256,7 @@ Player.prototype.drawBlade = function (g, X, Y, rad, face, len, col) {
 // ---------- Nivel: peligro cercano y utilidades ----------
 Level.prototype.dangerNear = function (r = 110) {
   const p = this.player;
-  for (const e of this.entities) if (e.hostile && !e.dead && Math.abs(e.x + (e.w || 0) / 2 - p.cx) < r && Math.abs(e.y + (e.h || 0) / 2 - p.y - 10) < 80) return true;
+  for (const e of this.entities) if (e.hostile && !e.dead && !e.harmless && Math.abs(e.x + (e.w || 0) / 2 - p.cx) < r && Math.abs(e.y + (e.h || 0) / 2 - p.y - 10) < 80) return true;
   return false;
 };
 

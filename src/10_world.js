@@ -1030,7 +1030,7 @@ class Player {
     if (lv.boss && lv.boss.ringNear(this.cx, this.y + 10, 22)) return true;
     // SI peligro_cerca
     const R = 26;
-    for (const e of lv.entities) if (e.hostile && !e.dead && dist(e.x + e.w / 2, e.y + e.h / 2, this.cx, this.y + 10) < R + 10) return true;
+    for (const e of lv.entities) if (e.hostile && !e.dead && !e.harmless && dist(e.x + e.w / 2, e.y + e.h / 2, this.cx, this.y + 10) < R + 10) return true;
     const x0 = Math.floor((this.x - R) / TILE), x1 = Math.floor((this.x + this.w + R) / TILE), y0 = Math.floor((this.y - R / 2) / TILE), y1 = Math.floor((this.y + this.h + R / 2) / TILE);
     for (let ty = y0; ty <= y1; ty++) for (let tx = x0; tx <= x1; tx++) { const t = lv.tile(tx, ty); if (t === '^') return true; const d = lv.dyn(t); if (d && d.hazard && d.hazard(lv)) return true; }
     return false;

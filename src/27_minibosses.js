@@ -342,6 +342,7 @@ class MiniBoss extends Enemy {
     if (lv.miniFight === this) lv.miniFight = null;
     for (const e of lv.entities) if (e instanceof Shot && e.owner === this) e.dead = true;
     setFlag('mini_' + this.region);
+    if (Object.keys(MINI).every(k => flag('mini_' + k))) achieve('minis');
     AudioSys.sfx('bossDown'); FX.flash('#FFFFFF', 0.35); FX.shake(3, 0.5);
     Particles.burst(this.x + this.w / 2, this.y + this.h / 2, 40, { colors: [this.D.col, PAL.lime, PAL.white], min: 30, max: 140, type: 'bit', lmax: 1 });
     Particles.text(this.x + this.w / 2, this.y - 12, this.D.name + ' ¡depurado!', PAL.lime);

@@ -164,7 +164,9 @@ const ACHIEVEMENTS = {
   streak: { name: 'CONSTANCIA', desc: 'Repasaste tus cartas 3 días seguidos.' },
   smith: { name: 'MAESTRA FORJADORA', desc: 'Forjaste todas las mejoras del Lumisable.' },
   simulators: { name: 'CIENTÍFICA DE CAMPO', desc: 'Completaste los 6 simuladores de energía.' },
-  powerful: { name: 'LUMISABLE COMPLETO', desc: 'Conseguiste los 10 poderes de los jefes.' }
+  powerful: { name: 'LUMISABLE COMPLETO', desc: 'Conseguiste los 10 poderes de los jefes.' },
+  minis: { name: 'CAZADORA DE MINI JEFES', desc: 'Depuraste a los 10 mini jefes del archipiélago.' },
+  trainer: { name: 'ALUMNA DEL PATIO', desc: 'Completaste la lista del patio de entrenamiento.' }
 };
 function achieve(id) {
   if (G.save.achievements[id] || !ACHIEVEMENTS[id]) return;

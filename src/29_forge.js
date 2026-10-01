@@ -8,8 +8,8 @@
 const FORGE = [
   { id: 'reach', name: 'Alcance variable', key: 'variables', cost: 2, code: 'alcance ← alcance + 5', desc: 'La hoja llega más lejos: golpeas antes.' },
   { id: 'parry', name: 'Filtro SI', key: 'conditions', cost: 2, code: 'SI llega un disparo → devolver', desc: 'Más margen para devolver disparos.' },
-  { id: 'energy', name: 'Bucle de energía', key: 'loops', cost: 2, code: 'MIENTRAS golpeas: energía + 12', desc: 'Cada golpe da 12 de energía (antes 8).' },
-  { id: 'pulse', name: 'Función pulso()', key: 'functions', cost: 3, code: 'pulso() cuesta 20', desc: 'El pulso cargado gasta 20 (antes 30).' },
+  { id: 'energy', name: 'Bucle de energía', key: 'loops', cost: 2, code: 'MIENTRAS golpeas: energía + 9', desc: 'Cada golpe da 9 de energía (antes 6).' },
+  { id: 'pulse', name: 'Función pulso()', key: 'functions', cost: 3, code: 'pulso() cuesta 25', desc: 'El pulso cargado gasta 25 (antes 35).' },
   { id: 'cells', name: 'Lista de células', key: 'arrays', cost: 3, code: 'recargar(células[i]) más rápido', desc: 'Recargar cuesta 40 (antes 50) y es rápido.' },
   { id: 'guard', name: 'Estado GUARDIA', key: 'states', cost: 3, code: 'DAÑO → GUARDIA (1,9 s)', desc: 'Más invulnerable tras recibir un golpe.' },
   { id: 'finisher', name: 'Tajo ordenado', key: 'sorting', cost: 4, code: 'combo[2] → daño + 1', desc: 'El tercer tajo del combo hace +1 de daño.' }
@@ -43,7 +43,7 @@ class ForgeScene {
       const label = done ? '✓ FORJADA' : 'FORJAR ◆' + f.cost;
       if (UI.btn(g, 'fg' + f.id, 370, y + 4, 86, 15, label, { color: done ? PAL.sun : can ? PAL.orange : '#6A5A5A', disabled: done || !can, primary: can, tip: done ? f.desc : can ? 'Responde una pregunta de ' + MASTERY_LABELS[f.key] : 'Te faltan ' + (f.cost - cores) + ' núcleos' })) Scenes.push(new ForgeTrialScene(f));
     });
-    drawPara(g, 'Consigue núcleos abriendo cerraduras de código en las islas, repasando tus cartas cada día y superando el reto del día.', 20, 242, 360, '#8C7A6A', { lh: 10 });
+    drawPara(g, 'Consigue núcleos con cerraduras de código, mini jefes, simuladores, el patio de entrenamiento, el reto del día y repasando tus cartas.', 20, 242, 360, '#8C7A6A', { lh: 10 });
     if (UI.btn(g, 'fgback', 392, 246, 70, 15, 'VOLVER', { color: PAL.teal })) Scenes.pop();
     UI.drawTooltip(g);
   }

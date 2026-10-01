@@ -130,7 +130,7 @@ const ok = (cond, msg) => { console.log((cond ? '  ok   ' : '  FALLO') + ' ' + m
   await p.waitForTimeout(300);
   await p.screenshot({ path: outDir + '/forge_trial.png' });
   ok(fg.afterWrong.cores === 5 && !fg.afterWrong.forged, 'un fallo en la prueba de forja no gasta núcleos');
-  ok(fg.forged && fg.cores === 2 && fg.before === 30 && fg.after === 20, 'acertar forja «Función pulso()»: el pulso pasa de 30 a 20 de energía');
+  ok(fg.forged && fg.cores === 2 && fg.before === 35 && fg.after === 25, 'acertar forja «Función pulso()»: el pulso pasa de 35 a 25 de energía');
 
   ok(errs.length === 0, 'sin errores de consola' + (errs.length ? '\n     ' + errs.join('\n     ') : ''));
   await b.close();

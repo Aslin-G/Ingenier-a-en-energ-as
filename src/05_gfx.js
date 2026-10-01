@@ -335,6 +335,7 @@ const Toast = {
     // junto a una cerradura de código, los avisos van bajo su holograma
     if (inLevel && lv.lockPanel && lv.lockPanel.near > 0.05 && !Dlg.box && typeof lockPanelRect === 'function') { const r = lockPanelRect(lv.lockPanel); if (r.y < 60) return r.y + r.h + 4; }
     if (inLevel && lv && lv.banner > 0 && lv.def.title && !lv.def.noHud) return 78;
+    if (inLevel && lv.hudBottom) return lv.hudBottom + 4;
     return inLevel && lv.rboss && lv.rboss.showBar ? 30 : 20;
   },
   reserveAreas() { let y = this.top(); for (const t of this.list) { const w = textW(t.text) + 12; Labels.reserve(W - w - 6, Math.round(t.y != null ? t.y : y), w, 15); y += 18; } },
