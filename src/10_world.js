@@ -53,6 +53,7 @@ class Level {
     this.hitstop = 0;
     populateFoes(this);
     placeLocks(this);
+    placeSims(this);
     this.bg = getBackground(def.theme);
     this.buildStatic();
     const start = this.findSpawn(spawnId);

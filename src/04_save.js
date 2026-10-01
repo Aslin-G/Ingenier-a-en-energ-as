@@ -36,7 +36,7 @@ function newSave() {
     // cartas del Atlas (repaso espaciado), racha de repaso y reto del día
     cards: {}, review: { streak: 0, best: 0, last: null, coreDay: null }, daily: {},
     // mejoras forjadas del Lumisable y poderes ganados a los jefes
-    forge: {}, powers: {}
+    forge: {}, powers: {}, sims: {}
   };
 }
 
@@ -162,7 +162,9 @@ const ACHIEVEMENTS = {
   locksmith: { name: 'CERRAJERA DE AURORA', desc: 'Abriste 10 cerraduras de código.' },
   memory: { name: 'MEMORIA DE ORO', desc: 'Llevaste 5 cartas del Atlas al nivel ORO.' },
   streak: { name: 'CONSTANCIA', desc: 'Repasaste tus cartas 3 días seguidos.' },
-  smith: { name: 'MAESTRA FORJADORA', desc: 'Forjaste todas las mejoras del Lumisable.' }
+  smith: { name: 'MAESTRA FORJADORA', desc: 'Forjaste todas las mejoras del Lumisable.' },
+  simulators: { name: 'CIENTÍFICA DE CAMPO', desc: 'Completaste los 6 simuladores de energía.' },
+  powerful: { name: 'LUMISABLE COMPLETO', desc: 'Conseguiste los 10 poderes de los jefes.' }
 };
 function achieve(id) {
   if (G.save.achievements[id] || !ACHIEVEMENTS[id]) return;

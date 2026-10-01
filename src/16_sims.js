@@ -86,9 +86,11 @@ class SimScene extends PuzzleBase {
     d.missions.forEach((m, i) => {
       if (my > 100) return;
       const done = i < this.mi, cur = i === this.mi && !this.result;
-      const lines = wrapPlain(m.text, 146).slice(0, cur ? 3 : 1);
+      // la misión actual usa todas las líneas que quepan (las demás, una línea)
+      const all = wrapPlain(m.text, 146), rest = d.missions.length - i - 1;
+      const maxL = cur ? clamp(Math.floor((106 - my - rest * 12) / 9), 1, 6) : 1, lines = all.slice(0, maxL);
       drawText(g, done ? '✓' : cur ? '▶' : '○', 314, my, done ? PAL.lime : cur ? PAL.sun : '#565E8C');
-      lines.forEach((ln, k) => drawText(g, k === lines.length - 1 && !cur && wrapPlain(m.text, 146).length > 1 ? fitText(ln + '…', 146) : ln, 324, my + k * 9, done ? '#8CC88C' : cur ? PAL.cream : '#6A7090'));
+      lines.forEach((ln, k) => drawText(g, k === lines.length - 1 && all.length > lines.length ? fitText(ln + '…', 146) : ln, 324, my + k * 9, done ? '#8CC88C' : cur ? PAL.cream : '#6A7090'));
       my += lines.length * 9 + 3;
     });
     if (this.mission && this.mission.hold && this.hold > 0) bar(g, 314, 101, 156, 3, this.hold, this.mission.hold, PAL.lime, '#1E2748');
@@ -97,7 +99,8 @@ class SimScene extends PuzzleBase {
     panel(g, gx, gy, gw, gh, { border: '#2A3570', bg: '#0B1020', flat: true });
     drawText(g, ch.label, gx + 5, gy + 3, ch.color);
     const top = gy + 13, bh = gh - 16;
-    if (ch.target != null) { const ty = Math.round(top + bh - clamp((ch.target - (ch.min || 0)) / (ch.max - (ch.min || 0)), 0, 1) * bh); for (let x = gx + 4; x < gx + gw - 4; x += 4) rect(g, x, ty, 2, 1, PAL.lime); drawText(g, 'meta', gx + gw - 5, ty - 8, PAL.lime, { align: 'right' }); }
+    const tgt = typeof ch.target === 'function' ? ch.target(st, this) : ch.target;
+    if (tgt != null) { const ty = Math.round(top + bh - clamp((tgt - (ch.min || 0)) / (ch.max - (ch.min || 0)), 0, 1) * bh); for (let x = gx + 4; x < gx + gw - 4; x += 4) rect(g, x, ty, 2, 1, PAL.lime); drawText(g, 'meta', gx + gw - 5, ty - 8, PAL.lime, { align: 'right' }); }
     // la gráfica avanza de izquierda a derecha y se desplaza al llenarse
     const lo = ch.min || 0, yv = v => top + bh - clamp((v - lo) / (ch.max - lo), 0, 1) * bh;
     for (let i = 1; i < this.hist.length; i++) {

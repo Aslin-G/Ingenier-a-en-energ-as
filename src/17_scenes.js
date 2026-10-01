@@ -794,9 +794,12 @@ class TallerScene {
     });
     // postgame
     if (flag('ending')) {
-      panel(g, 300, 140, 170, 44, { border: PAL.teal });
-      drawPara(g, 'PÍX: "He creado un algoritmo para elegir merienda." LÍA: "¿Por qué tiene 72 condiciones?"', 306, 146, 160, PAL.cream);
+      panel(g, 300, 134, 170, 32, { border: PAL.teal });
+      drawPara(g, 'PÍX: "He creado un algoritmo para elegir merienda." LÍA: "¿Por qué tiene 72 condiciones?"', 304, 137, 162, PAL.cream, { lh: 9 });
     }
+    // laboratorio de simuladores: repetir cualquier simulador ya disponible
+    const simsN = SIM_ORDER.filter(simDone).length;
+    if (UI.btn(g, 'tsims', 300, 170, 170, 18, '⚗ SIMULADORES ' + simsN + '/' + SIM_ORDER.length, { color: PAL.aqua, tip: 'Energía renovable + programación: experimenta cuando quieras' })) Scenes.push(new SimLabScene());
     // forja del Lumisable: mejoras del sable a cambio de núcleos y de demostrar el concepto
     const cores = G.save.forgeCores || 0, forgedN = FORGE.filter(f => forged(f.id)).length;
     if (UI.btn(g, 'tforge', 300, 192, 170, 18, '⚒ FORJA DEL LUMISABLE', { color: PAL.orange, primary: cores > 0 && forgedN < FORGE.length, tip: 'Mejoras del sable: cada una es un concepto' })) Scenes.push(new ForgeScene());

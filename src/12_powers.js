@@ -24,6 +24,7 @@ function grantPower(id) {
   G.save.powers = G.save.powers || {};
   if (G.save.powers[id]) return false;
   G.save.powers[id] = true;
+  if (POWERS.every(p => G.save.powers[p.id])) achieve('powerful');
   const lv = G.run.level;
   if (id === 'cell' && lv && lv.player) { lv.player.refreshCells(); lv.player.cells = lv.player.maxCells; }
   return true;
