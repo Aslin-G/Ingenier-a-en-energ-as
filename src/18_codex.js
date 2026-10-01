@@ -191,7 +191,7 @@ const CODEX = {
     'Muy baja.', 'Electricidad, calefacción, invernaderos, termas.', 'Gases del subsuelo, sismicidad inducida en casos puntuales.',
     'Gea Profunda: máquina de estados y transiciones seguras.', 'Factor de capacidad alto (70–90%): produce casi siempre.', 'fire'),
   hidrogeno: ENE('Hidrógeno verde', 'Un VECTOR energético: guarda y transporta energía. No es una fuente primaria.',
-    'No hay "pozos de hidrógeno": se fabrica con electricidad renovable y agua.', 'Electrólisis (agua → H2 + O2); luego una pila de combustible convierte H2 → electricidad.',
+    'Casi todo se fabrica (los yacimientos naturales son rarísimos): el verde, con electricidad renovable y agua.', 'Electrólisis (agua → H2 + O2); luego una pila de combustible convierte H2 → electricidad.',
     'Almacena energía por mucho tiempo y mueve barcos o fábricas.', 'Pierde bastante energía en la cadena (la ida y vuelta puede quedarse cerca del 30–40%). Exige seguridad.',
     'Depende de la electricidad renovable disponible.', 'Transporte pesado, industria, almacenamiento estacional.', 'Uso de agua, tanques a presión, fugas.',
     'Bahía H2: pipeline y pérdidas en cada etapa.', 'Eficiencia de ida y vuelta = electrólisis × compresión × pila de combustible.', 'h2'),

@@ -9,7 +9,7 @@ class PuzzleBase {
     UI.nav = true; UI.focus = null;
     if (cfg.music) AudioSys.playSong(cfg.music);
   }
-  say(msg, color = PAL.cream, who) { this.msg = msg; this.msgColor = color; if (who) this.msgWho = who; }
+  say(msg, color = PAL.cream, who) { if (msg !== this.msg) this.msgAt = this.t || 0; this.msg = msg; this.msgColor = color; if (who) this.msgWho = who; }
   hint() {
     const H = this.cfg.hints || [];
     if (this.hintLevel >= H.length) { this.say('No quedan más pistas. Observa el resultado paso a paso.', PAL.sun); return; }
@@ -71,9 +71,11 @@ class PuzzleBase {
     else if (UI.btn(g, 'exit', W - 40, y + 2, 36, 15, 'SALIR', {})) this.exit(null);
     const my = y + 20;
     g.drawImage(Portraits.get(this.msgWho, this.state === 'error' ? 'pensando' : this.state === 'success' ? 'feliz' : 'n'), 0, 0, 32, 32, 4, my, 16, 16);
-    const lines = wrapRich(this.msg, W - 30, this.msgColor);
-    const off = lines.length > 2 ? Math.floor(this.t * 0.4) % (lines.length - 1) : 0;
-    lines.slice(off, off + 2).forEach((ln, i) => drawRichLine(g, ln, 24, my + 1 + i * 9));
+    // mensajes largos: páginas de dos líneas que pasan solas, con indicador (1/2, 2/2)
+    const lines = wrapRich(this.msg, W - 46, this.msgColor), pages = Math.ceil(lines.length / 2);
+    const pg = pages > 1 ? Math.floor(((this.t || 0) - (this.msgAt || 0)) / 5) % pages : 0;
+    lines.slice(pg * 2, pg * 2 + 2).forEach((ln, i) => drawRichLine(g, ln, 24, my + 1 + i * 9));
+    if (pages > 1) drawText(g, (pg + 1) + '/' + pages, W - 5, my + 10, '#8C93B8', { align: 'right' });
     Particles.draw(g, 0, 0, true);
     UI.drawTooltip(g);
   }

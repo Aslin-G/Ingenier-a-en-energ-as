@@ -158,7 +158,7 @@ function W_solar(o) {
       if (dec === 'cargar_bateria') {
         // modo carga: la ciudad usa solo el sol y el sobrante va a la batería
         if (gen + 0.001 >= dem) { st.soc = Math.min(100, st.soc + (gen - dem) * K * 0.9); if (st.soc >= 100) st.wasted += gen - dem; }
-        else { lit = false; why = `eligió cargar_bateria con radiación ${irr} W/m²: el sol daba ${gen.toFixed(1)} kW y la ciudad pedía ${dem} kW. ¿El umbral es demasiado bajo?`; }
+        else { lit = false; why = `eligió cargar_bateria con radiación ${irr} W/m²: el sol daba ${gen.toFixed(1).replace('.', ',')} kW y la ciudad pedía ${dem} kW. ¿El umbral es demasiado bajo?`; }
       } else if (dec === 'usar_bateria' || dec === 'cerrar_paneles') {
         const g2 = dec === 'cerrar_paneles' ? 0 : gen;
         const need = Math.max(0, dem - g2) * K;

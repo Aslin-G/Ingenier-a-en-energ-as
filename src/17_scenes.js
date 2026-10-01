@@ -290,7 +290,7 @@ function drawHUD(g, lv) {
   rect(g, 6 + Math.round(bw * healCost() / 100), 13, 1, 6, 'rgba(255,243,215,0.55)');
   // estados de los poderes bajo la barra
   if (p.overload) drawText(g, 'SOBRECARGA', 6, 22, Math.floor(lv.time * 8) % 2 ? PAL.coral : PAL.white, { shadow: PAL.ink });
-  else if (lv.slowT > 0) drawText(g, '⏸ ' + lv.slowT.toFixed(1) + ' s', 6, 22, PAL.lilac, { shadow: PAL.ink });
+  else if (lv.slowT > 0) drawText(g, '⏸ ' + lv.slowT.toFixed(1).replace('.', ',') + ' s', 6, 22, PAL.lilac, { shadow: PAL.ink });
   // habilidad actual
   const ab = G.save.currentAbility;
   if (ab && hasAbility(ab)) {

@@ -18,7 +18,7 @@ const CFG_H2_PIPE = {
   ],
   slots: 7, answer: ['agua', 'elec', 'eli', 'h2', 'tan', 'pil', 'bar'],
   why: (i, id) => ({
-    pozo: 'No existen pozos de hidrógeno puro que podamos usar: hay que FABRICARLO. El hidrógeno no es una fuente primaria, es un VECTOR (transporta energía).',
+    pozo: 'Casi todo el hidrógeno hay que FABRICARLO: los yacimientos naturales son rarísimos y apenas se estudian. El hidrógeno verde no es una fuente primaria: es un VECTOR (transporta energía).',
     carb: 'Con electricidad de carbón el hidrógeno no sería "verde": arrastraría todas las emisiones del carbón.',
     elec: i === 0 ? 'La electricidad sola no basta: la electrólisis necesita agua como materia prima.' : 'Aquí ya no toca electricidad.',
     eli: 'La electrólisis necesita tener ya agua Y electricidad disponibles.',

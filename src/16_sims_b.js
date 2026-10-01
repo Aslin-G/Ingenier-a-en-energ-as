@@ -62,12 +62,26 @@ const SIM_EOLICO = {
     { text: '¡TORMENTA de 28 m/s! Regla: SI viento > 25 ENTONCES paso de pala ≥ 80° (bandera). Protégelo 3 s.', start: s => { s.vT = 28; }, check: s => s.v > 25 && s.pitch >= 80, hold: 3, ok: 'Una CONDICIÓN protege la máquina: en bandera el viento no empuja las palas.' },
     { text: 'Pasó la tormenta (10 m/s). Baja el paso de pala y vuelve a producir ≥ 300 kW.', start: s => { s.vT = 10; }, check: s => s.v < 11 && s.P >= 300, hold: 0.5, ok: 'El controlador repite en BUCLE: medir el viento → decidir → ajustar.' }
   ],
-  final: 'La potencia del viento crece con el CUBO de su velocidad (v × v × v). El controlador de un aerogenerador es un BUCLE que cada segundo mide el viento y decide con CONDICIONES: SI viento > 25 ENTONCES bandera.',
+  final: 'La potencia crece con el CUBO del viento (v × v × v). El control es un BUCLE que mide el viento sin parar y decide con CONDICIONES: SI viento > 25 m/s, palas en bandera.',
   hints: ['La flecha azul del círculo es el viento y la naranja, el rotor: haz que coincidan.', 'En la tormenta sube el «paso de pala» a 80° o más: las palas se ponen de canto.', 'Tras la tormenta baja el paso de pala cerca de 0° para volver a captar el viento.'],
   view(g, x, y, w, h, s, t) {
     const storm = clamp((s.v - 14) / 12, 0, 1);
     simSky(g, x, y, w, h - 18, mix('#7FC8FF', '#3A4068', storm), mix('#E8F6FF', '#6A7090', storm));
-    rect(g, x, y + h - 18, w, 18, mix('#66D66A', '#3A6A4A', storm)); rect(g, x, y + h - 18, w, 2, mix('#B6F35B', '#5A8A5A', storm));
+    // nubes que corren con el viento
+    for (let i = 0; i < 4; i++) {
+      const cx = x + ((i * 97 + t * s.v * 2.2) % (w + 70)) - 35, cy = y + 14 + (i % 2) * 12;
+      g.globalAlpha = 0.8; pellipse(g, cx, cy, 14, 3, mix('#FFFFFF', '#8A90B0', storm)); pellipse(g, cx + 7, cy - 2, 8, 3, mix('#FFFFFF', '#9AA0C0', storm)); g.globalAlpha = 1;
+    }
+    // colinas y un aerogenerador lejano
+    const gy = y + h - 18;
+    for (let xx = 0; xx < w; xx++) { const hh = 12 + Math.sin(xx * 0.025 + 2) * 7 + Math.sin(xx * 0.07) * 2; rect(g, x + xx, gy - hh, 1, hh, mix('#9CC8A8', '#5A6A7A', storm)); }
+    const fx = x + 252, fy = gy - 34;
+    rect(g, fx, fy, 1, 34 - 14, '#E8EEFF'); rect(g, fx - 2, fy - 1, 5, 2, '#E8EEFF');
+    for (let k = 0; k < 3; k++) { const a = s.rot * 0.9 + 1 + k * 2.094; pline(g, fx, fy, fx + Math.cos(a) * 11, fy + Math.sin(a) * 11, '#F4F8FF'); }
+    rect(g, x, gy, w, 18, mix('#66D66A', '#3A6A4A', storm)); rect(g, x, gy, w, 2, mix('#B6F35B', '#5A8A5A', storm));
+    // hierba que se inclina con el viento
+    const lean = clamp(s.v / 14, 0, 2);
+    for (let i = 0; i < 46; i++) { const hx = x + (i * 29) % w, hh = 2 + (i % 3), sw = Math.sin(t * (2 + s.v * 0.3) + i) * 0.5; pline(g, hx, gy + 2, hx + lean * 1.5 + sw, gy + 2 - hh, mix('#8ADA6A', '#4A7A4A', storm)); }
     // rachas de viento (más rápidas y numerosas con más viento)
     const n = 6 + Math.round(s.v / 2);
     for (let i = 0; i < n; i++) {
@@ -139,7 +153,7 @@ const SIM_HIDRO = {
     { text: 'potencia(caudal, altura) tiene DOS parámetros. Sube también la presa: ≥ 1500 kW sin inundar el pueblo (presa ≤ 45 m).', check: s => s.P >= 1500 && !s.flood && s.dam <= 45, hold: 0.8, ok: 'Más altura → más potencia: la función usa los dos parámetros.' },
     { text: 'Sequía: el río trae solo 3 m³/s. Produce ≥ 700 kW 4 s dejando salir como mucho lo que entra (caudal ≤ 3).', start: s => { s.inflow = 3; }, check: s => s.P >= 700 && s.Q <= s.inflow + 0.05 && !s.flood, hold: 4, ok: 'Sostenible: si sale lo mismo que entra, el embalse no se vacía.' }
   ],
-  final: 'potencia(caudal, altura) = 9,8 × caudal × altura × 0,9 es una FUNCIÓN: recibe dos PARÁMETROS y devuelve un resultado. Si cambias uno, cambia la salida. Así se calcula la energía de una central hidroeléctrica.',
+  final: 'potencia(caudal, altura) es una FUNCIÓN: recibe dos PARÁMETROS y devuelve 9,8 × caudal × altura × 0,9 (kW). Si cambias un parámetro, cambia el resultado.',
   hints: ['La compuerta decide el caudal: cuánta agua pasa por la turbina cada segundo.', 'Subir la presa sube el nivel del agua (altura). Pero por encima de 45 m inunda el pueblo.', 'En la sequía, con la compuerta al 25 % sale lo mismo que entra: 3 m³/s.'],
   view(g, x, y, w, h, s, t) {
     simSky(g, x, y, w, h, '#7FC8FF', '#D8F2FF');
@@ -166,8 +180,15 @@ const SIM_HIDRO = {
     simLabel(g, s.dam + ' m', damX + 4, dy - 10, PAL.white);
     // aliviadero
     if (s.spill > 0) for (let i = 0; i < 6; i++) { const fy = dy + ((t * 60 + i * 9) % (base - dy)); rect(g, damX + 8 + i % 2, fy, 2, 3, '#9FE8FF'); }
+    // ladera con pinos y torre eléctrica que sale de la central
+    for (let xx = 190; xx < w; xx++) { const top = Math.max(y + 70 + Math.sin(xx * 0.04) * 5 - (xx - 196) * 0.08, base - (xx - 190) * 1.6); rect(g, x + xx, top, 1, base - top, xx % 7 ? '#7AB06A' : '#6AA05A'); }
+    for (let i = 0; i < 6; i++) { const tx0 = x + 210 + i * 14 + (i % 2) * 5, ty0 = y + 64 + (i % 3) * 4; for (let k = 0; k < 7; k++) rect(g, tx0 - Math.floor(k / 2), ty0 + k, 1 + Math.floor(k / 2) * 2, 1, k % 2 ? '#2F7A4A' : '#3F9A5A'); rect(g, tx0, ty0 + 7, 1, 2, '#6B4A2A'); }
+    const pyx = x + w - 22, pyy = base - 44;
+    pline(g, pyx, pyy, pyx - 5, base, '#565E8C'); pline(g, pyx, pyy, pyx + 5, base, '#565E8C'); rect(g, pyx - 7, pyy + 4, 15, 1, '#565E8C'); rect(g, pyx - 5, pyy + 10, 11, 1, '#565E8C');
+    pline(g, damX + 60, base - 18, pyx - 7, pyy + 4, s.P > 50 ? PAL.sun : '#3A4068');
     // tubería forzada y turbina
     const ty = base - 8, tx = damX + 44;
+    if (s.Q > 0.1) for (let i = 0; i < 4; i++) { const k = (t * (0.5 + s.Q * 0.12) + i / 4) % 1; px(g, damX - 2 + (tx - damX + 2) * k, base - 6 + (ty - base + 6) * k - 1, '#9FE8FF'); }
     pline(g, damX - 2, base - 6, tx, ty, '#3A4068'); pline(g, damX - 2, base - 5, tx, ty + 1, '#3A4068');
     rect(g, tx - 8, ty - 14, 26, 16, '#C9D2F0'); rect(g, tx - 8, ty - 14, 26, 2, '#8A93B8');
     for (let i = 0; i < 4; i++) { const a = s.rot + i * 1.57; pline(g, tx + 5, ty - 6, tx + 5 + Math.cos(a) * 5, ty - 6 + Math.sin(a) * 5, '#2A4A9A'); }
@@ -176,7 +197,7 @@ const SIM_HIDRO = {
     for (let i = 0; i < Math.round(s.Q); i++) px(g, tx + 20 + ((i * 13 + t * 40) % 80), base - 2, '#FFFFFF');
     // la función en vivo
     rect(g, x + 4, y + 3, 200, 12, 'rgba(16,22,43,0.75)');
-    drawText(g, 'potencia(' + f1(s.Q) + ', ' + Math.round(s.H) + ') = ' + Math.round(s.P) + ' kW', x + 8, y + 5, PAL.lime);
+    drawText(g, 'potencia(' + (Math.round(s.Q * 10) / 10).toFixed(1) + ', ' + Math.round(s.H) + ') ≈ ' + Math.round(s.P) + ' kW', x + 8, y + 5, PAL.lime);
     simLabel(g, 'río: ' + f1(s.inflow) + ' m³/s', x + 4, base - 16, PAL.white);
   }
 };
@@ -222,11 +243,18 @@ const SIM_BIOGAS = {
     { text: 'Invierno: el digestor se enfría a 20 °C y las bacterias se duermen. Sube la calefacción y la carga: ≥ 2,0 m³/h.', start: s => { s.heat = 20; }, check: s => s.gas >= 2, hold: 0.5, ok: 'A 37 °C las bacterias trabajan al máximo.' },
     { text: 'Máximo sin empacho: ≥ 2,6 m³/h durante 4 s con el pH ≥ 6,9 (que la lista no crezca).', check: s => s.gas >= 2.6 && s.pH >= 6.9, hold: 4, ok: 'Equilibrio: entran tantos residuos como las bacterias pueden comer.' }
   ],
-  final: 'Los residuos esperan en una LISTA (una cola): las bacterias toman el primero, lo convierten en biogás (metano) y pasan al siguiente. Si la lista crece más rápido de lo que se vacía, el digestor se acidifica y se para.',
+  final: 'Los residuos esperan en una LISTA (cola): las bacterias toman el primero, lo vuelven biogás y pasan al siguiente. Si la lista crece más rápido de lo que se vacía, el digestor se acidifica.',
   hints: ['La carga es cuántos residuos entran por hora. Empieza por 20 o 30 kg/h.', 'Las bacterias trabajan mejor a 37 °C: lleva la calefacción ahí.', 'A 37 °C las bacterias comen unos 60 kg/h: con más carga la lista crece y el pH baja.'],
   view(g, x, y, w, h, s, t) {
-    simSky(g, x, y, w, h, '#B8E8A8', '#E8F8D0');
+    simSky(g, x, y, w, h, '#9FD8FF', '#E8F8D0');
     const base = y + h - 14;
+    // campo arado, granero y valla al fondo
+    for (let xx = 0; xx < w; xx++) { const hh = 22 + Math.sin(xx * 0.02 + 1) * 4; rect(g, x + xx, base - hh, 1, hh, '#8ACA6A'); }
+    for (let k = 0; k < 4; k++) rect(g, x, base - 18 + k * 4, w, 1, '#6AAA4A');
+    const bx0 = x + w - 70, by0 = base - 38;
+    rect(g, bx0, by0 + 8, 26, 22, '#C8503A'); for (let k = 0; k < 8; k++) rect(g, bx0 - 2 + k, by0 + 8 - k, 30 - k * 2, 1, '#8A2E2A');
+    rect(g, bx0 + 9, by0 + 18, 8, 12, '#F0E0C8'); pline(g, bx0 + 9, by0 + 18, bx0 + 16, by0 + 29, '#C8503A'); pline(g, bx0 + 16, by0 + 18, bx0 + 9, by0 + 29, '#C8503A');
+    for (let fx = x + 140; fx < x + w - 76; fx += 8) { rect(g, fx, base - 8, 1, 8, '#C8A070'); } rect(g, x + 140, base - 6, w - 216, 1, '#B08A5A');
     rect(g, x, base, w, 14, '#7A5A3A'); rect(g, x, base, w, 2, '#5A9A3A');
     // la lista (cola de residuos) sobre una cinta
     const n = Math.min(12, Math.floor(s.q)), lx = x + 8, ly = y + 30;
@@ -242,7 +270,11 @@ const SIM_BIOGAS = {
     if (s.q > 12) simLabel(g, '+' + Math.floor(s.q - 12), lx + 136, ly + 2, PAL.coral);
     // digestor (cúpula) con bacterias
     const dx = x + 190, dy = base - 20;
-    pellipse(g, dx, dy, 44, 30, '#3A4068'); pellipse(g, dx, dy, 42, 28, s.pH < 6.6 ? '#9A8A3A' : '#5A8A3A');
+    pellipse(g, dx, dy, 44, 30, '#3A4068'); pellipse(g, dx, dy, 42, 28, '#2A3050');
+    // corte: lodo con bacterias abajo y gas arriba
+    const sludge = s.pH < 6.6 ? '#9A8A3A' : '#5A8A3A';
+    for (let yy = -2; yy <= 28; yy++) { const ww = Math.round(42 * Math.sqrt(Math.max(0, 1 - (yy * yy) / (28.5 * 28.5)))); rect(g, dx - ww, dy + yy, ww * 2 + 1, 1, yy < 1 ? shade(sludge, 0.2) : sludge); }
+    for (let yy = -27; yy < -2; yy++) { const ww = Math.round(42 * Math.sqrt(Math.max(0, 1 - (yy * yy) / (28.5 * 28.5)))); g.globalAlpha = 0.25 + s.gas * 0.12; rect(g, dx - ww, dy + yy, ww * 2 + 1, 1, '#E8C8A0'); g.globalAlpha = 1; }
     const bact = Math.round(bioCap(s) / 5);
     for (let i = 0; i < bact; i++) { const a = t * 2 + i * 1.7, r = 8 + (i * 7) % 22; px(g, dx + Math.cos(a) * r, dy - 6 + Math.sin(a * 1.3) * 10, '#B6F35B'); }
     // tubo de entrada desde la cinta
@@ -277,7 +309,7 @@ const SIM_GEO = {
   tags: ['ESTADOS', 'GEOTERMIA'], concepts: ['states', 'geothermal'], codex: 'geotermia', xp: 40,
   init: () => ({ ext: 0, inj: 0, pr: 100, T: 230, P: 0, state: 'REPOSO', last: 'REPOSO', flash: 0 }),
   controls: [
-    { id: 'ext', label: 'extracción', min: 0, max: 100, step: 1, unit: ' kg/s', speed: 40, color: PAL.coral, get: s => s.ext, set: (s, v) => { s.ext = v; } },
+    { id: 'ext', label: 'extracción', min: 0, max: 100, step: 1, unit: ' t/h', speed: 40, color: PAL.coral, get: s => s.ext, set: (s, v) => { s.ext = v; } },
     { id: 'inj', label: 'reinyección', min: 0, max: 100, step: 1, unit: '%', speed: 40, color: PAL.sky, get: s => s.inj, set: (s, v) => { s.inj = v; } }
   ],
   step(s, dt) {
@@ -296,18 +328,21 @@ const SIM_GEO = {
   ],
   chart: { label: 'potencia (kW)', get: s => s.P, min: 0, max: 1500, target: (s, sim) => [600, 600, 800][sim.mi], color: PAL.sun },
   missions: [
-    { text: 'Abre la extracción de vapor: la central pasa de REPOSO a PRODUCIENDO. Consigue ≥ 600 kW.', check: s => s.P >= 600, hold: 0.5, ok: 'extracción > 5 → transición de REPOSO a PRODUCIENDO.' },
+    { text: 'Abre la extracción del pozo (agua a más de 200 °C que se vuelve vapor): pasa de REPOSO a PRODUCIENDO. Consigue ≥ 600 kW.', check: s => s.P >= 600, hold: 0.5, ok: 'extracción > 5 → transición de REPOSO a PRODUCIENDO.' },
     { text: 'Sacaste vapor sin devolver el agua y la presión cayó al 75 % (PRESIÓN BAJA). Reinyecta: presión ≥ 85 % con ≥ 600 kW.', start: s => { s.pr = Math.min(s.pr, 75); }, check: s => s.pr >= 85 && s.P >= 600, hold: 2, ok: 'Devolver el agua al subsuelo mantiene la presión: geotermia renovable.' },
     { text: 'Alguien dejó la reinyección al 100 % toda la noche: el yacimiento se enfrió (ENFRIANDO). Equilibra: ≥ 800 kW, presión ≥ 85 % y temperatura ≥ 205 °C 5 s.', start: s => { s.inj = 100; s.T = 204; s.ext = Math.max(s.ext, 40); }, check: s => s.P >= 800 && s.pr >= 85 && s.T >= 205, hold: 5, ok: 'Ni mucha ni poca: el estado PRODUCIENDO se mantiene en equilibrio.' }
   ],
-  final: 'La central es una MÁQUINA DE ESTADOS: según la presión y la temperatura pasa de PRODUCIENDO a PRESIÓN BAJA o a ENFRIANDO, y vuelve cuando se corrige. La geotermia es renovable si devuelves el agua sin enfriar de más el yacimiento.',
+  final: 'La central es una MÁQUINA DE ESTADOS: según presión y temperatura pasa de PRODUCIENDO a PRESIÓN BAJA o ENFRIANDO, y vuelve al corregirse. Reinyectar el agua la hace renovable.',
   hints: ['Más extracción = más potencia, pero la presión baja si no reinyectas.', 'Con la reinyección al 70 % o más, la presión vuelve a subir poco a poco.', 'Si reinyectas el 100 % el agua fría enfría el yacimiento: baja la reinyección a 60 %.'],
   view(g, x, y, w, h, s, t) {
     const surf = y + 40;
     simSky(g, x, y, w, 40, '#FFB88A', '#FFE0C0');
     // capas del subsuelo y yacimiento (más rojo cuanto más caliente)
-    rect(g, x, surf, w, h - 40, '#7A5A4A');
-    for (let i = 0; i < 6; i++) rect(g, x, surf + 10 + i * 12, w, 1, '#6A4A3A');
+    // subsuelo: cuanto más hondo, más caliente (unos 25-30 °C más por kilómetro)
+    vGradient(g, x, surf, w, h - 40, [[0, '#8A6A4A'], [0.5, '#7A4A3A'], [1, '#6A2A2A']], false);
+    for (let i = 0; i < 6; i++) for (let xx = 0; xx < w; xx += 2) px(g, x + xx, surf + 10 + i * 12 + Math.round(Math.sin(xx * 0.05 + i) * 2), 'rgba(40,20,10,0.35)');
+    for (let i = 0; i < 60; i++) px(g, x + (i * 47) % w, surf + 4 + (i * 31) % (h - 46), i % 3 ? 'rgba(255,220,180,0.18)' : 'rgba(30,10,10,0.3)');
+    for (let i = 0; i < 3; i++) { rect(g, x + 150, surf + 8 + i * 20, 4, 1, 'rgba(255,230,200,0.6)'); drawText(g, (60 + i * 40) + ' °C', x + 157, surf + 5 + i * 20, 'rgba(255,230,200,0.85)'); }
     const hot = clamp((s.T - 180) / 60, 0, 1), rs = y + h - 30;
     pellipse(g, x + 200, rs + 10, 110, 18, mix('#5A6A9A', '#C8503A', hot));
     for (let i = 0; i < 12; i++) px(g, x + 110 + (i * 23) % 180, rs + 4 + (i * 7) % 14, mix('#9FB8E0', PAL.sun, hot));
@@ -368,7 +403,7 @@ const SIM_H2 = {
     { text: 'Noche: no hay sol y la ciudad pide 30 kW. Apaga el electrolizador y usa la pila: ciudad con luz 4 s.', start: s => { s.sun = 0; s.dem = 30; s.night = true; }, check: s => s.bal >= 0 && s.cell >= 30, hold: 4, ok: 'Etapas 4-5: tanque → pila de combustible → ciudad.' },
     { text: 'Madrugada: la ciudad solo pide 20 kW. Mantén la luz 5 s gastando lo justo (pila ≤ 25 kW).', start: s => { s.dem = 20; }, check: s => s.bal >= 0 && s.cell <= 25, hold: 5, ok: 'Dar solo lo que se pide ahorra hidrógeno.' }
   ],
-  final: 'El hidrógeno es un PIPELINE: cada etapa recibe lo que sale de la anterior y pierde una parte (electrolizador 70 %, compresor 90 %, pila 55 %). De 100 kWh de sol vuelven unos 35, pero se pueden guardar para la noche.',
+  final: 'El hidrógeno es un PIPELINE: cada etapa recibe lo que sale de la anterior y pierde una parte (70 % × 90 % × 55 %). De 100 kWh de sol vuelven unos 35, pero sirven de noche.',
   hints: ['Sobran 80 kW: pon el electrolizador en 80 o menos para no dejar a la ciudad sin luz.', 'De noche el electrolizador debe estar en 0 y la pila en 30 kW o más.', 'Ajusta la pila entre 20 y 25 kW.'],
   view(g, x, y, w, h, s, t) {
     simSky(g, x, y, w, h, s.night ? '#1B2A5A' : '#7FC8FF', s.night ? '#3A4A8A' : '#E8F6FF');
@@ -386,8 +421,14 @@ const SIM_H2 = {
       { n: 'CIUDAD', c: s.black ? PAL.coral : PAL.lime, v: s.dem }
     ];
     const bw = 44, gap = 5, sx0 = x + 4, sy0 = y + 44;
+    const ICO = ['sun', 'drop', 'gear', 'battery', 'bolt', 'home'];
     st.forEach((e, i) => {
       const bx = sx0 + i * (bw + gap);
+      // icono de la etapa (con burbujas de hidrógeno en el electrolizador)
+      g.globalAlpha = 0.9; pcircle(g, bx + bw / 2, sy0 - 9, 7, 'rgba(16,22,43,0.6)'); g.globalAlpha = 1;
+      icon(g, ICO[i], bx + bw / 2 - 4, sy0 - 13);
+      if (i === 1 && s.elec > 1) for (let k = 0; k < 3; k++) { const ph = (t * 1.5 + k / 3) % 1; px(g, bx + bw / 2 - 3 + k * 3, sy0 - 14 - ph * 8, '#DFFBFF'); }
+      if (i === 2 && s.elec > 1) { const a = t * 6; px(g, bx + bw / 2 + Math.cos(a) * 6, sy0 - 9 + Math.sin(a) * 6, PAL.white); }
       rect(g, bx, sy0, bw, 30, 'rgba(16,22,43,0.8)'); rect(g, bx, sy0, bw, 2, e.c);
       drawText(g, e.n, bx + bw / 2, sy0 + 5, e.c, { align: 'center' });
       if (e.k) drawText(g, e.k, bx + bw / 2, sy0 + 14, '#8C93B8', { align: 'center' });
