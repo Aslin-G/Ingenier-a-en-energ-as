@@ -57,6 +57,10 @@ class PuzzleBase {
     let x = 4;
     for (const b of buttons) { if (!b) continue; if (UI.btn(g, b.id, x, y + 2, b.w, 15, b.label, b)) b.fn(); x += b.w + 3; }
     if (!this.result) { if (UI.btn(g, 'hint', x, y + 2, 46, 15, 'PISTA', { color: PAL.sun, icon: 'star' })) this.hint(); x += 49; }
+    // META: vuelve a mostrar qué hay que conseguir (los mensajes de error lo tapan)
+    const goal = this.goalText ? this.goalText() : this.cfg.intro;
+    if (!this.result && goal && UI.btn(g, 'goal', x, y + 2, 36, 15, 'META', { color: PAL.lime, tip: 'Recordar el objetivo' })) { this.say('META: ' + goal, PAL.lime); AudioSys.sfx('click'); }
+    if (!this.result && goal) x += 39;
     if (UI.btn(g, 'atlas', x, y + 2, 40, 15, 'ATLAS', { color: PAL.teal })) Scenes.push(new CodexScene(this.cfg.codex)); x += 43;
     if (this.result) { if (UI.btn(g, 'cont', W - 124, y + 2, 120, 15, 'CONTINUAR ▶', { primary: true, color: PAL.lime })) this.exit(this.result); }
     else if (UI.btn(g, 'exit', W - 40, y + 2, 36, 15, 'SALIR', {})) this.exit(null);

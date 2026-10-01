@@ -274,9 +274,10 @@ class CodeLock extends Entity {
     this.lv.lockPanel = inZone ? this : (this.lv.lockPanel === this ? null : this.lv.lockPanel);
     // el cartel con el nombre de la isla se retira para dejar ver el código
     if (inZone && this.lv.banner > 0) this.lv.banner = Math.min(this.lv.banner, 0.3);
-    if (inZone && !flag('lockIntro') && !Cut.active) {
+    // la primera vez se explica con una tarjeta ilustrada (después, H la vuelve a mostrar)
+    if (inZone && !flag('lockIntro') && !Cut.active && Scenes.top() && Scenes.top().lv === this.lv) {
       setFlag('lockIntro');
-      Bark.say('pix', '¡Un cofre de código! Lee el programa y golpea el cristal con el resultado.');
+      Scenes.push(new LockHelpScene());
     }
     if (this.solved) this.openT = Math.min(1, this.openT + dt * 1.5);
   }
@@ -333,6 +334,19 @@ class CodeLock extends Entity {
     }
     // luz del proyector
     if (!this.solved) { g.globalAlpha = 0.25 + this.near * 0.35; rect(g, x + 6, y - 2, 4, 2, col); g.globalAlpha = 1; }
+  }
+  // letrero visible desde lejos: invita a acercarse (se oculta al llegar, cuando aparece el holograma)
+  drawOverlay(g, cx, cy) {
+    if (this.solved || this.near > 0.6) return;
+    const p = this.lv.player, d = Math.abs(p.cx - this.cx);
+    if (d > 230) return;
+    const label = '◆ COFRE DE CÓDIGO', w = textW(label) + 8, bob = Math.round(Math.sin(this.t * 3) * 1.5);
+    const x = Math.round(this.cx - cx - w / 2), y = Math.round(this.y - cy - 52 + bob);
+    g.globalAlpha = (1 - this.near) * clamp((230 - d) / 60, 0, 1);
+    rect(g, x, y, w, 11, 'rgba(10,14,32,0.85)'); strokeRect(g, x, y, w, 11, PAL.sun);
+    drawText(g, label, x + 4, y + 2, PAL.sun);
+    drawText(g, '▼', this.cx - cx, y + 12, PAL.sun, { align: 'center' });
+    g.globalAlpha = 1;
   }
   light() { return { x: this.cx, y: this.y, r: this.solved ? 50 : 34 + this.near * 20, c: this.solved ? PAL.sun : PAL.teal, a: 0.8 }; }
 }
@@ -395,7 +409,7 @@ class LockCrystal extends Entity {
 // Holograma en dos columnas: el código a la izquierda y la pregunta a la derecha.
 // Va arriba en pantalla; si ahí taparía los cristales, baja bajo el suelo del cofre.
 const LOCK_SIDE = 150;
-function lockTip(lv) { return lv.lensT > 0.5 ? 'LENTE: ' + lv.lockPanel.q.hint : 'Golpea (' + bindName('attack') + ') o elige (' + bindName('interact') + ') el cristal con tu respuesta.'; }
+function lockTip(lv) { return lv.lensT > 0.5 ? 'LENTE: ' + lv.lockPanel.q.hint : 'Golpea (' + bindName('attack') + ') o elige (' + bindName('interact') + ') el cristal con tu respuesta. ' + bindName('hint') + ' = cómo se juega.'; }
 function lockPanelRect(lock) {
   const q = lock.q, lv = lock.lv;
   const codeW = Math.max(...q.code.map(l => textW(l))) + 24;
@@ -514,5 +528,51 @@ class TraceScene {
     if (UI.btn(g, 'trprev', x + 10, by, 70, 14, '◀ PASO', { color: PAL.teal })) { this.step = Math.max(0, this.step - 1); this.auto = 0; }
     if (UI.btn(g, 'trnext', x + 86, by, 70, 14, 'PASO ▶', { color: PAL.teal })) { this.step = Math.min(n - 1, this.step + 1); this.auto = 0; }
     if (UI.btn(g, 'trok', x + w - 150, by, 140, 14, 'OTRA VARIANTE ↻', { color: PAL.lime, primary: true })) this.close();
+  }
+}
+
+// ---------------------------------------------------------------------
+//  CÓMO SE JUEGA: tarjeta ilustrada de los cofres de código
+// ---------------------------------------------------------------------
+class LockHelpScene {
+  constructor() { this.opaque = false; this.t = 0; this.nav = true; UI.focus = null; this.focusN = 3; }
+  update(dt) {
+    this.t += dt;
+    if (G.autoDialog) { Scenes.pop(); return; }
+    if (this.t > 0.4 && (Input.hit('back') || Input.hit('hint'))) { Input.consume(); Scenes.pop(); }
+  }
+  draw(g) {
+    g.globalAlpha = Math.min(0.8, this.t * 3); rect(g, 0, 0, W, H, '#05070F'); g.globalAlpha = 1;
+    const w = 400, h = 222, x = (W - w) / 2, y = (H - h) / 2 + Math.round((1 - easeOut(clamp(this.t * 3, 0, 1))) * 16);
+    panel(g, x, y, w, h, { border: PAL.sun, accent: PAL.sun, accentW: 70 });
+    drawText(g, 'COFRE DE CÓDIGO · ¿CÓMO SE JUEGA?', x + w / 2, y + 7, PAL.sun, { align: 'center' });
+    // ilustración: holograma con código, cofre y tres cristales
+    const ix = x + 12, iy = y + 22;
+    rect(g, ix, iy, 140, 96, '#0B1020'); strokeRect(g, ix, iy, 140, 96, '#2A3570');
+    rect(g, ix + 10, iy + 6, 120, 34, 'rgba(48,225,197,0.15)'); strokeRect(g, ix + 10, iy + 6, 120, 34, PAL.teal);
+    drawText(g, 'x ← 2', ix + 16, iy + 10, PAL.cream); drawText(g, 'x ← x + 3', ix + 16, iy + 20, PAL.cream); drawText(g, '¿x al final?', ix + 16, iy + 30, PAL.sun);
+    const cols = [PAL.teal, PAL.pink, PAL.sun], vals = ['3', '5', '6'];
+    for (let i = 0; i < 3; i++) {
+      const cx = ix + 30 + i * 40, cy = iy + 54 + Math.round(Math.sin(this.t * 2 + i) * 2);
+      for (let k = 0; k < 12; k++) { const ww = k < 4 ? k + 1 : Math.max(1, Math.round((12 - k) * 0.55)); rect(g, cx + 4 - ww, cy + k, ww, 1, shade(cols[i], 0.35)); rect(g, cx + 4, cy + k, ww + 1, 1, shade(cols[i], -0.3)); }
+      rect(g, cx - 2, cy - 11, 13, 9, '#0B1020'); strokeRect(g, cx - 2, cy - 11, 13, 9, cols[i]); drawText(g, vals[i], cx + 4, cy - 9, PAL.cream, { align: 'center' });
+      if (i === 1 && Math.floor(this.t * 2) % 2) strokeRect(g, cx - 4, cy - 13, 17, 28, PAL.lime);
+    }
+    rect(g, ix + 58, iy + 78, 24, 12, '#6B4A2A'); rect(g, ix + 56, iy + 74, 28, 5, '#8B5A3C'); rect(g, ix + 68, iy + 77, 3, 4, PAL.sun);
+    const f = Spr.lia.slash[1]; g.drawImage(f.r, ix + 18, iy + 66);
+    drawText(g, '✓ 5', ix + 104, iy + 80, PAL.lime);
+    // pasos
+    const tx = x + 162, tw = w - 174;
+    let yy = y + 24;
+    const step = (n, txt) => { drawText(g, n, tx, yy, PAL.sun); yy += drawPara(g, txt, tx + 12, yy, tw - 12, PAL.cream, { lh: 10 }) + 5; };
+    step('1', '{c}LEE{/} el programa del holograma, línea a línea, de arriba abajo.');
+    step('2', '{c}CALCULA{/} qué valor queda al final. Con la Lente (' + bindName('lens') + ') el holograma te da una pista.');
+    step('3', '{c}GOLPEA{/} con el sable (' + bindName('attack') + ') el cristal con tu respuesta, o acércate y pulsa ' + bindName('interact') + '.');
+    yy += 2;
+    drawPara(g, '¿Fallaste? Verás el programa {y}paso a paso{/} y llegará otra versión con otros números.', x + 12, y + 126, w - 24, PAL.cream, { lh: 10 });
+    drawPara(g, 'Premio: {p}núcleos de forja ◆{/} para mejorar tu sable en el Taller de Lía.', x + 12, y + 150, w - 24, PAL.cream, { lh: 10 });
+    drawText(g, 'Junto a un cofre, ' + bindName('hint') + ' vuelve a mostrar esta ayuda.', x + 12, y + 174, '#8C93B8');
+    if (UI.btn(g, 'lhok', x + w / 2 - 60, y + h - 24, 120, 16, '¡ENTENDIDO!', { primary: true, color: PAL.lime })) { Scenes.pop(); }
+    if (this.focusN > 0) { UI.focus = 'lhok'; this.focusN--; }
   }
 }

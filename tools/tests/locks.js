@@ -71,8 +71,15 @@ const ok = (cond, msg) => { console.log((cond ? '  ok   ' : '  FALLO') + ' ' + m
     lv.cam.x = lock.cx - 240; lv.cam.y = lv.player.y - 150;
     return { id: lock.id, ask: lock.q.ask };
   });
-  await p.waitForTimeout(700);
-  const near = await p.evaluate(() => { const lv = LL.G.run.level; return { panel: !!lv.lockPanel, near: lv.lockPanel ? lv.lockPanel.near : 0 }; });
+  await p.waitForTimeout(500);
+  // la primera vez aparece la tarjeta «¿cómo se juega?»
+  const help = await p.evaluate(() => LL.Scenes.top() instanceof LL.LockHelpScene);
+  ok(help, 'la primera vez junto a un cofre aparece la tarjeta «¿cómo se juega?»');
+  await p.screenshot({ path: outDir + '/locks_help.png' });
+  await p.keyboard.press('Enter');
+  await p.waitForTimeout(800);
+  const near = await p.evaluate(() => { const lv = LL.G.run.level; return { top: LL.Scenes.top().constructor.name, panel: !!lv.lockPanel, near: lv.lockPanel ? lv.lockPanel.near : 0 }; });
+  ok(near.top === 'GameplayScene', 'ENTENDIDO cierra la tarjeta y vuelve al juego');
   ok(near.panel && near.near > 0.9, 'al acercarse aparece el holograma con el código');
   await p.screenshot({ path: outDir + '/locks_panel.png' });
   const pulse = await p.evaluate(() => { const lock = LL.G.run.level.lockPanel; const c = lock.crystals[0]; const r = c.onHit({ dmg: 3, kind: 'pulse' }); return { r, state: c.state, top: LL.Scenes.top().constructor.name }; });

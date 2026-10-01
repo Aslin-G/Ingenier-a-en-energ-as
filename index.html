@@ -6911,6 +6911,8 @@ class CodeLabScene {
     this.prog = cloneProg(base);
     if (st.functions) for (const k in st.functions) this.functions[k].body = cloneProg(st.functions[k]);
     if (st.text) { this.msg = st.text; this.msgWho = st.who || 'pix'; }
+    // objetivo de la etapa: el botón META lo vuelve a mostrar tras un error
+    this.goalMsg = st.text || this.cfg.intro || '';
     this.locked = st.mode === 'demo';
     this.world = st.world || this.cfg.world;
     this.resetWorld();
@@ -7595,6 +7597,7 @@ class CodeLabScene {
     if (b('flow', 50, this.view === 'code' ? 'FLUJO' : 'CÓDIGO', { color: PAL.violet, tip: 'Ver el mismo algoritmo como diagrama de flujo. (B)' })) this.view = this.view === 'code' ? 'flow' : 'code';
     if (b('atlas', 40, 'ATLAS', { color: PAL.teal })) Scenes.push(new CodexScene(this.cfg.codex));
     if (b('exit', 34, 'SALIR', { color: PAL.cream })) this.askExit();
+    if (this.goalMsg && !this.result && b('goal', 36, 'META', { color: PAL.lime, tip: 'Recordar el objetivo de esta etapa' })) { this.msg = 'META: ' + this.goalMsg; this.msgColor = PAL.lime; AudioSys.sfx('click'); }
     // mensaje
     const mx = 4, my = y + 20;
     const pt = Portraits.get(this.msgWho || 'pix', this.state === 'error' ? 'pensando' : this.state === 'success' ? 'feliz' : 'n');
@@ -8155,6 +8158,10 @@ class PuzzleBase {
     let x = 4;
     for (const b of buttons) { if (!b) continue; if (UI.btn(g, b.id, x, y + 2, b.w, 15, b.label, b)) b.fn(); x += b.w + 3; }
     if (!this.result) { if (UI.btn(g, 'hint', x, y + 2, 46, 15, 'PISTA', { color: PAL.sun, icon: 'star' })) this.hint(); x += 49; }
+    // META: vuelve a mostrar qué hay que conseguir (los mensajes de error lo tapan)
+    const goal = this.goalText ? this.goalText() : this.cfg.intro;
+    if (!this.result && goal && UI.btn(g, 'goal', x, y + 2, 36, 15, 'META', { color: PAL.lime, tip: 'Recordar el objetivo' })) { this.say('META: ' + goal, PAL.lime); AudioSys.sfx('click'); }
+    if (!this.result && goal) x += 39;
     if (UI.btn(g, 'atlas', x, y + 2, 40, 15, 'ATLAS', { color: PAL.teal })) Scenes.push(new CodexScene(this.cfg.codex)); x += 43;
     if (this.result) { if (UI.btn(g, 'cont', W - 124, y + 2, 120, 15, 'CONTINUAR ▶', { primary: true, color: PAL.lime })) this.exit(this.result); }
     else if (UI.btn(g, 'exit', W - 40, y + 2, 36, 15, 'SALIR', {})) this.exit(null);
@@ -8893,7 +8900,17 @@ class MicrogridScene extends PuzzleBase {
         drawText(g, 'COMPARAR', 400, 156, PAL.sun);
         this.compare.forEach((c, i) => drawText(g, `#${i + 1}: ${c.res.blackout}h · ${Math.round(c.res.wastePct)}%`, 400, 168 + i * 11, PAL.cream));
       }
-    } else drawPara(g, 'Pulsa SIMULAR. Cada hora, la red evalúa tus reglas en orden. {y}El orden es una prioridad.{/}', 212, 158, 256, '#8C93B8');
+    } else {
+      // la meta se ve desde el principio (antes solo aparecía al fallar)
+      const C = this.cfg.criteria || {}, goals = [];
+      if (C.maxBlackout != null) goals.push(C.maxBlackout ? 'apagón ≤ ' + C.maxBlackout + ' h' : '0 h de apagón');
+      if (C.maxWaste != null) goals.push('desperdicio ≤ ' + C.maxWaste + '%');
+      if (C.noSafety) goals.push('batería sobre su reserva');
+      if (C.maxShare != null) goals.push('ninguna fuente > ' + Math.round(C.maxShare * 100) + '%');
+      if (C.maxCut != null) goals.push('recortes ≤ ' + C.maxCut + ' kWh');
+      const h = drawPara(g, 'Pulsa SIMULAR. Cada hora, la red evalúa tus reglas en orden. {y}El orden es una prioridad.{/}', 212, 158, 256, '#8C93B8');
+      if (goals.length) drawPara(g, '{g}META:{/} ' + goals.join(' · '), 212, 160 + h, 256, PAL.cream);
+    }
     if (this.popup) this.drawPopupMG(g);
     const btns = [this.result ? null : { id: 'run', w: 70, label: this.animating ? '...' : '▶ SIMULAR', primary: true, color: PAL.lime, fn: () => { if (!this.animating) this.run(); } }];
     if (this.cfg.sandbox) btns.push({ id: 'scn', w: 70, label: 'ESCENARIO', color: PAL.sun, fn: () => this.popup = { title: 'Escenario', options: MG_SCENARIOS_LIST().map(s => ({ label: s.name, value: s })), onPick: v => { this.sc = v; this.cfg.scenarios = [v]; this.res = null; }, x: 150, y: 60 } });
@@ -9137,6 +9154,196 @@ class ChispaScene {
 }
 
 
+// ===== 16_sims.js =====
+// =====================================================================
+//  SIMULADORES: experimentos con mandos, misiones visibles y gráfica en vivo
+//  Cada simulador muestra SIEMPRE qué hay que hacer (lista de misiones con
+//  ✓), qué cambia (cápsulas de variables y una gráfica) y por qué (una
+//  explicación al cumplir cada misión). Se manejan con ← → (o arrastrando
+//  el dedo / ratón sobre la barra) y ↑ ↓ para elegir el mando.
+// =====================================================================
+class SimScene extends PuzzleBase {
+  constructor(def, done) {
+    super({ title: def.title, tags: def.tags, concepts: def.concepts, codex: def.codex, intro: '', hints: def.hints, xp: def.xp || 35, main: def.main, music: def.music }, done);
+    this.def = def; this.st = def.init(); this.mi = 0; this.hold = 0; this.sel = 0;
+    this.hist = []; this.histT = 0; this.mT = 0; this.moved = 0; this.flash = 0;
+    // las flechas mueven los mandos (no el foco de los botones)
+    this.nav = false;
+    this.startMission();
+  }
+  get mission() { return this.def.missions[this.mi]; }
+  startMission() {
+    const m = this.mission; this.hold = 0; this.mT = 0;
+    if (!m) return;
+    if (m.start) m.start(this.st, this);
+    if (!this.okMsg) this.say('▶ MISIÓN ' + (this.mi + 1) + ': ' + m.text, PAL.sun);
+  }
+  completeMission() {
+    const m = this.mission;
+    AudioSys.sfx('ok'); this.flash = 1;
+    this.mi++;
+    if (this.mi >= this.def.missions.length) { this.okMsg = null; this.succeeded(this.def.final); return; }
+    this.okMsg = '✓ ' + m.ok + '  ▶ ' + this.mission.text;
+    this.say(this.okMsg, PAL.lime);
+    this.startMission(); this.okMsg = null;
+  }
+  ctlRect(i) { return { x: 96, y: 174 + i * 17, w: 148, h: 6 }; }
+  setCtl(c, v) {
+    const old = c.get(this.st);
+    v = clamp(c.step ? Math.round(v / c.step) * c.step : v, c.min, c.max);
+    if (v !== old) { this.moved += Math.abs(v - old) / (c.max - c.min); c.set(this.st, v); }
+  }
+  tick(dt) {
+    this.flash = Math.max(0, this.flash - dt * 1.5);
+    if (this.result) return;
+    const d = this.def, st = this.st, C = d.controls || [];
+    if (C.length) {
+      if (Input.hit('up')) this.sel = (this.sel + C.length - 1) % C.length;
+      if (Input.hit('down')) this.sel = (this.sel + 1) % C.length;
+      const c = C[this.sel], dir = (Input.down('right') ? 1 : 0) - (Input.down('left') ? 1 : 0);
+      if (dir && !(c.enabled && !c.enabled(st))) this.setCtl(c, c.get(st) + dir * (c.speed || (c.max - c.min) / 2.5) * dt);
+      const P = Input.pointer;
+      if (P.down) C.forEach((c, i) => {
+        if (c.enabled && !c.enabled(st)) return;
+        const r = this.ctlRect(i);
+        if (P.y >= r.y - 6 && P.y <= r.y + r.h + 6 && P.x >= r.x - 8 && P.x <= r.x + r.w + 8) { this.sel = i; this.setCtl(c, c.min + clamp((P.x - r.x) / r.w, 0, 1) * (c.max - c.min)); }
+      });
+    }
+    d.step(st, dt, this);
+    this.histT += dt;
+    if (this.histT > 0.1) { this.histT = 0; this.hist.push(d.chart.get(st)); if (this.hist.length > 140) this.hist.shift(); }
+    const m = this.mission; this.mT += dt;
+    if (m) { if (m.check(st, this)) { this.hold += dt; if (this.hold >= (m.hold || 0)) this.completeMission(); } else this.hold = 0; }
+  }
+  draw(g) {
+    const d = this.def, st = this.st;
+    this.drawHeader(g, 'SIMULADOR');
+    // ilustración
+    panel(g, 4, 19, 300, 134, { border: '#2A3570', bg: '#0B1020', flat: true });
+    g.save(); g.beginPath(); g.rect(6, 21, 296, 130); g.clip();
+    d.view(g, 6, 21, 296, 130, st, this.t, this);
+    g.restore();
+    // mandos
+    panel(g, 4, 156, 300, 68, { border: '#2A3570', flat: true });
+    drawText(g, 'MANDOS', 10, 159, '#8C93B8');
+    drawText(g, (d.controls || []).length > 1 ? '↑↓ elige · ← → ajusta · o arrastra' : '← → ajusta · o arrastra la barra', 298, 159, '#565E8C', { align: 'right' });
+    (d.controls || []).forEach((c, i) => {
+      const r = this.ctlRect(i), v = c.get(st), k = (v - c.min) / (c.max - c.min), on = !(c.enabled && !c.enabled(st)), sel = this.sel === i;
+      drawText(g, fitText(c.label, 78), 12, r.y - 1, on ? (sel ? PAL.sun : PAL.cream) : '#565E8C');
+      rect(g, r.x, r.y, r.w, r.h, '#1E2748'); rect(g, r.x, r.y, Math.round(r.w * k), r.h, on ? c.color || PAL.orange : '#3A4068');
+      const kx = Math.round(r.x + r.w * k);
+      rect(g, kx - 3, r.y - 4, 7, r.h + 8, on ? (sel ? PAL.white : PAL.cream) : '#565E8C'); strokeRect(g, kx - 3, r.y - 4, 7, r.h + 8, OUTLINE);
+      drawText(g, (c.fmt ? c.fmt(v) : Math.round(v)) + (c.unit || ''), 298, r.y - 1, on ? PAL.white : '#565E8C', { align: 'right' });
+      if (sel && on) drawText(g, '◀', r.x - 9, r.y - 1, PAL.sun);
+    });
+    // misiones
+    panel(g, 308, 19, 168, 88, { border: this.flash > 0 ? mix('#2A3570', PAL.lime, this.flash) : '#2A3570', flat: true });
+    drawText(g, 'MISIONES ' + Math.min(this.mi, d.missions.length) + '/' + d.missions.length, 314, 23, PAL.sun);
+    let my = 34;
+    d.missions.forEach((m, i) => {
+      if (my > 100) return;
+      const done = i < this.mi, cur = i === this.mi && !this.result;
+      const lines = wrapPlain(m.text, 146).slice(0, cur ? 3 : 1);
+      drawText(g, done ? '✓' : cur ? '▶' : '○', 314, my, done ? PAL.lime : cur ? PAL.sun : '#565E8C');
+      lines.forEach((ln, k) => drawText(g, k === lines.length - 1 && !cur && wrapPlain(m.text, 146).length > 1 ? fitText(ln + '…', 146) : ln, 324, my + k * 9, done ? '#8CC88C' : cur ? PAL.cream : '#6A7090'));
+      my += lines.length * 9 + 3;
+    });
+    if (this.mission && this.mission.hold && this.hold > 0) bar(g, 314, 101, 156, 3, this.hold, this.mission.hold, PAL.lime, '#1E2748');
+    // gráfica
+    const ch = d.chart, gx = 308, gy = 110, gw = 168, gh = 40;
+    panel(g, gx, gy, gw, gh, { border: '#2A3570', bg: '#0B1020', flat: true });
+    drawText(g, ch.label, gx + 5, gy + 3, ch.color);
+    const top = gy + 13, bh = gh - 16;
+    if (ch.target != null) { const ty = Math.round(top + bh - clamp((ch.target - (ch.min || 0)) / (ch.max - (ch.min || 0)), 0, 1) * bh); for (let x = gx + 4; x < gx + gw - 4; x += 4) rect(g, x, ty, 2, 1, PAL.lime); drawText(g, 'meta', gx + gw - 5, ty - 8, PAL.lime, { align: 'right' }); }
+    // la gráfica avanza de izquierda a derecha y se desplaza al llenarse
+    const lo = ch.min || 0, yv = v => top + bh - clamp((v - lo) / (ch.max - lo), 0, 1) * bh;
+    for (let i = 1; i < this.hist.length; i++) {
+      const x0 = gx + 4 + (i - 1) * (gw - 8) / 139, x1 = gx + 4 + i * (gw - 8) / 139;
+      pline(g, x0, yv(this.hist[i - 1]), x1, yv(this.hist[i]), ch.color);
+    }
+    if (this.hist.length) { const lx = gx + 4 + (this.hist.length - 1) * (gw - 8) / 139; rect(g, lx - 1, yv(this.hist[this.hist.length - 1]) - 1, 3, 3, PAL.white); }
+    // cápsulas (variables)
+    panel(g, 308, 153, 168, 71, { border: '#2A3570', flat: true });
+    drawText(g, 'VARIABLES', 314, 156, PAL.teal);
+    d.vars.forEach((vv, i) => {
+      const y = 166 + i * 14, v = vv.get(st);
+      drawText(g, vv.name, 314, y, vv.color);
+      drawText(g, (vv.fmt ? vv.fmt(v) : Math.round(v)) + ' ' + (vv.unit || ''), 470, y, PAL.white, { align: 'right' });
+      rect(g, 314, y + 8, 156, 3, '#1E2748'); rect(g, 314, y + 8, Math.round(156 * clamp(v / vv.max, 0, 1)), 3, vv.color);
+    });
+    this.drawFooter(g, []);
+  }
+}
+
+// ---------------------------------------------------------------------
+//  SOLARIA · PANEL DE PRUEBAS (variables + energía solar)
+//  Física: el panel recibe más radiación cuando su cara mira al sol.
+//  Con el sol a una altura α, la mejor inclinación es 90° − α.
+// ---------------------------------------------------------------------
+const solarRad = st => Math.round(1000 * Math.max(0, Math.sin((st.tilt + st.sunEl) * Math.PI / 180)) * (st.cloud ? 0.35 : 1));
+const SIM_SOLAR = {
+  title: 'Panel de pruebas', tags: ['VARIABLES', 'SOLAR'], concepts: ['variables', 'solar'], codex: 'variable', xp: 40,
+  init: () => ({ tilt: 5, sunEl: 58, sunTarget: 58, bat: 20, rad: 0 }),
+  controls: [{ id: 'tilt', label: 'inclinación', min: 0, max: 90, step: 1, unit: '°', speed: 40, color: PAL.orange, get: s => s.tilt, set: (s, v) => { s.tilt = v; } }],
+  step(s, dt) {
+    s.sunEl = approach(s.sunEl, s.sunTarget, dt * 18);
+    s.rad = solarRad(s);
+    // la batería se carga más rápido cuanta más radiación llega
+    s.bat = Math.min(100, s.bat + Math.pow(s.rad / 1000, 3) * dt * 9);
+  },
+  vars: [
+    { name: 'radiacion', get: s => s.rad, max: 1000, unit: 'W/m²', color: PAL.sun },
+    { name: 'inclinacion', get: s => s.tilt, max: 90, unit: '°', color: PAL.orange },
+    { name: 'altura_sol', get: s => s.sunEl, max: 90, unit: '°', color: PAL.aqua },
+    { name: 'bateria', get: s => s.bat, max: 100, unit: '%', color: PAL.lime }
+  ],
+  chart: { label: 'radiacion (W/m²)', get: s => s.rad, min: 400, max: 1000, target: 970, color: PAL.sun },
+  missions: [
+    { text: 'Mueve la palanca (← →) y mira cómo cambia la variable radiacion.', check: (s, sim) => sim.moved > 0.25, ok: 'radiacion cambia cuando cambia inclinacion.' },
+    { text: 'Apunta el panel al sol: consigue radiacion ≥ 970 W/m².', check: s => s.rad >= 970, hold: 0.6, ok: 'De frente al sol la luz llega directa: máxima radiación.' },
+    { text: 'Es la tarde: el sol bajó a 22°. Vuelve a llegar a 970 W/m².', start: s => { s.sunTarget = 22; }, check: s => Math.abs(s.sunEl - s.sunTarget) < 1 && s.rad >= 970, hold: 0.6, ok: 'Si altura_sol cambia, la mejor inclinación también cambia.' },
+    { text: 'La ciudad gastó la batería (25 %). Cárgala hasta el 70 % con el panel bien orientado.', start: s => { s.bat = 25; }, check: s => s.bat >= 70, ok: 'bateria depende de radiacion: con más luz se carga mucho más rápido.' }
+  ],
+  final: 'Cada cápsula es una VARIABLE: un nombre que guarda un valor que cambia. radiacion depende de inclinacion y de altura_sol, y bateria depende de radiacion.',
+  hints: ['El panel recibe más luz cuando su cara (la flecha punteada) apunta directo al sol.', 'Con el sol a 58°, prueba una inclinación cercana a 30°. Con el sol a 22°, cerca de 70°.', 'Regla: mejor inclinación ≈ 90° − altura del sol.'],
+  view(g, x, y, w, h, s, t) {
+    vGradient(g, x, y, w, h - 24, [[0, '#59C7FF'], [1, '#FFE8A8']], false);
+    rect(g, x, y + h - 24, w, 24, '#3FA85A'); rect(g, x, y + h - 24, w, 2, '#66D66A');
+    const px0 = x + w * 0.66, py0 = y + h - 44;
+    const el = s.sunEl * Math.PI / 180, R = 86;
+    const sx = px0 - Math.cos(el) * R, sy = py0 - Math.sin(el) * R;
+    // arco del recorrido del sol
+    for (let a = 8; a <= 80; a += 4) { const r = a * Math.PI / 180; px(g, px0 - Math.cos(r) * R, py0 - Math.sin(r) * R, 'rgba(255,255,255,0.5)'); }
+    g.globalAlpha = 0.3; pcircle(g, sx, sy, 15, PAL.sun); g.globalAlpha = 1;
+    pcircle(g, sx, sy, 10, PAL.sun); pcircle(g, sx - 2, sy - 2, 5, '#FFF3A0');
+    // rayos hacia el panel (más intensos cuanto más radiación)
+    const tr = s.tilt * Math.PI / 180, dx = Math.cos(tr), dy = -Math.sin(tr), nx = -Math.sin(tr), ny = -Math.cos(tr);
+    g.globalAlpha = 0.25 + s.rad / 1600;
+    for (let k = -2; k <= 2; k++) pline(g, sx, sy, px0 + dx * k * 9, py0 + dy * k * 9, PAL.sun, 3, Math.floor(t * 12));
+    g.globalAlpha = 1;
+    // poste y panel
+    rect(g, px0 - 1, py0, 3, y + h - 24 - py0, '#8A8FB0');
+    for (let k = -26; k <= 26; k++) { rect(g, px0 + dx * k - 1, py0 + dy * k - 1, 3, 3, Math.abs(k) % 9 < 1 ? '#9FE8FF' : '#2A4A9A'); }
+    // frente del panel (normal) y desvío respecto al sol
+    for (let r = 4; r < 34; r += 3) px(g, px0 + nx * r, py0 + ny * r, PAL.white);
+    drawText(g, 'frente', px0 + nx * 36 - 10, py0 + ny * 36 - 8, PAL.white, { outline: '#2A4A9A' });
+    const dev = Math.round(Math.abs(90 - s.tilt - s.sunEl));
+    drawText(g, 'desvío del sol: ' + dev + '°', x + 6, y + 5, dev <= 14 ? '#1F7A2A' : '#7A3A1A');
+    // batería que se va llenando
+    const bx = x + w - 34, by = y + h - 22;
+    rect(g, bx, by, 26, 14, '#10162B'); rect(g, bx + 26, by + 4, 2, 6, '#10162B');
+    rect(g, bx + 2, by + 2, Math.round(22 * s.bat / 100), 10, s.bat > 60 ? PAL.lime : s.bat > 30 ? PAL.sun : PAL.coral);
+    drawText(g, Math.round(s.bat) + '%', bx + 13, by - 9, '#10162B', { align: 'center' });
+  }
+};
+
+// el panel de pruebas de Solaria usa el simulador (se mantiene el nombre para la historia)
+class VariableLabScene extends SimScene { constructor(done) { super(SIM_SOLAR, done); } }
+
+// catálogo de simuladores (para el mapa, el docente y las pruebas)
+const SIMS = { SIM_SOLAR };
+
+
 // ===== 17_scenes.js =====
 // =====================================================================
 //  ESCENAS: gestor, juego, HUD, título, mapa, pausa, ajustes, Atlas...
@@ -9262,7 +9469,8 @@ class GameplayScene {
       if (Input.hit('pause')) { Input.consume(); Scenes.push(new PauseScene(lv)); return; }
       if (Input.hit('codex')) { Input.consume(); Scenes.push(new CodexScene()); return; }
       if (Input.hit('blueprint')) { Input.consume(); Scenes.push(new BlueprintScene()); return; }
-      if (Input.hit('hint')) { Input.consume(); this.contextHint(); }
+      // junto a un cofre de código, H explica cómo se juega
+      if (Input.hit('hint')) { Input.consume(); if (lv.lockPanel && lv.lockPanel.near > 0.5) Scenes.push(new LockHelpScene()); else this.contextHint(); }
     }
     lv.update(dt);
     AudioSys.intensity = lv.def.intensity != null ? (typeof lv.def.intensity === 'function' ? lv.def.intensity(lv) : lv.def.intensity) : 0.35 + lv.power * 0.65;
@@ -11394,52 +11602,7 @@ function W_flowers(o) {
 }
 
 // ---------- Laboratorio de variables: inclinar el panel ----------
-class VariableLabScene extends PuzzleBase {
-  constructor(done) {
-    super({ title: 'Panel de pruebas', tags: ['VARIABLES', 'SOLAR'], concepts: ['variables', 'solar'], codex: 'variable', intro: 'Mueve la palanca (← → o arrastra). Observa qué cambia.' }, done);
-    this.tilt = 10; this.sunEl = 58; this.time = 0; this.bat = 20; this.seen = new Set();
-  }
-  get rad() { return Math.round(1000 * Math.max(0, Math.cos((this.tilt - this.sunEl) * Math.PI / 180))); }
-  tick(dt) {
-    this.time += dt;
-    if (Input.down('left')) this.tilt = clamp(this.tilt - 40 * dt, 0, 90);
-    if (Input.down('right')) this.tilt = clamp(this.tilt + 40 * dt, 0, 90);
-    const P = Input.pointer;
-    if (P.down && inRect(P.x, P.y, { x: 40, y: 190, w: 220, h: 20 })) this.tilt = clamp((P.x - 50) / 200 * 90, 0, 90);
-    this.bat = Math.min(100, this.bat + this.rad / 1000 * dt * 6);
-    this.seen.add(Math.round(this.rad / 250));
-    if (!this.result && this.seen.size >= 4 && this.rad > 930) { this.succeeded('¡Máxima radiación! Cuando el panel mira al sol, "radiacion" sube.'); }
-  }
-  draw(g) {
-    this.drawHeader(g, 'EXPERIMENTO');
-    panel(g, 6, 22, 300, 200, { border: '#2A3570', bg: '#0B1020' });
-    vGradient(g, 8, 24, 296, 150, [[0, '#59C7FF'], [1, '#FFE08A']], false);
-    const sx = 8 + 40 + this.sunEl * 2.4, sy = 40 + (90 - this.sunEl) * 0.8;
-    pcircle(g, sx, sy, 12, PAL.sun); pcircle(g, sx, sy, 7, '#FFF3A0');
-    rect(g, 8, 174, 296, 46, '#3FA85A');
-    // panel inclinado
-    const px0 = 150, py0 = 160, a = -this.tilt * Math.PI / 180;
-    for (let k = -30; k <= 30; k++) { const xx = px0 + Math.cos(a) * k, yy = py0 + Math.sin(a) * k; rect(g, xx, yy, 2, 4, Math.abs(k) % 8 < 1 ? '#9FE8FF' : '#2A4A9A'); }
-    rect(g, px0 - 1, py0, 3, 14, '#8A8FB0');
-    // rayos
-    g.globalAlpha = 0.3 + this.rad / 2000; for (let k = 0; k < 5; k++) pline(g, sx, sy, px0 - 20 + k * 10, py0 - 4, PAL.sun, 3, Math.floor(this.time * 10)); g.globalAlpha = 1;
-    // palanca
-    rect(g, 50, 198, 200, 4, '#3A4068'); const kx = 50 + this.tilt / 90 * 200; rect(g, kx - 4, 192, 8, 16, PAL.orange); drawText(g, 'inclinación: ' + Math.round(this.tilt) + '°', 150, 210, PAL.cream, { align: 'center' });
-    // cápsulas de variables
-    panel(g, 312, 22, 162, 200, { border: '#2A3570' });
-    drawText(g, 'CÁPSULAS', 320, 28, PAL.sun);
-    const caps = [['radiacion', this.rad, 1000, PAL.sun, 'W/m²'], ['bateria', Math.round(this.bat), 100, PAL.lime, '%'], ['inclinacion', Math.round(this.tilt), 90, PAL.orange, '°'], ['altura_sol', this.sunEl, 90, PAL.aqua, '°']];
-    caps.forEach(([n, v, max, c, u], i) => {
-      const y = 44 + i * 42;
-      rect(g, 322, y, 140, 34, '#141A3A'); strokeRect(g, 322, y, 140, 34, c);
-      drawText(g, n, 328, y + 4, c);
-      drawText(g, v + ' ' + u, 456, y + 4, PAL.white, { align: 'right' });
-      const fh = Math.round(120 * v / max); rect(g, 328, y + 18, 128, 10, '#0B1020'); rect(g, 328, y + 18, Math.min(128, fh), 10, c);
-      if (i === 0 && Math.floor(this.time * 4) % 2 && !this.result) drawText(g, '◀ cambia', 470, y + 18, PAL.sun, { align: 'right' });
-    });
-    this.drawFooter(g, []);
-  }
-}
+// (el Panel de pruebas de Solaria es un simulador: ver VariableLabScene en 16_sims.js)
 
 // ---------- VALLE: configuraciones de puzzles ----------
 const CFG_VALLE_RUTA = {
@@ -11670,7 +11833,7 @@ const CFG_SOL_NUBE = {
       if (ok) { setQuest('s_flores', 'done'); addMastery('conditions', 4); yield C.say('suri', '¡Gracias, Lía! Cuando sea mayor voy a programar ciudades enteras.', 'feliz'); }
     })()
   });
-  b.e('N', 26, 13, { id: 'sol', cast: 'ingeniera', talk: lv => talk(flag('restored_solaria') ? [['ingeniera', 'Solaria vuelve a brillar. Y con un controlador que decide mejor que el anterior.', 'feliz']] : [['ingeniera', 'Soy la Ing. Sol. El controlador solar de la ciudad dejó de decidir: carga cuando no debe, descarga cuando no toca.', 'pensando'], ['ingeniera', 'Antes de tocar nada, prueba el panel de pruebas. Mueve la palanca y mira las cápsulas.', 'n']]) });
+  b.e('N', 26, 13, { id: 'sol', cast: 'ingeniera', talk: lv => talk(flag('restored_solaria') ? [['ingeniera', 'Solaria vuelve a brillar. Y con un controlador que decide mejor que el anterior.', 'feliz']] : [['ingeniera', 'Soy la Ing. Sol. El controlador solar de la ciudad dejó de decidir: carga cuando no debe, descarga cuando no toca.', 'pensando'], ['ingeniera', 'Antes de tocar nada, prueba el panel de pruebas: ahí verás qué cambia cuando mueves el panel. Sigue las misiones de la derecha.', 'n']]) });
   b.e('T', 23, 12, {
     id: 'lab', look: 'console', color: PAL.sun, verb: 'Panel de pruebas', doneFlag: 'sol_var',
     run: lv => (function* () {
@@ -14791,9 +14954,10 @@ class CodeLock extends Entity {
     this.lv.lockPanel = inZone ? this : (this.lv.lockPanel === this ? null : this.lv.lockPanel);
     // el cartel con el nombre de la isla se retira para dejar ver el código
     if (inZone && this.lv.banner > 0) this.lv.banner = Math.min(this.lv.banner, 0.3);
-    if (inZone && !flag('lockIntro') && !Cut.active) {
+    // la primera vez se explica con una tarjeta ilustrada (después, H la vuelve a mostrar)
+    if (inZone && !flag('lockIntro') && !Cut.active && Scenes.top() && Scenes.top().lv === this.lv) {
       setFlag('lockIntro');
-      Bark.say('pix', '¡Un cofre de código! Lee el programa y golpea el cristal con el resultado.');
+      Scenes.push(new LockHelpScene());
     }
     if (this.solved) this.openT = Math.min(1, this.openT + dt * 1.5);
   }
@@ -14850,6 +15014,19 @@ class CodeLock extends Entity {
     }
     // luz del proyector
     if (!this.solved) { g.globalAlpha = 0.25 + this.near * 0.35; rect(g, x + 6, y - 2, 4, 2, col); g.globalAlpha = 1; }
+  }
+  // letrero visible desde lejos: invita a acercarse (se oculta al llegar, cuando aparece el holograma)
+  drawOverlay(g, cx, cy) {
+    if (this.solved || this.near > 0.6) return;
+    const p = this.lv.player, d = Math.abs(p.cx - this.cx);
+    if (d > 230) return;
+    const label = '◆ COFRE DE CÓDIGO', w = textW(label) + 8, bob = Math.round(Math.sin(this.t * 3) * 1.5);
+    const x = Math.round(this.cx - cx - w / 2), y = Math.round(this.y - cy - 52 + bob);
+    g.globalAlpha = (1 - this.near) * clamp((230 - d) / 60, 0, 1);
+    rect(g, x, y, w, 11, 'rgba(10,14,32,0.85)'); strokeRect(g, x, y, w, 11, PAL.sun);
+    drawText(g, label, x + 4, y + 2, PAL.sun);
+    drawText(g, '▼', this.cx - cx, y + 12, PAL.sun, { align: 'center' });
+    g.globalAlpha = 1;
   }
   light() { return { x: this.cx, y: this.y, r: this.solved ? 50 : 34 + this.near * 20, c: this.solved ? PAL.sun : PAL.teal, a: 0.8 }; }
 }
@@ -14912,7 +15089,7 @@ class LockCrystal extends Entity {
 // Holograma en dos columnas: el código a la izquierda y la pregunta a la derecha.
 // Va arriba en pantalla; si ahí taparía los cristales, baja bajo el suelo del cofre.
 const LOCK_SIDE = 150;
-function lockTip(lv) { return lv.lensT > 0.5 ? 'LENTE: ' + lv.lockPanel.q.hint : 'Golpea (' + bindName('attack') + ') o elige (' + bindName('interact') + ') el cristal con tu respuesta.'; }
+function lockTip(lv) { return lv.lensT > 0.5 ? 'LENTE: ' + lv.lockPanel.q.hint : 'Golpea (' + bindName('attack') + ') o elige (' + bindName('interact') + ') el cristal con tu respuesta. ' + bindName('hint') + ' = cómo se juega.'; }
 function lockPanelRect(lock) {
   const q = lock.q, lv = lock.lv;
   const codeW = Math.max(...q.code.map(l => textW(l))) + 24;
@@ -15031,6 +15208,52 @@ class TraceScene {
     if (UI.btn(g, 'trprev', x + 10, by, 70, 14, '◀ PASO', { color: PAL.teal })) { this.step = Math.max(0, this.step - 1); this.auto = 0; }
     if (UI.btn(g, 'trnext', x + 86, by, 70, 14, 'PASO ▶', { color: PAL.teal })) { this.step = Math.min(n - 1, this.step + 1); this.auto = 0; }
     if (UI.btn(g, 'trok', x + w - 150, by, 140, 14, 'OTRA VARIANTE ↻', { color: PAL.lime, primary: true })) this.close();
+  }
+}
+
+// ---------------------------------------------------------------------
+//  CÓMO SE JUEGA: tarjeta ilustrada de los cofres de código
+// ---------------------------------------------------------------------
+class LockHelpScene {
+  constructor() { this.opaque = false; this.t = 0; this.nav = true; UI.focus = null; this.focusN = 3; }
+  update(dt) {
+    this.t += dt;
+    if (G.autoDialog) { Scenes.pop(); return; }
+    if (this.t > 0.4 && (Input.hit('back') || Input.hit('hint'))) { Input.consume(); Scenes.pop(); }
+  }
+  draw(g) {
+    g.globalAlpha = Math.min(0.8, this.t * 3); rect(g, 0, 0, W, H, '#05070F'); g.globalAlpha = 1;
+    const w = 400, h = 222, x = (W - w) / 2, y = (H - h) / 2 + Math.round((1 - easeOut(clamp(this.t * 3, 0, 1))) * 16);
+    panel(g, x, y, w, h, { border: PAL.sun, accent: PAL.sun, accentW: 70 });
+    drawText(g, 'COFRE DE CÓDIGO · ¿CÓMO SE JUEGA?', x + w / 2, y + 7, PAL.sun, { align: 'center' });
+    // ilustración: holograma con código, cofre y tres cristales
+    const ix = x + 12, iy = y + 22;
+    rect(g, ix, iy, 140, 96, '#0B1020'); strokeRect(g, ix, iy, 140, 96, '#2A3570');
+    rect(g, ix + 10, iy + 6, 120, 34, 'rgba(48,225,197,0.15)'); strokeRect(g, ix + 10, iy + 6, 120, 34, PAL.teal);
+    drawText(g, 'x ← 2', ix + 16, iy + 10, PAL.cream); drawText(g, 'x ← x + 3', ix + 16, iy + 20, PAL.cream); drawText(g, '¿x al final?', ix + 16, iy + 30, PAL.sun);
+    const cols = [PAL.teal, PAL.pink, PAL.sun], vals = ['3', '5', '6'];
+    for (let i = 0; i < 3; i++) {
+      const cx = ix + 30 + i * 40, cy = iy + 54 + Math.round(Math.sin(this.t * 2 + i) * 2);
+      for (let k = 0; k < 12; k++) { const ww = k < 4 ? k + 1 : Math.max(1, Math.round((12 - k) * 0.55)); rect(g, cx + 4 - ww, cy + k, ww, 1, shade(cols[i], 0.35)); rect(g, cx + 4, cy + k, ww + 1, 1, shade(cols[i], -0.3)); }
+      rect(g, cx - 2, cy - 11, 13, 9, '#0B1020'); strokeRect(g, cx - 2, cy - 11, 13, 9, cols[i]); drawText(g, vals[i], cx + 4, cy - 9, PAL.cream, { align: 'center' });
+      if (i === 1 && Math.floor(this.t * 2) % 2) strokeRect(g, cx - 4, cy - 13, 17, 28, PAL.lime);
+    }
+    rect(g, ix + 58, iy + 78, 24, 12, '#6B4A2A'); rect(g, ix + 56, iy + 74, 28, 5, '#8B5A3C'); rect(g, ix + 68, iy + 77, 3, 4, PAL.sun);
+    const f = Spr.lia.slash[1]; g.drawImage(f.r, ix + 18, iy + 66);
+    drawText(g, '✓ 5', ix + 104, iy + 80, PAL.lime);
+    // pasos
+    const tx = x + 162, tw = w - 174;
+    let yy = y + 24;
+    const step = (n, txt) => { drawText(g, n, tx, yy, PAL.sun); yy += drawPara(g, txt, tx + 12, yy, tw - 12, PAL.cream, { lh: 10 }) + 5; };
+    step('1', '{c}LEE{/} el programa del holograma, línea a línea, de arriba abajo.');
+    step('2', '{c}CALCULA{/} qué valor queda al final. Con la Lente (' + bindName('lens') + ') el holograma te da una pista.');
+    step('3', '{c}GOLPEA{/} con el sable (' + bindName('attack') + ') el cristal con tu respuesta, o acércate y pulsa ' + bindName('interact') + '.');
+    yy += 2;
+    drawPara(g, '¿Fallaste? Verás el programa {y}paso a paso{/} y llegará otra versión con otros números.', x + 12, y + 126, w - 24, PAL.cream, { lh: 10 });
+    drawPara(g, 'Premio: {p}núcleos de forja ◆{/} para mejorar tu sable en el Taller de Lía.', x + 12, y + 150, w - 24, PAL.cream, { lh: 10 });
+    drawText(g, 'Junto a un cofre, ' + bindName('hint') + ' vuelve a mostrar esta ayuda.', x + 12, y + 174, '#8C93B8');
+    if (UI.btn(g, 'lhok', x + w / 2 - 60, y + h - 24, 120, 16, '¡ENTENDIDO!', { primary: true, color: PAL.lime })) { Scenes.pop(); }
+    if (this.focusN > 0) { UI.focus = 'lhok'; this.focusN--; }
   }
 }
 
@@ -16318,7 +16541,7 @@ class CreditsScene {
 // Navegación con teclado por escena: los menús la activan, el juego no
 [TitleScene, PauseScene, SettingsScene, RemapScene, CodexScene, TeacherScene, TallerScene, ConfirmScene, QuestLogScene, SparkEditorScene, ShieldRuleScene, CodeLabScene, PuzzleBase].forEach(K => K.prototype.nav = true);
 // los avisos (MISIÓN, ATLAS, XP...) se muestran al volver al juego, no encima de puzzles o menús
-[PuzzleBase, CodeLabScene, CodexScene, SettingsScene, RemapScene, QuestLogScene, MasteryScene, LabScene, TallerScene, ControlsScene, BlueprintScene, ConceptCardScene, AbilityCardScene, CardsScene, ReviewScene, TraceScene, ForgeScene, ForgeTrialScene].forEach(K => K.prototype.hideToasts = true);
+[PuzzleBase, CodeLabScene, CodexScene, SettingsScene, RemapScene, QuestLogScene, MasteryScene, LabScene, TallerScene, ControlsScene, BlueprintScene, ConceptCardScene, AbilityCardScene, CardsScene, ReviewScene, TraceScene, ForgeScene, ForgeTrialScene, LockHelpScene].forEach(K => K.prototype.hideToasts = true);
 [GameplayScene, MapScene, ChispaScene, AbilityCardScene, ConceptCardScene, MasteryScene, ControlsScene, BlueprintScene].forEach(K => K.prototype.nav = false);
 
 const STEP = 1 / 60;
@@ -16362,7 +16585,7 @@ function boot() {
 
 // Interfaz mínima para depuración y pruebas automáticas
 window.LL = {
-  G, Game, Scenes, HD, LEVELS, textW, FORGE, forged, ForgeScene, ForgeTrialScene, pulseCost, healCost, Cards, cardQuestion, CardsScene, ReviewScene, CARD_BANK, CARD_META, dailyChallenge, dailyCode, launchDaily, makeLockQuestion, LOCK_GEN, CodeLock, TraceScene, buildLevel: (k, sp) => new Level(k, sp), Save, Input, UI, Cut, flag, setFlag, CODEX, QUESTS, CHALLENGES, REGIONS, makePuzzleScene, Particles, AudioSys, BOSSES, makeEnemy, unlocked, MapArt,
+  G, Game, Scenes, HD, LEVELS, textW, LockHelpScene, SimScene, SIMS, SIM_SOLAR, VariableLabScene, FORGE, forged, ForgeScene, ForgeTrialScene, pulseCost, healCost, Cards, cardQuestion, CardsScene, ReviewScene, CARD_BANK, CARD_META, dailyChallenge, dailyCode, launchDaily, makeLockQuestion, LOCK_GEN, CodeLock, TraceScene, buildLevel: (k, sp) => new Level(k, sp), Save, Input, UI, Cut, flag, setFlag, CODEX, QUESTS, CHALLENGES, REGIONS, makePuzzleScene, Particles, AudioSys, BOSSES, makeEnemy, unlocked, MapArt,
   cfg: { CFG_FEST_BOOT, CFG_PUERTO_ROUTE, CFG_PUERTO_CHAIN, CFG_PUERTO_CARRERA, CFG_VALLE_RUTA, CFG_VALLE_SACOS, CFG_VALLE_MOLINO, CFG_SOL_FLOW, CFG_SOL_FLORES, CFG_SOL_SENSOR, CFG_SOL_MATRIZ, CFG_SOL_NUBE, CFG_AERIS_MOLINO, CFG_AERIS_VIENTO, CFG_AERIS_BUCLE, CFG_HYD_FORJA, CFG_HYD_RIO, CFG_HYD_DUP, cfgBioSorter, CFG_BIO_LISTA, CFG_BIO_MERCADO, CFG_GEA_FSM, CFG_GEA_AISLADA, CFG_GEA_CRISTAL, CFG_H2_PIPE, CFG_H2_BARCO, CFG_BAT_SORT, CFG_BAT_SEARCH, CFG_BAT_BETA, CFG_BAT_BUG, CFG_PRISMA_MG, CFG_PRISMA_FEST, CFG_PRISMA_SINSOL, pzPhaseCfg },
   A,
   S: { TitleScene, PauseScene, SettingsScene, RemapScene, CodexScene, TeacherScene, TallerScene, QuestLogScene, MasteryScene, MapScene, LabScene, ControlsScene, BlueprintScene, ConfirmScene, SparkEditorScene, ShieldRuleScene, Shot, RegionBoss }

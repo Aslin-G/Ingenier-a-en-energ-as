@@ -276,6 +276,8 @@ class CodeLabScene {
     this.prog = cloneProg(base);
     if (st.functions) for (const k in st.functions) this.functions[k].body = cloneProg(st.functions[k]);
     if (st.text) { this.msg = st.text; this.msgWho = st.who || 'pix'; }
+    // objetivo de la etapa: el botón META lo vuelve a mostrar tras un error
+    this.goalMsg = st.text || this.cfg.intro || '';
     this.locked = st.mode === 'demo';
     this.world = st.world || this.cfg.world;
     this.resetWorld();
@@ -960,6 +962,7 @@ class CodeLabScene {
     if (b('flow', 50, this.view === 'code' ? 'FLUJO' : 'CÓDIGO', { color: PAL.violet, tip: 'Ver el mismo algoritmo como diagrama de flujo. (B)' })) this.view = this.view === 'code' ? 'flow' : 'code';
     if (b('atlas', 40, 'ATLAS', { color: PAL.teal })) Scenes.push(new CodexScene(this.cfg.codex));
     if (b('exit', 34, 'SALIR', { color: PAL.cream })) this.askExit();
+    if (this.goalMsg && !this.result && b('goal', 36, 'META', { color: PAL.lime, tip: 'Recordar el objetivo de esta etapa' })) { this.msg = 'META: ' + this.goalMsg; this.msgColor = PAL.lime; AudioSys.sfx('click'); }
     // mensaje
     const mx = 4, my = y + 20;
     const pt = Portraits.get(this.msgWho || 'pix', this.state === 'error' ? 'pensando' : this.state === 'success' ? 'feliz' : 'n');

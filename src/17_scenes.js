@@ -122,7 +122,8 @@ class GameplayScene {
       if (Input.hit('pause')) { Input.consume(); Scenes.push(new PauseScene(lv)); return; }
       if (Input.hit('codex')) { Input.consume(); Scenes.push(new CodexScene()); return; }
       if (Input.hit('blueprint')) { Input.consume(); Scenes.push(new BlueprintScene()); return; }
-      if (Input.hit('hint')) { Input.consume(); this.contextHint(); }
+      // junto a un cofre de código, H explica cómo se juega
+      if (Input.hit('hint')) { Input.consume(); if (lv.lockPanel && lv.lockPanel.near > 0.5) Scenes.push(new LockHelpScene()); else this.contextHint(); }
     }
     lv.update(dt);
     AudioSys.intensity = lv.def.intensity != null ? (typeof lv.def.intensity === 'function' ? lv.def.intensity(lv) : lv.def.intensity) : 0.35 + lv.power * 0.65;

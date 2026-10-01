@@ -62,52 +62,7 @@ function W_flowers(o) {
 }
 
 // ---------- Laboratorio de variables: inclinar el panel ----------
-class VariableLabScene extends PuzzleBase {
-  constructor(done) {
-    super({ title: 'Panel de pruebas', tags: ['VARIABLES', 'SOLAR'], concepts: ['variables', 'solar'], codex: 'variable', intro: 'Mueve la palanca (← → o arrastra). Observa qué cambia.' }, done);
-    this.tilt = 10; this.sunEl = 58; this.time = 0; this.bat = 20; this.seen = new Set();
-  }
-  get rad() { return Math.round(1000 * Math.max(0, Math.cos((this.tilt - this.sunEl) * Math.PI / 180))); }
-  tick(dt) {
-    this.time += dt;
-    if (Input.down('left')) this.tilt = clamp(this.tilt - 40 * dt, 0, 90);
-    if (Input.down('right')) this.tilt = clamp(this.tilt + 40 * dt, 0, 90);
-    const P = Input.pointer;
-    if (P.down && inRect(P.x, P.y, { x: 40, y: 190, w: 220, h: 20 })) this.tilt = clamp((P.x - 50) / 200 * 90, 0, 90);
-    this.bat = Math.min(100, this.bat + this.rad / 1000 * dt * 6);
-    this.seen.add(Math.round(this.rad / 250));
-    if (!this.result && this.seen.size >= 4 && this.rad > 930) { this.succeeded('¡Máxima radiación! Cuando el panel mira al sol, "radiacion" sube.'); }
-  }
-  draw(g) {
-    this.drawHeader(g, 'EXPERIMENTO');
-    panel(g, 6, 22, 300, 200, { border: '#2A3570', bg: '#0B1020' });
-    vGradient(g, 8, 24, 296, 150, [[0, '#59C7FF'], [1, '#FFE08A']], false);
-    const sx = 8 + 40 + this.sunEl * 2.4, sy = 40 + (90 - this.sunEl) * 0.8;
-    pcircle(g, sx, sy, 12, PAL.sun); pcircle(g, sx, sy, 7, '#FFF3A0');
-    rect(g, 8, 174, 296, 46, '#3FA85A');
-    // panel inclinado
-    const px0 = 150, py0 = 160, a = -this.tilt * Math.PI / 180;
-    for (let k = -30; k <= 30; k++) { const xx = px0 + Math.cos(a) * k, yy = py0 + Math.sin(a) * k; rect(g, xx, yy, 2, 4, Math.abs(k) % 8 < 1 ? '#9FE8FF' : '#2A4A9A'); }
-    rect(g, px0 - 1, py0, 3, 14, '#8A8FB0');
-    // rayos
-    g.globalAlpha = 0.3 + this.rad / 2000; for (let k = 0; k < 5; k++) pline(g, sx, sy, px0 - 20 + k * 10, py0 - 4, PAL.sun, 3, Math.floor(this.time * 10)); g.globalAlpha = 1;
-    // palanca
-    rect(g, 50, 198, 200, 4, '#3A4068'); const kx = 50 + this.tilt / 90 * 200; rect(g, kx - 4, 192, 8, 16, PAL.orange); drawText(g, 'inclinación: ' + Math.round(this.tilt) + '°', 150, 210, PAL.cream, { align: 'center' });
-    // cápsulas de variables
-    panel(g, 312, 22, 162, 200, { border: '#2A3570' });
-    drawText(g, 'CÁPSULAS', 320, 28, PAL.sun);
-    const caps = [['radiacion', this.rad, 1000, PAL.sun, 'W/m²'], ['bateria', Math.round(this.bat), 100, PAL.lime, '%'], ['inclinacion', Math.round(this.tilt), 90, PAL.orange, '°'], ['altura_sol', this.sunEl, 90, PAL.aqua, '°']];
-    caps.forEach(([n, v, max, c, u], i) => {
-      const y = 44 + i * 42;
-      rect(g, 322, y, 140, 34, '#141A3A'); strokeRect(g, 322, y, 140, 34, c);
-      drawText(g, n, 328, y + 4, c);
-      drawText(g, v + ' ' + u, 456, y + 4, PAL.white, { align: 'right' });
-      const fh = Math.round(120 * v / max); rect(g, 328, y + 18, 128, 10, '#0B1020'); rect(g, 328, y + 18, Math.min(128, fh), 10, c);
-      if (i === 0 && Math.floor(this.time * 4) % 2 && !this.result) drawText(g, '◀ cambia', 470, y + 18, PAL.sun, { align: 'right' });
-    });
-    this.drawFooter(g, []);
-  }
-}
+// (el Panel de pruebas de Solaria es un simulador: ver VariableLabScene en 16_sims.js)
 
 // ---------- VALLE: configuraciones de puzzles ----------
 const CFG_VALLE_RUTA = {
@@ -338,7 +293,7 @@ const CFG_SOL_NUBE = {
       if (ok) { setQuest('s_flores', 'done'); addMastery('conditions', 4); yield C.say('suri', '¡Gracias, Lía! Cuando sea mayor voy a programar ciudades enteras.', 'feliz'); }
     })()
   });
-  b.e('N', 26, 13, { id: 'sol', cast: 'ingeniera', talk: lv => talk(flag('restored_solaria') ? [['ingeniera', 'Solaria vuelve a brillar. Y con un controlador que decide mejor que el anterior.', 'feliz']] : [['ingeniera', 'Soy la Ing. Sol. El controlador solar de la ciudad dejó de decidir: carga cuando no debe, descarga cuando no toca.', 'pensando'], ['ingeniera', 'Antes de tocar nada, prueba el panel de pruebas. Mueve la palanca y mira las cápsulas.', 'n']]) });
+  b.e('N', 26, 13, { id: 'sol', cast: 'ingeniera', talk: lv => talk(flag('restored_solaria') ? [['ingeniera', 'Solaria vuelve a brillar. Y con un controlador que decide mejor que el anterior.', 'feliz']] : [['ingeniera', 'Soy la Ing. Sol. El controlador solar de la ciudad dejó de decidir: carga cuando no debe, descarga cuando no toca.', 'pensando'], ['ingeniera', 'Antes de tocar nada, prueba el panel de pruebas: ahí verás qué cambia cuando mueves el panel. Sigue las misiones de la derecha.', 'n']]) });
   b.e('T', 23, 12, {
     id: 'lab', look: 'console', color: PAL.sun, verb: 'Panel de pruebas', doneFlag: 'sol_var',
     run: lv => (function* () {

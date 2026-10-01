@@ -284,7 +284,17 @@ class MicrogridScene extends PuzzleBase {
         drawText(g, 'COMPARAR', 400, 156, PAL.sun);
         this.compare.forEach((c, i) => drawText(g, `#${i + 1}: ${c.res.blackout}h · ${Math.round(c.res.wastePct)}%`, 400, 168 + i * 11, PAL.cream));
       }
-    } else drawPara(g, 'Pulsa SIMULAR. Cada hora, la red evalúa tus reglas en orden. {y}El orden es una prioridad.{/}', 212, 158, 256, '#8C93B8');
+    } else {
+      // la meta se ve desde el principio (antes solo aparecía al fallar)
+      const C = this.cfg.criteria || {}, goals = [];
+      if (C.maxBlackout != null) goals.push(C.maxBlackout ? 'apagón ≤ ' + C.maxBlackout + ' h' : '0 h de apagón');
+      if (C.maxWaste != null) goals.push('desperdicio ≤ ' + C.maxWaste + '%');
+      if (C.noSafety) goals.push('batería sobre su reserva');
+      if (C.maxShare != null) goals.push('ninguna fuente > ' + Math.round(C.maxShare * 100) + '%');
+      if (C.maxCut != null) goals.push('recortes ≤ ' + C.maxCut + ' kWh');
+      const h = drawPara(g, 'Pulsa SIMULAR. Cada hora, la red evalúa tus reglas en orden. {y}El orden es una prioridad.{/}', 212, 158, 256, '#8C93B8');
+      if (goals.length) drawPara(g, '{g}META:{/} ' + goals.join(' · '), 212, 160 + h, 256, PAL.cream);
+    }
     if (this.popup) this.drawPopupMG(g);
     const btns = [this.result ? null : { id: 'run', w: 70, label: this.animating ? '...' : '▶ SIMULAR', primary: true, color: PAL.lime, fn: () => { if (!this.animating) this.run(); } }];
     if (this.cfg.sandbox) btns.push({ id: 'scn', w: 70, label: 'ESCENARIO', color: PAL.sun, fn: () => this.popup = { title: 'Escenario', options: MG_SCENARIOS_LIST().map(s => ({ label: s.name, value: s })), onPick: v => { this.sc = v; this.cfg.scenarios = [v]; this.res = null; }, x: 150, y: 60 } });
