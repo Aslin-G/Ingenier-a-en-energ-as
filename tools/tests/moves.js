@@ -123,14 +123,23 @@ const ok = (cond, msg) => { console.log((cond ? '  ok   ' : '  FALLO') + ' ' + m
   await p.waitForTimeout(700);
   const d1 = await p.evaluate(() => ({ top: LL.Scenes.top().constructor.name, hidden: LL.G.run.level.player.hidden, frozen: LL.G.run.level.frozen }));
   await p.screenshot({ path: outDir + '/defeat_fall.png' });
-  await p.waitForTimeout(2300);
+  await p.waitForTimeout(1400);
+  const dDark = await p.evaluate(() => { const s = LL.Scenes.top(); return { phase: s.phase, card: s.phase === 'card' }; });
+  await p.screenshot({ path: outDir + '/defeat_dark.png' });
+  await p.waitForTimeout(2200);
   const d2 = await p.evaluate(() => { const s = LL.Scenes.top(); return { phase: s.phase, cause: s.cause, tip: s.tip }; });
+  // antes de 1,6 s en la tarjeta, E todavía no cuenta (el estudiante tiene tiempo de leerla)
+  await p.keyboard.press('KeyE'); await p.waitForTimeout(100);
+  const early = await p.evaluate(() => LL.Scenes.top().phase);
+  await p.waitForTimeout(1700);
   await p.screenshot({ path: outDir + '/defeat_card.png' });
   await p.keyboard.press('KeyE');
-  await p.waitForTimeout(1200);
+  await p.waitForTimeout(1500);
   const d3 = await p.evaluate(() => { const pl = LL.G.run.level.player; return { top: LL.Scenes.top().constructor.name, cells: pl.cells, max: pl.maxCells, hidden: pl.hidden, frozen: LL.G.run.level.frozen }; });
   ok(d1.top === 'DefeatScene' && d1.hidden && d1.frozen, 'al perder la última célula empieza la escena de derrota (el mundo se detiene)');
+  ok(!dDark.card, `la cinemática dura: a los 2,1 s aún no hay tarjeta (fase ${dDark.phase})`);
   ok(d2.phase === 'card' && /Toro-Ohm/.test(d2.cause) && d2.tip.length > 10, `la tarjeta dice qué la venció (${d2.cause}) y da un consejo`);
+  ok(early === 'card', 'recién aparecida la tarjeta, E no la salta (hay tiempo para leerla)');
   ok(d3.top === 'GameplayScene' && d3.cells === d3.max && !d3.hidden && !d3.frozen, 'con E vuelve al punto de control con todas las células');
   await p.evaluate(() => { LL.G.noDamage = true; });
 

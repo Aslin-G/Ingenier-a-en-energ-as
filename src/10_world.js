@@ -841,6 +841,11 @@ class Player {
     const sx = src && src.x != null ? src.x + (src.w || 0) / 2 : null;
     const dir = sx != null && Math.abs(sx - this.cx) > 1 ? sign(this.cx - sx) : -this.face;
     this.cells--; this.inv = forged('guard') ? 1.9 : 1.3; this.vy = -180; this.vx = dir * 150; this.hurtT = 0.28; this.lastHurt = src || null;
+    // ataque especial de un jefe (ERROR CRÍTICO): además de la célula se lleva energía, y se ve
+    if (src && (src.bossSpawn || (src.owner && src.owner.special))) {
+      this.spend(ENERGY.specialHit);
+      Particles.text(this.cx, this.y - 16, '−1 célula · −' + ENERGY.specialHit + ' energía', PAL.coral);
+    }
     // poder PUNTO DE INTERRUPCIÓN: con 1 célula el mundo se ralentiza (una vez por punto de control)
     if (hasPower('breakpoint') && this.cells === 1 && !this.lv.bpUsed) { this.lv.bpUsed = true; this.lv.slowT = 4; Particles.text(this.cx, this.y - 16, '⏸ PUNTO DE INTERRUPCIÓN', PAL.lilac); AudioSys.sfx('debug'); }
     if (src && src.knockPlayer) src.knockPlayer(this);

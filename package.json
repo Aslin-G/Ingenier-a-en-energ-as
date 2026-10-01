@@ -10,7 +10,7 @@
     "test:puzzles": "node tools/tests/puzzles.js",
     "test:walk": "node tools/tests/walk.js",
     "test:menus": "node tools/tests/menus.js",
-    "test": "node tools/tests/glyphs.js && node tools/tests/levels.js && node tools/tests/puzzles.js && node tools/tests/presets.js && node tools/tests/bosses.js && node tools/tests/map.js && node tools/tests/hd.js && node tools/tests/locks.js && node tools/tests/cards.js && node tools/tests/sims.js && node tools/tests/powers.js && node tools/tests/moves.js && node tools/tests/minibosses.js && node tools/tests/taller.js && node tools/tests/overlap.js && node tools/tests/walk.js && node tools/tests/menus.js",
+    "test": "node tools/tests/glyphs.js && node tools/tests/levels.js && node tools/tests/puzzles.js && node tools/tests/presets.js && node tools/tests/bosses.js && node tools/tests/map.js && node tools/tests/hd.js && node tools/tests/locks.js && node tools/tests/cards.js && node tools/tests/sims.js && node tools/tests/powers.js && node tools/tests/moves.js && node tools/tests/minibosses.js && node tools/tests/taller.js && node tools/tests/registro.js && node tools/tests/overlap.js && node tools/tests/walk.js && node tools/tests/menus.js",
     "test:map": "node tools/tests/map.js",
     "test:bosses": "node tools/tests/bosses.js",
     "test:glyphs": "node tools/tests/glyphs.js",
@@ -23,7 +23,8 @@
     "test:overlap": "node tools/tests/overlap.js",
     "test:moves": "node tools/tests/moves.js",
     "test:minibosses": "node tools/tests/minibosses.js",
-    "test:taller": "node tools/tests/taller.js"
+    "test:taller": "node tools/tests/taller.js",
+    "test:registro": "node tools/tests/registro.js"
   },
   "license": "UNLICENSED"
 }

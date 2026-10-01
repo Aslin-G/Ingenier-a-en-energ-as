@@ -1,11 +1,12 @@
 // Auditoría automática de textos superpuestos: abre puzzles, retos del banco,
 // simuladores, menús, niveles y arenas de jefe, dibuja un fotograma y busca
 // pares de textos cuyas cajas se pisan (un texto encima de otro).
-// Uso: node tools/tests/overlap.js [--verbose]
+// Uso: node tools/tests/overlap.js [--verbose] [--heroe=Nombre]  (con un nombre largo se comprueba que los textos con el nombre del estudiante caben)
 'use strict';
 const { chromium, gameFile } = require('./_pw');
 const { PLANS } = require('./_plans');
 const verbose = process.argv.includes('--verbose');
+const heroArg = (process.argv.find(a => a.startsWith('--heroe=')) || '').slice(8);
 let fails = 0;
 const ok = (cond, msg) => { console.log((cond ? '  ok   ' : '  FALLO') + ' ' + msg); if (!cond) fails++; };
 
@@ -30,13 +31,17 @@ const ok = (cond, msg) => { console.log((cond ? '  ok   ' : '  FALLO') + ' ' + m
         const ix = Math.min(a.x + a.w, c.x + c.w) - Math.max(a.x, c.x), iy = Math.min(a.y + a.h, c.y + c.h) - Math.max(a.y, c.y);
         if (ix >= 2 && iy >= 3) bad.push(`«${a.t}» × «${c.t}» en (${Math.round(Math.max(a.x, c.x))}, ${Math.round(Math.max(a.y, c.y))})`);
       }
+      // textos rotos: valores sin definir o mal formateados que llegan a la pantalla
+      for (const r of A.list) if (/undefined|NaN|\[object|null\b/.test(r.t)) bad.push(`texto roto: «${r.t}»`);
       return { name, n: L.length, bad: [...new Set(bad)] };
     };
-    window.__clear = () => { while (LL.Scenes.stack.length > 1) LL.Scenes.pop(); };
+    window.__clear = () => { while (LL.Scenes.stack.length > 1) { const s = LL.Scenes.top(); if (s.removeInputs) s.removeInputs(); LL.Scenes.pop(); } };
   });
   const report = [];
   const audit = async (name, setup, arg, wait = 120) => {
+    if (heroArg) await p.evaluate(h => LL.setHero({ hero: h }), heroArg);
     try { await p.evaluate(setup, arg); } catch (e) { report.push({ name, n: 0, bad: ['ERROR al preparar: ' + e.message] }); return; }
+    if (heroArg) await p.evaluate(h => LL.setHero({ hero: h }), heroArg);
     await p.waitForTimeout(wait);
     report.push(await p.evaluate(n => window.__audit(n), name));
     await p.evaluate(() => window.__clear());
@@ -74,7 +79,7 @@ const ok = (cond, msg) => { console.log((cond ? '  ok   ' : '  FALLO') + ' ' + m
     }, { k, plan: PLANS[k] }, 1500);
   }
   // 4) menús y pantallas
-  const menus = ['TitleScene', 'PauseScene', 'SettingsScene', 'CodexScene', 'QuestLogScene', 'MasteryScene', 'TallerScene', 'ControlsScene', 'TeacherScene'];
+  const menus = ['TitleScene', 'RegisterScene', 'PauseScene', 'SettingsScene', 'CodexScene', 'QuestLogScene', 'MasteryScene', 'TallerScene', 'ControlsScene', 'TeacherScene'];
   for (const m of menus) await audit('menú ' + m, m => { const K = LL.S[m]; LL.Scenes.push(m === 'PauseScene' ? new K(LL.G.run.level) : new K()); }, m, 250);
   for (const m of ['PowersScene', 'SimLabScene', 'CardsScene', 'ForgeScene']) await audit('menú ' + m, m => LL.Scenes.push(new LL[m]()), m, 250);
   // 5) niveles (HUD, letreros, etiquetas) y arenas de jefe con la Lente

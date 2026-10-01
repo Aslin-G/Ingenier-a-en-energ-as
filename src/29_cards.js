@@ -290,6 +290,7 @@ class ReviewScene {
     // Enter / E pasan a la siguiente carta (el foco va al botón SIGUIENTE)
     this.focusBtn = 'rvnext'; this.focusN = 3; UI.clicks.clear();
     if (!this.practice) this.newBox = Cards.answer(k, ok);
+    Registro.log('carta_repaso', k, ok ? 'acierto' : 'error', '', { practica: !!this.practice });
     this.res.push({ k, ok });
     if (ok) {
       this.combo++; this.best = Math.max(this.best, this.combo);

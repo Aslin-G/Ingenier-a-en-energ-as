@@ -18,7 +18,7 @@ class PuzzleBase {
     if (h.apply) h.apply(this);
     AudioSys.sfx('confirm');
   }
-  failed(msg) { this.fails++; G.save.stats.fails++; this.state = 'error'; this.say('✗ ' + msg, PAL.coral); AudioSys.sfx('fail'); addMastery(this.cfg.concepts || [], -1); if (this.fails === 2 && this.hintLevel === 0) this.msg += ' (Prueba una PISTA.)'; }
+  failed(msg) { Registro.error(this, msg); this.fails++; G.save.stats.fails++; this.state = 'error'; this.say('✗ ' + msg, PAL.coral); AudioSys.sfx('fail'); addMastery(this.cfg.concepts || [], -1); if (this.fails === 2 && this.hintLevel === 0) this.msg += ' (Prueba una PISTA.)'; }
   succeeded(msg, extra) {
     this.state = 'success'; this.resultT = this.t; this.say('✓ ' + msg, PAL.lime); AudioSys.sfx('win');
     const stars = puzzleStars(this.fails, this.hintLevel);
@@ -30,6 +30,7 @@ class PuzzleBase {
     if (this.exited) return; this.exited = true;
     UI.nav = false; UI.scope = null; UI.cancelHeld(); Scenes.pop();
     r = r || { success: false, hints: this.hintLevel, fails: this.fails };
+    Registro.reto(this, r, this.constructor.name);
     if (r.success) {
       G.save.stats.puzzles++;
       if (r.firstTry) { G.save.stats.firstTry++; if (this.cfg.main) achieve('no_hints'); }

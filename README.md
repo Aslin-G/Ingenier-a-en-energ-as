@@ -11,7 +11,7 @@ Videojuego educativo de plataformas, combate y puzzles en **pixel art animado**,
 ## Cómo jugar
 
 1. Abre **`index.html`** (o `lumina_loop.html`, que es el mismo juego) en un navegador moderno (Chrome, Edge, Firefox o Safari). Funciona sin conexión y desde `file://`.
-2. Elige **NUEVA PARTIDA**. La partida se guarda sola en `localStorage` (clave `luminaLoopSave`).
+2. Elige **NUEVA PARTIDA** y **regístrate**: escribe tus nombres y apellidos (al menos un nombre y un apellido; tu primer nombre será el de la protagonista) y marca los **tres consentimientos** para que tus datos de juego se envíen a la hoja de cálculo de tu docente. La partida se guarda sola en `localStorage` (clave `luminaLoopSave`).
 3. **Publicación automática**: cada vez que se sube un cambio, el flujo `.github/workflows/publicar.yml` compila `src/`, comprueba que `index.html` y `lumina_loop.html` son idénticos y publica en GitHub Pages. Si en *Settings → Pages → Source* está elegido «GitHub Actions», despliega directamente; si está «Deploy from a branch», pide a Pages que reconstruya la rama.
 
 ### Controles
@@ -71,11 +71,11 @@ Lumi concentra su luz en una hoja: el **Lumisable**. Los enemigos son programas 
 
 - **Combo de 3 tajos**, **gancho** (↑ + ataque en el suelo: Lía salta con un arco de luz en forma de gancho), **barrida** (↓ + ataque en el suelo: se desliza agachada y golpea a ras de suelo), tajo hacia arriba y **rebote (pogo)** en el aire, **pulso cargado** (mantener el ataque) y **parada**: golpear un proyectil justo a tiempo lo devuelve a quien lo lanzó. Con ↓ **se agacha** (caja más baja: los disparos altos pasan por encima) y gatea por los túneles bajos. Lía mira hacia donde camina y su sprite se dibuja a doble resolución.
 - **Energía** (ahora más exigente): se gana golpeando (6 por golpe) y con orbes; sola solo sube **hasta 50 y despacio** (4,5/s, menos a oscuras) y **se pausa 2,2 s** después de gastarla. El pulso cuesta 35, el torbellino 12 y la embestida 15. Quieta y agachada, Lumi convierte 50 de energía en una **célula**. El **escudo IF** bloquea golpes, pero **cada golpe le quita un tercio de la energía: al tercero se rompe**. Con la **Lente Debug** activa cada golpe es **crítico**.
-- **Derrota clara**: al perder la última célula el mundo se detiene, Lía cae, Lumi se apaga y el círculo de visión se cierra; aparece la tarjeta **«¡SIN CÉLULAS!»** con qué la venció y un consejo, y con E vuelve al punto de control.
+- **Derrota con cinemática** (unos 5 s antes de poder continuar): el mundo se congela y la última célula se rompe sobre Lía; cae a cámara lenta, Lumi parpadea y se apaga y el mundo pierde el color; el círculo de visión se cierra con «Lía se quedó sin energía...» y aparece la tarjeta **MISIÓN FALLIDA** (qué la venció, un consejo y que volverá al último punto de control). Solo pasado un momento E la devuelve al punto de control.
 - **Mini jefes a mitad de cada isla** (10): Cangrejo Voltio, Espantapájaros Bug, Girasol Sobrecargado, Halcón Bucle, Anguila Compuerta, Hongo Recursivo, Magmita, Medusa de Presión, Rata Cortocircuito y Cristal Errante. Al entrar en su zona se cierran dos barreras de luz; cada uno avisa antes de atacar, ejecuta su patrón (embestidas, saltos, disparos, picados) y **descansa** (golpe +1). Al depurarlo da un **núcleo de forja**; si Lía cae, el combate vuelve a empezar.
 - **Enemigos con personalidad** en todas las islas, con los colores de su región: Bit Saltarín, Zumbyte, Toro-Ohm, Torretín, más los enemigos conceptuales (Bugglin, Loopling, Shadow If, Drainer...). Con la Lente muestran su algoritmo.
 - **Un jefe al final de cada isla**, que *ejecuta un algoritmo* del concepto de esa isla: con la Lente se lee su programa con la línea actual resaltada. Tienen **seis veces su vida base** y **tres fases**: a 2/3 de vida reescribe su código y hay que aplicarle un **parche** (una pregunta rápida) para ralentizarlo; a 1/3 entra en **FURIA** y pide un **PARCHE FINAL** (predecir el resultado de un programa nuevo, generado como en las cerraduras).
-- **ERROR CRÍTICO**: si un parche falla, el jefe lanza su **ataque especial** (Lluvia de chatarra, Tormenta de rayos, Triple chorro, Erupción total...): columnas de rayos, lluvia de bloques de error, chorros que obligan a saltar o a quedarse abajo, u ondas por el suelo. Siempre hay aviso («!» y marcas en el suelo) y un hueco seguro; un golpe cuesta una célula y, al terminar, el jefe queda **sobrecalentado** (momento para golpearlo). En FURIA lo repite cada dos ciclos de su programa (cada tres si el parche final salió perfecto). El parche se puede volver a intentar en cada combate.
+- **ERROR CRÍTICO**: si un parche falla, el jefe lanza su **ataque especial** (Lluvia de chatarra, Tormenta de rayos, Triple chorro, Erupción total...): columnas de rayos, lluvia de bloques de error, chorros que obligan a saltar o a quedarse abajo, u ondas por el suelo. Siempre hay aviso («!» y marcas en el suelo) y un hueco seguro; cada golpe cuesta una célula **y 20 de energía** (se ve «−1 célula · −20 energía») y, al terminar, el jefe queda **sobrecalentado** (momento para golpearlo). En FURIA lo repite cada dos ciclos de su programa (cada tres si el parche final salió perfecto). El parche se puede volver a intentar en cada combate.
 - **Arte HD de los jefes**: cada jefe se dibuja a resolución de pantalla con detalle de medio píxel (remaches, brillos de metal, reflejos de cristal, texturas de roca, grietas de lava), brillos y sombras en los bordes, volumen, **aura por fase** (roja y palpitante en FURIA) y sombra en el suelo. Si el equipo va lento, el acabado se simplifica solo.
 
 | Isla | Jefe | Concepto que ejecuta |
@@ -161,6 +161,13 @@ Cada reto pasa por **DEMO → LO HACEMOS JUNTOS → TÚ SOLO**, ofrece **pistas 
 - **Patio de entrenamiento**: una lista de movimientos para practicar contra muñecos que no se rompen (agacharse en un túnel, combo, barrida, gancho a un dron, rebote sobre una seta, pulso a una diana, recarga y los poderes que se tengan), con cronómetro y récord. La primera vez da un núcleo de forja y una pegatina.
 - **Escenarios con subsuelo**: el interior del terreno tiene estratos y lo que hay bajo tierra en cada isla (raíces y fósiles, cables enterrados, cristales, acuíferos, vetas de magma, tuberías, circuitos), hierba que cuelga de los bordes y decoraciones propias (vallas, fardos, cactus, juncos, troncos, estalagmitas, barriles...).
 - **Aurora Lab** (tras el final): sandbox de microred para experimentar sin penalización y comparar experimentos.
+
+### Registro del estudiante y seguimiento para el docente
+
+- Al empezar una partida (o al continuar una sin estudiante) aparece el **REGISTRO DEL ESTUDIANTE**: nombres y apellidos (con tildes y ñ; el teclado del móvil funciona) y **tres consentimientos** que hay que marcar: (1) que los datos de juego se envían a una hoja de cálculo de Google Drive del docente; (2) que el docente los usará para ver el rendimiento y calificar; (3) que, si es menor de edad, su madre, padre o acudiente lo conoce y autoriza.
+- El primer nombre sustituye a «Lía» en toda la historia y el nombre completo aparece en los créditos.
+- Con los consentimientos aceptados, el juego anota la actividad (sesiones, niveles, retos con estrellas, errores y pistas, programas finales, cerraduras, cartas, forja, logros, misiones, islas, jefes, derrotas) y la envía por lotes a la hoja del docente. En el **menú de pausa** se ve siempre «tu progreso se comparte con tu docente».
+- Para conectarlo con tu hoja de cálculo sigue [`tools/google-sheets/LEEME.md`](tools/google-sheets/LEEME.md) (Google Apps Script, una sola vez) y pega la URL en `REGISTRO_URL` (`src/04_registro.js`). Sin URL, los eventos esperan guardados en cada dispositivo.
 
 ### Modo docente
 
@@ -267,6 +274,7 @@ node tools/tests/powers.js    # los 10 poderes funcionan, tarjeta y pantalla POD
 node tools/tests/moves.js     # Lía mira a donde camina, se agacha, barrida, gancho, escudo de 3 golpes, recarga lenta y derrota
 node tools/tests/minibosses.js # los 10 mini jefes: barreras, avisos, descanso, núcleo y reinicio al caer
 node tools/tests/taller.js    # taller (datos de los recuerdos, lámpara) y patio: cada movimiento se marca con el teclado
+node tools/tests/registro.js  # registro (nombre, 3 consentimientos), nombre en los textos y envío de eventos a un receptor simulado
 node tools/tests/overlap.js   # ninguna pantalla (menús, retos, simuladores, niveles) tiene textos encima de otros
 node tools/tests/walk.js      # recorre la campaña completa hasta el epílogo
 node tools/tests/menus.js     # abre todas las pantallas de menú

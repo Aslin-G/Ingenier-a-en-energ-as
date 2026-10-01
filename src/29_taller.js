@@ -479,7 +479,9 @@ class TallerScene {
       glow(TL.glass.x + TL.glass.w / 2, TL.glass.y + TL.glass.h / 2, 70, '#9FB8FF', 0.12);
     }
     // ---- rótulos (encima de la luz: siempre legibles) ----
-    drawText(g, 'TALLER DE LÍA', 240, 15, PAL.sun, { align: 'center', scale: 2, shadow: '#3A2010' });
+    // con un nombre largo (el del estudiante) el rótulo baja de tamaño para caber en la placa
+    const big = textW('TALLER DE LÍA') * 2 <= 146;
+    drawText(g, 'TALLER DE LÍA', 240, big ? 15 : 18, PAL.sun, { align: 'center', scale: big ? 2 : 1, shadow: '#3A2010' });
     const B = TL.board;
     drawText(g, 'PEGATINAS ' + got + '/' + keys.length, B.x + 79, B.y + 8, '#5A3A20', { align: 'center' });
     const bossesDone = Object.keys(BOSSES).filter(k => flag('boss_' + k)).length, minisDone = Object.keys(MINI).filter(k => flag('mini_' + k)).length;
@@ -567,6 +569,7 @@ function trainFinish(lv) {
   Toast.show('¡ENTRENAMIENTO COMPLETO! ' + fmtSec(P.t) + (rec && best ? ' · ¡nuevo récord!' : ''), PAL.sun, 4);
   if (first) { G.save.forgeCores = (G.save.forgeCores || 0) + 1; Toast.show('◆ +1 núcleo de forja', PAL.orange, 3.5); addXP(30, 'Entrenamiento completo'); }
   achieve('trainer');
+  Registro.log('entrenamiento', 'Patio de entrenamiento', 'lista completa', Math.round(P.t), { record: rec });
   Bark.say('pix', first ? '¡Lista completa! Ahora ya sabes TODO lo que puede hacer tu sable.' : rec ? '¡Más rápido que nunca! Optimizar también es programar.' : 'Lista completa. ¿Otra vuelta para bajar el tiempo?', 4);
   Save.write();
 }

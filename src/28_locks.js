@@ -285,6 +285,7 @@ class CodeLock extends Entity {
     if (this.solved || this.busy) return;
     const st = (G.save.locks = G.save.locks || {})[this.id] || (G.save.locks[this.id] = { tries: 0 });
     st.tries = (st.tries || 0) + 1; this.tries++;
+    Registro.log('cerradura', this.q.title + ': ' + this.q.ask, c.opt.ok ? 'acierto' : 'error', this.tries, { respuesta: c.opt.v, conceptos: (this.q.keys || []).join(', ') });
     if (c.opt.ok) {
       this.solved = true; st.solved = true; st.first = this.tries === 1;
       c.state = 'ok';

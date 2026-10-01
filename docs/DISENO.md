@@ -140,7 +140,8 @@ La progresión del personaje acompaña a la del conocimiento: Lía se vuelve má
 | Recarga | Quieta y agachada, mantener ↓: 50 de energía = +1 célula | La energía se gana golpeando: arriesgar para curarse. |
 | Energía | Sola sube hasta 50 y despacio (4,5/s) y se pausa 2,2 s tras gastar; golpear da 6 | Más difícil: los recursos se ganan jugando, no esperando. |
 | Escudo IF | Bloquea golpes, pero cada uno cuesta un tercio de la energía: al tercero se rompe | El escudo es una decisión con coste, no invencibilidad. |
-| Derrota | El mundo se detiene, Lía cae, el círculo se cierra y una tarjeta dice qué la venció y da un consejo | El estudiante entiende que falló y por qué antes de reintentar. |
+| Derrota | Cinemática de unos 5 s: impacto final congelado, caída a cámara lenta, Lumi se apaga, el mundo pierde el color, el círculo se cierra y aparece MISIÓN FALLIDA con la causa y un consejo | El estudiante entiende que falló y por qué antes de reintentar. |
+| Ataque especial | Cada impacto de un ERROR CRÍTICO cuesta una célula y 20 de energía | Los ataques especiales se notan y castigan más que un golpe normal. |
 | Crítico | Con la Lente Debug activa, +1 de daño | Refuerza el hábito de «mirar por dentro». |
 
 **Sensación de impacto**: pausa de impacto de unos milisegundos, destello blanco, retroceso, chispas del color de Lumi (el sable cambia de color con su emoción) y un breve retroceso sin control al recibir daño para salir del contacto. Durante los diálogos nadie ataca.
@@ -207,6 +208,7 @@ Las pruebas de `tools/tests/` se ejecutan con Playwright y Chromium sin interfaz
 - **cards**: preguntas de las 19 cartas, calendario de Leitner con reloj simulado, racha de días, repaso completo desde el mapa con teclado, reto del día (determinista y con recompensa una vez) y forja (fallar no gasta núcleos; acertar cambia el combate).
 - **moves**: Lía se dibuja mirando hacia donde camina; ↓ la agacha (caja de 13 px) y al soltar se levanta sin mover los pies; agachada y quieta recarga; la barrida avanza y golpea; el gancho la eleva y golpea arriba; el escudo se rompe al tercer golpe; la recarga sola espera y sube despacio; la derrota muestra su escena y vuelve al punto de control.
 - **minibosses**: hay un mini jefe en cada isla, cierra su zona con dos barreras, avisa y descansa, recibe +1 en el descanso, al depurarse da un núcleo y abre las barreras, no reaparece y se reinicia si Lía cae.
+- **registro**: sin estudiante no se anota nada; NUEVA PARTIDA pide nombres, apellidos y los tres consentimientos (sin ellos no empieza); el nombre sustituye a «Lía»; se anotan registro, sesión, nivel, errores, retos y derrota, y se envían por lotes a un receptor simulado.
 - **taller**: los recuerdos muestran su dato real, la lámpara se apaga, el botón del patio abre la sala, cada movimiento de la lista se marca jugando con el teclado y la puerta vuelve al taller.
 - **overlap**: un auditor registra la caja de cada texto dibujado (por capas, teniendo en cuenta los paneles opacos) y comprueba que en 256 pantallas ningún texto pisa a otro.
 - **Publicación**: el flujo `.github/workflows/publicar.yml` compila y publica en GitHub Pages en cada envío.

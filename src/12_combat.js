@@ -23,7 +23,7 @@ const SABER = {
 };
 const CHARGE_TIME = 0.65, PASSIVE_ENERGY_CAP = 50;
 // energía: la recarga sola llega hasta 50, despacio, y se detiene un rato después de gastar
-const ENERGY = { regen: 4.5, regenDark: 2.5, delay: 2.2, hit: 6, hitForged: 9, shieldHit: 34, spin: 12, rush: 15, twin: 10 };
+const ENERGY = { regen: 4.5, regenDark: 2.5, delay: 2.2, hit: 6, hitForged: 9, shieldHit: 34, spin: 12, rush: 15, twin: 10, specialHit: 20 };
 // mejoras de la Forja del Lumisable (cada una es un concepto: ver 29_forge.js)
 const forged = k => !!(G.save.forge && G.save.forge[k]);
 // coste del pulso y de la recarga (la forja los abarata)

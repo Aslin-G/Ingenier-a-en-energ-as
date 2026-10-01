@@ -57,6 +57,7 @@ class ForgeTrialScene {
     if (this.pick >= 0) return;
     this.pick = j; UI.clicks.clear();
     const f = this.f;
+    Registro.log('forja', f.name, this.q.options[j].ok ? 'acierto: mejora forjada' : 'error', '', { concepto: f.key });
     if (this.q.options[j].ok) {
       G.save.forgeCores = Math.max(0, (G.save.forgeCores || 0) - f.cost);
       (G.save.forge = G.save.forge || {})[f.id] = true;

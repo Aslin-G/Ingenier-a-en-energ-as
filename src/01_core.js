@@ -171,6 +171,8 @@ const Input = {
 
 window.addEventListener('keydown', e => {
   const code = e.code || e.key;
+  // escribiendo en un campo de texto (registro del estudiante): las teclas no son acciones del juego
+  if (e.target && /^(INPUT|TEXTAREA)$/.test(e.target.tagName)) return;
   if (Input.captureNext) { const cb = Input.captureNext; Input.captureNext = null; cb(code); e.preventDefault(); return; }
   if (!Input.keys[code]) { Input.pressedCodes[code] = true; Input.anyKeyHit = true; }
   Input.keys[code] = true;

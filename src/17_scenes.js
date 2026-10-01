@@ -79,15 +79,19 @@ const Game = {
     Trans.draw(ctx);
     HD.present();
   },
-  newGame() {
+  newGame(player) {
     const settings = G.save.settings, teacher = G.save.teacherUnlocked, lab = G.save.labUnlocked;
     G.save = newSave(); G.save.settings = settings; G.save.started = true; G.save.teacherUnlocked = teacher; G.save.labUnlocked = lab;
+    G.save.player = player || null; setHero(G.save.player);
+    if (G.save.player) { Registro.registro(G.save.player); Registro.inicioSesion(true); }
     rebuildLia();
     Save.write();
     this.startLevel('festival');
   },
-  continueGame() {
+  continueGame(player) {
     Save.load(); rebuildLia(); syncPowers();
+    if (player) { G.save.player = player; setHero(player); Save.write(); Registro.registro(player); }
+    Registro.inicioSesion(false);
     const sc = G.save.scene;
     if (LEVELS[sc] && sc !== 'festival') this.startLevel(sc, 'checkpoint');
     else if (flag('prologueDone')) this.toMap();
@@ -98,6 +102,7 @@ const Game = {
       Scenes.clear(); Particles.clear(); Bark.clear();
       G.save.scene = key; G.save.lastRegion = LEVELS[key].region || G.save.lastRegion;
       Scenes.push(new GameplayScene(key, spawn));
+      Registro.log('entra_a_nivel', LEVELS[key].title || key);
     });
   },
   toMap(focus) {
@@ -171,33 +176,45 @@ function defeatCause(src, lv) {
   return 'un peligro del camino';
 }
 class DefeatScene {
+  // cinemática de derrota (≈ 5 s antes de poder continuar):
+  //  impact: el mundo se congela, Lía parpadea y su última célula se rompe sobre ella
+  //  fall:   cae a cámara lenta y queda tendida; Lumi parpadea y se apaga; el mundo pierde el color
+  //  dark:   el círculo de visión se cierra y aparece «Lía se quedó sin energía»
+  //  card:   tarjeta MISIÓN FALLIDA (qué la venció, consejo, vuelta al punto de control)
+  //  open:   reaparece en el punto de control con el círculo abriéndose
   constructor(lv) {
-    this.lv = lv; this.t = 0; this.opaque = false; this.phase = 'fall'; this.openT = 0; this.nav = false;
+    this.lv = lv; this.t = 0; this.opaque = false; this.phase = 'impact'; this.openT = 0; this.nav = false;
     const p = lv.player;
-    this.px = p.cx; this.py = p.y + p.h; this.face = p.face; this.vy = -150;
+    this.px = p.cx; this.py = p.y + p.h; this.face = p.face; this.vy = -110; this.ground = p.y + p.h;
     this.cause = defeatCause(p.lastHurt, lv);
+    Registro.log('derrota', 'sin células', 'la venció ' + this.cause, G.save.stats.deaths || '');
     this.tip = lv.rboss ? 'Usa la Lente (F) para leer su programa y golpéalo en su descanso. ¡Cada intento es una prueba!' : DEFEAT_TIPS[(G.save.stats.deaths || 0) % DEFEAT_TIPS.length];
     p.hidden = true;
-    AudioSys.stopSong(); AudioSys.sfx('defeat'); FX.flash('#FF6B6B', 0.5); FX.shake(4, 0.5);
+    AudioSys.stopSong(); AudioSys.sfx('defeat'); FX.flash('#FF6B6B', 0.6); FX.shake(4, 0.6);
     Particles.burst(p.cx, p.y + 8, 24, { colors: [PAL.sun, PAL.coral, PAL.white], min: 30, max: 110, type: 'star', lmax: 0.8 });
   }
   get skip() { return G.autoDialog; }
+  static get T() { return { impact: 0.9, fall: 2.6, dark: 3.8, wait: 1.6 }; }
   update(dt) {
     this.t += dt;
-    const lv = this.lv;
-    // caída del cuerpo hasta el suelo
-    if (this.phase === 'fall') {
-      this.vy += 600 * dt; this.py += this.vy * dt * 0.6;
-      const ground = lv.player.y + lv.player.h;
-      if (this.py >= ground && this.vy > 0) { this.py = ground; this.vy = 0; }
-      if (this.t > 1.6 || this.skip) { this.phase = 'card'; this.cardT = 0; }
+    const T = DefeatScene.T;
+    if (this.phase === 'impact') {
+      if (this.t >= T.impact || this.skip) this.phase = 'fall';
+    } else if (this.phase === 'fall') {
+      // caída lenta del cuerpo hasta el suelo
+      this.vy += 260 * dt; this.py += this.vy * dt * 0.5;
+      if (this.py >= this.ground && this.vy > 0) { this.py = this.ground; if (this.vy > 40) { AudioSys.sfx('land'); FX.shake(2, 0.2); } this.vy = 0; }
+      if (!this.lumiOff && this.t > 2.0) { this.lumiOff = true; AudioSys.sfx('powerdown'); }
+      if (this.t >= T.fall || this.skip) this.phase = 'dark';
+    } else if (this.phase === 'dark') {
+      if (this.t >= T.dark || this.skip) { this.phase = 'card'; this.cardT = 0; AudioSys.sfx('fail'); }
     } else if (this.phase === 'card') {
       this.cardT += dt;
-      const go = this.skip || (this.cardT > 1.1 && (Input.hit('interact') || Input.hit('confirm') || Input.hit('attack') || Input.hit('jump') || Input.pointer.pressed));
+      const go = this.skip || (this.cardT > T.wait && (Input.hit('interact') || Input.hit('confirm') || Input.hit('attack') || Input.hit('jump') || Input.pointer.pressed));
       if (go) { Input.consume(); this.retry(); }
     } else if (this.phase === 'open') {
       this.openT += dt;
-      if (this.openT > 0.7 || this.skip) this.finish();
+      if (this.openT > 1.0 || this.skip) this.finish();
     }
   }
   retry() {
@@ -212,15 +229,8 @@ class DefeatScene {
     Bark.say('pix', lv.rboss ? 'Otra vez. Ahora ya conoces su programa.' : choice(['¡Volvemos! Lumi recargó tus células.', 'Reiniciando desde el punto de control.', 'Depurar es fallar, mirar qué pasó y ajustar.']), 3);
     if (lv.rboss) Cut.run(() => bossRetry(lv));
   }
-  draw(g) {
-    const lv = this.lv, cx = lv.cam.x, cy = lv.cam.y;
-    const sx = Math.round(this.px - cx), sy = Math.round(this.py - cy);
-    // oscurecer y desaturar el mundo poco a poco
-    const k = this.phase === 'open' ? 1 - clamp(this.openT / 0.7, 0, 1) : clamp(this.t / 1.2, 0, 1);
-    g.globalAlpha = 0.35 * k; rect(g, 0, 0, W, H, '#2A0A1A'); g.globalAlpha = 1;
-    // círculo de visión que se cierra sobre Lía (y se abre al reaparecer)
-    const R = this.phase === 'open' ? lerp(24, 520, easeOut(clamp(this.openT / 0.7, 0, 1))) : lerp(520, 30, easeInOut(clamp((this.t - 0.4) / 1.1, 0, 1)));
-    const ox = this.phase === 'open' ? Math.round(lv.player.cx - cx) : sx, oy = this.phase === 'open' ? Math.round(lv.player.y + 10 - cy) : sy - 6;
+  // círculo de visión (se cierra sobre Lía o se abre en el punto de control)
+  drawIris(g, ox, oy, R) {
     g.fillStyle = '#05070F';
     for (let y = 0; y < H; y += 2) {
       const dy = y + 1 - oy, half = R * R - dy * dy;
@@ -228,27 +238,65 @@ class DefeatScene {
       const hw = Math.sqrt(half);
       g.fillRect(0, y, Math.max(0, ox - hw), 2); g.fillRect(ox + hw, y, W, 2);
     }
-    if (this.phase === 'open') return;
-    // Lía cae y queda tendida; Lumi se apaga a su lado
+  }
+  draw(g) {
+    const lv = this.lv, cx = lv.cam.x, cy = lv.cam.y, T = DefeatScene.T, t = this.t;
+    const sx = Math.round(this.px - cx), sy = Math.round(this.py - cy);
+    if (this.phase === 'open') {
+      const k = easeOut(clamp(this.openT / 1.0, 0, 1));
+      g.globalAlpha = 0.35 * (1 - k); rect(g, 0, 0, W, H, '#2A0A1A'); g.globalAlpha = 1;
+      this.drawIris(g, Math.round(lv.player.cx - cx), Math.round(lv.player.y + 10 - cy), lerp(24, 520, k));
+      g.globalAlpha = clamp(1 - k * 1.4, 0, 1); drawText(g, '¡DE VUELTA AL PUNTO DE CONTROL!', W / 2, 40, PAL.lime, { align: 'center', outline: PAL.ink }); g.globalAlpha = 1;
+      return;
+    }
+    // el mundo pierde el color y se oscurece poco a poco
+    const gray = clamp((t - 0.3) / 2.0, 0, 1);
+    if (gray > 0) { g.globalCompositeOperation = 'saturation'; g.fillStyle = 'rgba(128,128,128,' + gray + ')'; g.fillRect(0, 0, W, H); g.globalCompositeOperation = 'source-over'; }
+    const pulse = this.phase === 'impact' ? 0.25 + 0.2 * Math.abs(Math.sin(t * 9)) : 0.35;
+    g.globalAlpha = pulse * clamp(t / 0.4, 0, 1); rect(g, 0, 0, W, H, '#2A0A1A'); g.globalAlpha = 1;
+    // viñeta roja en los bordes
+    g.globalAlpha = 0.5 * clamp(t / 0.6, 0, 1);
+    for (let i = 0; i < 10; i++) { strokeRect(g, i, i, W - i * 2, H - i * 2, '#7A1A2A'); g.globalAlpha *= 0.82; }
+    g.globalAlpha = 1;
+    // círculo de visión que se cierra sobre Lía
+    const R = lerp(520, 30, easeInOut(clamp((t - T.fall + 0.4) / (T.dark - T.fall + 0.2), 0, 1)));
+    if (t > T.fall - 0.4) this.drawIris(g, sx, sy - 6, R);
+    // Lía: parpadea con el golpe final, cae a cámara lenta y queda tendida
     const S = Spr.lia.hurt[0], img = this.face > 0 ? S.rh : S.lh, base = this.face > 0 ? S.r : S.l;
-    if (this.vy !== 0 || this.t < 0.45) g.drawImage(img, sx - base.width / 2, sy - base.height + 1, base.width, base.height);
+    if (this.phase === 'impact') {
+      if (Math.floor(t * 14) % 2 === 0) g.drawImage(img, sx - base.width / 2 + Math.round(Math.sin(t * 40)), sy - base.height + 1, base.width, base.height);
+      // la última célula se rompe sobre su cabeza
+      const k = clamp(t / T.impact, 0, 1), cyy = sy - base.height - 14 - k * 6, spread = Math.round(k * 5);
+      g.globalAlpha = 1 - k * 0.6;
+      drawLumiShape(g, sx - 4 - spread, cyy, Spr.lumi[0], PAL.coral, '#7A1A2A', false);
+      drawLumiShape(g, sx - 3 + spread, cyy + spread, Spr.lumi[0], PAL.coral, '#7A1A2A', false);
+      g.globalAlpha = 1;
+      if (t > 0.25) drawText(g, '0 células', sx, cyy - 10, PAL.coral, { align: 'center', outline: PAL.ink });
+    } else if (this.vy !== 0) g.drawImage(img, sx - base.width / 2, sy - base.height + 1, base.width, base.height);
     else {
-      // tendida en el suelo: el sprite girado 90°
       g.save(); g.translate(sx, sy - 5); g.rotate(this.face > 0 ? -Math.PI / 2 : Math.PI / 2);
       g.drawImage(img, -base.width / 2, -base.height / 2, base.width, base.height); g.restore();
     }
-    const lumiK = clamp(1 - (this.t - 0.6) / 0.9, 0, 1), lx = sx + this.face * 10, ly = sy - 18 + Math.sin(this.t * 3) * 2;
-    if (lumiK > 0) { g.globalAlpha = lumiK; pcircle(g, lx, ly, 3, PAL.sun); g.globalAlpha = lumiK * 0.3; pcircle(g, lx, ly, 6, PAL.sun); g.globalAlpha = 1; }
-    else { pcircle(g, lx, ly + 6, 2, '#565E8C'); }
+    // Lumi parpadea y se apaga a su lado
+    const lx = sx + this.face * 10, ly = sy - 18 + Math.sin(t * 3) * 2;
+    const flick = t < 1.2 ? 1 : t < 2.0 ? (Math.floor(t * 10) % 3 === 0 ? 0.2 : 0.9) : 0;
+    if (flick > 0) { g.globalAlpha = flick; pcircle(g, lx, ly, 3, PAL.sun); g.globalAlpha = flick * 0.3; pcircle(g, lx, ly, 6, PAL.sun); g.globalAlpha = 1; }
+    else pcircle(g, lx, ly + 6, 2, '#565E8C');
+    // frase en la oscuridad
+    if (t > T.fall + 0.2) {
+      const msg = 'Lía se quedó sin energía...', n = Math.floor((t - T.fall - 0.2) * 24);
+      drawText(g, msg.slice(0, n), W / 2, this.phase === 'card' ? 18 : 120, '#FFB0B8', { align: 'center', outline: '#2A0A1A' });
+    }
     // tarjeta
     if (this.phase === 'card') {
-      const a = easeBack(clamp(this.cardT * 2.5, 0, 1)), w = 300, h = 100, x = (W - w) / 2, y = 42 + (1 - a) * -60;
+      const a = easeBack(clamp(this.cardT * 2.2, 0, 1)), w = 300, h = 120, x = (W - w) / 2, y = 34 + (1 - a) * -70;
       panel(g, x, y, w, h, { border: PAL.coral, accent: PAL.coral, accentW: 90 });
-      drawText(g, '¡SIN CÉLULAS!', W / 2, y + 10, PAL.coral, { align: 'center', scale: 2, outline: '#2A0A1A' });
-      drawText(g, 'Misión fallida · te venció ' + this.cause, W / 2, y + 32, PAL.cream, { align: 'center' });
+      drawText(g, 'MISIÓN FALLIDA', W / 2, y + 10, PAL.coral, { align: 'center', scale: 2, outline: '#2A0A1A' });
+      drawText(g, 'Te quedaste sin células · te venció ' + this.cause, W / 2, y + 32, PAL.cream, { align: 'center' });
       drawPara(g, '{y}Consejo:{/} ' + this.tip, x + 12, y + 46, w - 24, '#C9D2F0', { lh: 10 });
-      if (this.cardT > 1.1) drawText(g, (Input.lastDevice === 'touch' ? 'Toca' : 'E / ENTER') + ': volver al punto de control', W / 2, y + h - 13, Math.floor(this.t * 3) % 2 ? PAL.lime : PAL.sun, { align: 'center' });
-      else bar(g, x + 60, y + h - 10, w - 120, 3, this.cardT, 1.1, PAL.coral, '#1E2748');
+      drawText(g, 'Volverás al último punto de control con todas tus células.', W / 2, y + 82, '#8C93B8', { align: 'center' });
+      if (this.cardT > T.wait) drawText(g, (Input.lastDevice === 'touch' ? 'Toca' : 'E / ENTER') + ': volver a intentarlo', W / 2, y + h - 14, Math.floor(t * 3) % 2 ? PAL.lime : PAL.sun, { align: 'center' });
+      else bar(g, x + 60, y + h - 11, w - 120, 3, this.cardT, T.wait, PAL.coral, '#1E2748');
     }
   }
 }
@@ -398,8 +446,11 @@ class TitleScene {
   }
   pick(id) {
     AudioSys.unlock();
-    if (id === 'new') { if (this.hasSave) Scenes.push(new ConfirmScene('¿Empezar de nuevo? Se sobrescribirá la partida guardada (los ajustes se conservan).', () => Game.newGame())); else Game.newGame(); }
-    if (id === 'cont') Game.continueGame();
+    // nueva partida: primero el registro del estudiante (nombre completo y consentimientos)
+    const register = () => Scenes.push(new RegisterScene(p => Game.newGame(p)));
+    if (id === 'new') { if (this.hasSave) Scenes.push(new ConfirmScene('¿Empezar de nuevo? Se sobrescribirá la partida guardada (los ajustes se conservan).', register)); else register(); }
+    // continuar una partida guardada sin estudiante registrado: se registra antes de seguir
+    if (id === 'cont') { Save.load(); if (G.save.player) Game.continueGame(); else Scenes.push(new RegisterScene(p => Game.continueGame(p), 'continue')); }
     if (id === 'lab') { Save.load(); Scenes.push(new LabScene()); }
     if (id === 'teacher') Scenes.push(new TeacherScene());
     if (id === 'settings') Scenes.push(new SettingsScene());
@@ -444,6 +495,8 @@ class PauseScene {
     ].filter(Boolean);
     opts.forEach(([id, label, fn], i) => { if (UI.btn(g, 'p_' + id, 170, 70 + i * 18, 140, 15, label, { color: i === 0 ? PAL.lime : id === 'o' ? PAL.sun : PAL.teal })) fn(); });
     drawText(g, 'Nivel ' + G.save.level + ' · ' + rankName(), 240, 236, '#8C93B8', { align: 'center' });
+    // transparencia: el estudiante ve con quién se comparte su progreso
+    if (G.save.player) drawText(g, fitText(G.save.player.full + ' · tu progreso se comparte con tu docente', 470), 240, 254, '#6A7090', { align: 'center' });
   }
 }
 
@@ -564,7 +617,7 @@ class RemapScene {
 // ---------------------------------------------------------------------
 function unlockCodex(id) {
   if (!CODEX[id]) return;
-  if (!G.save.codex[id]) { G.save.codex[id] = { read: false, t: Date.now() }; Toast.show('+ ATLAS: ' + CODEX[id].title, PAL.teal, 2); }
+  if (!G.save.codex[id]) { G.save.codex[id] = { read: false, t: Date.now() }; Toast.show('+ ATLAS: ' + CODEX[id].title, PAL.teal, 2); Registro.log('atlas', CODEX[id].title); }
 }
 const CODEX_CATS = [['algoritmos', 'ALGORITMOS', PAL.teal], ['energias', 'ENERGÍAS', PAL.lime], ['personajes', 'PERSONAJES', PAL.pink], ['islas', 'ISLAS', PAL.sun], ['misterios', 'MISTERIOS', PAL.violet], ['bestiario', 'BESTIARIO', PAL.coral]];
 class CodexScene {

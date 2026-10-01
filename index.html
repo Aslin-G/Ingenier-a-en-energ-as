@@ -258,6 +258,8 @@ const Input = {
 
 window.addEventListener('keydown', e => {
   const code = e.code || e.key;
+  // escribiendo en un campo de texto (registro del estudiante): las teclas no son acciones del juego
+  if (e.target && /^(INPUT|TEXTAREA)$/.test(e.target.tagName)) return;
   if (Input.captureNext) { const cb = Input.captureNext; Input.captureNext = null; cb(code); e.preventDefault(); return; }
   if (!Input.keys[code]) { Input.pressedCodes[code] = true; Input.anyKeyHit = true; }
   Input.keys[code] = true;
@@ -551,15 +553,25 @@ const Font = {
   charW(ch) { if (ch === ' ') return this.SPACE; return this.gl(ch).w + 1; }
 };
 
+// Nombre del protagonista: el que escribió el estudiante al registrarse.
+// Sustituye a «Lía» / «LÍA» en todos los textos que se miden y se dibujan
+// (solo la palabra completa: no toca otras palabras que la contengan).
+const HERO = { name: '', up: '' };
+function setHero(p) { HERO.name = p && p.hero ? p.hero : ''; HERO.up = HERO.name.toUpperCase(); }
+const _isLetter = c => !!c && /[A-Za-zÁÉÍÓÚÑÜáéíóúñü]/.test(c);
+function heroSub(s) {
+  if (!HERO.name || s.indexOf('L') < 0) return s;
+  return s.replace(/Lía|LÍA/g, (m, i, str) => _isLetter(str[i - 1]) || _isLetter(str[i + 3]) ? m : (m === 'LÍA' ? HERO.up : HERO.name));
+}
 // recorta un texto con «…» para que quepa en maxW píxeles
 function fitText(str, maxW) {
-  str = String(str);
+  str = heroSub(String(str));
   if (textW(str) <= maxW) return str;
   while (str.length > 1 && textW(str + '…') > maxW) str = str.slice(0, -1);
   return str.trimEnd() + '…';
 }
 function textW(str, scale = 1) {
-  str = stripMarkup(String(str));
+  str = stripMarkup(heroSub(String(str)));
   let w = 0;
   for (const ch of str) w += Font.charW(ch);
   return Math.max(0, w - 1) * scale;
@@ -571,7 +583,7 @@ const TextAudit = { on: false, list: [],
   cover(g, x, y, w, h) { if (g !== ctx) return; const m = g.getTransform(), X = x + m.e / RES, Y = y + m.f / RES; for (const r of this.list) if (r.l === this.layer && r.x < X + w && r.x + r.w > X && r.y < Y + h && r.y + r.h > Y) r.hidden = true; },
   add(g, t, x, y, w, h) { if (this.on && g === ctx && String(t).trim()) { const m = g.getTransform(), k = m.a / RES || 1; this.list.push({ t: String(t), x: x * k + m.e / RES, y: y * k + m.f / RES, w: w * k, h: h * k, a: g.globalAlpha, l: this.layer }); } } };
 function drawText(g, str, x, y, color = PAL.cream, opts = {}) {
-  str = String(str);
+  str = heroSub(String(str));
   const scale = opts.scale || 1;
   const w = textW(str, scale);
   if (opts.align === 'center') x -= Math.floor(w / 2);
@@ -621,7 +633,7 @@ function parseRich(str, base) {
 // Envuelve texto enriquecido en líneas (conserva marcas de color entre líneas)
 function wrapRich(str, maxW, base = PAL.cream) {
   const out = [];
-  for (const para of String(str).split('\n')) {
+  for (const para of heroSub(String(str)).split('\n')) {
     const segs = parseRich(para, base);
     const words = []; // {t,c} por palabra con espacios
     for (const s of segs) {
@@ -992,6 +1004,120 @@ function buildSong(name, d) {
 }
 
 
+// ===== 04_registro.js · Lumina Loop · © Aslin Gonzalo Botello Plata =====
+// =====================================================================
+//  REGISTRO DE ACTIVIDAD PARA EL DOCENTE (rendimiento y calificación)
+//  Lumina Loop: El Código de los Elementos · © Aslin Gonzalo Botello Plata
+//
+//  · Solo funciona si el estudiante se registró y ACEPTÓ los tres
+//    consentimientos de la pantalla de registro (RegisterScene).
+//  · Anota lo que hace en el juego (retos, errores, logros, misiones,
+//    derrotas, tiempos) y lo envía por lotes a la hoja de cálculo de
+//    Google Drive del docente (una aplicación web de Google Apps Script).
+//  · No cambia la mecánica del juego. Si no hay conexión, los eventos
+//    esperan en el dispositivo y se reenvían después.
+//  · Configuración: pega en REGISTRO_URL la dirección «/exec» de la
+//    aplicación web (instrucciones en tools/google-sheets/LEEME.md).
+// =====================================================================
+const REGISTRO_URL = '';
+
+const Registro = {
+  KEY: 'luminaLoopRegistro', MAX: 3000, LOTE: 40,
+  cola: [], sesion: null, inicio: 0, enviando: false,
+  url() { try { return String(window.LUMINA_REGISTRO_URL || REGISTRO_URL || '').trim(); } catch (e) { return ''; } },
+  activo() { const p = G.save && G.save.player; return !!(p && p.consent && p.consent.ok); },
+  idSesion() {
+    if (!this.sesion) { this.sesion = Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 7); this.inicio = Date.now(); }
+    return this.sesion;
+  },
+  lugar() {
+    const lv = G.run && G.run.level;
+    return lv ? (lv.def.title || lv.key) : (G.save.scene || '');
+  },
+  // un evento: tipo, detalle (qué), resultado, valor (número) y datos adicionales
+  log(tipo, detalle = '', resultado = '', valor = '', extra = null) {
+    try {
+      if (!this.activo()) return;
+      const p = G.save.player;
+      this.cola.push({
+        t: new Date().toISOString(), sesion: this.idSesion(), id: p.id, estudiante: p.full, tipo, lugar: this.lugar(),
+        detalle: String(detalle == null ? '' : detalle).slice(0, 300), resultado: String(resultado == null ? '' : resultado).slice(0, 600),
+        valor: valor == null ? '' : valor, extra: extra ? JSON.stringify(extra) : ''
+      });
+      if (this.cola.length > this.MAX) this.cola.splice(0, this.cola.length - this.MAX);
+      this.guardar();
+      if (this.cola.length >= this.LOTE) this.enviar();
+    } catch (e) { }
+  },
+  guardar() { try { localStorage.setItem(this.KEY, JSON.stringify(this.cola)); } catch (e) { } },
+  cargar() { try { const c = JSON.parse(localStorage.getItem(this.KEY) || '[]'); if (Array.isArray(c)) this.cola = c.concat(this.cola).slice(-this.MAX); } catch (e) { } },
+  // envía un lote (al cerrar la página, con sendBeacon)
+  enviar(alSalir) {
+    const url = this.url();
+    if (!url || !this.cola.length || (this.enviando && !alSalir)) return;
+    const lote = this.cola.slice(0, this.LOTE), cuerpo = JSON.stringify({ v: 1, juego: 'Lumina Loop', eventos: lote });
+    const quitar = () => { this.cola.splice(0, lote.length); this.guardar(); };
+    try {
+      if (alSalir && navigator.sendBeacon) { if (navigator.sendBeacon(url, new Blob([cuerpo], { type: 'text/plain;charset=utf-8' }))) quitar(); return; }
+      this.enviando = true;
+      fetch(url, { method: 'POST', mode: 'no-cors', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: cuerpo, keepalive: cuerpo.length < 60000 })
+        .then(() => { this.enviando = false; quitar(); if (this.cola.length) setTimeout(() => this.enviar(), 1500); })
+        .catch(() => { this.enviando = false; });
+    } catch (e) { this.enviando = false; }
+  },
+  // resumen del progreso (al empezar y al terminar cada sesión)
+  resumen() {
+    try {
+      const s = G.save.stats || {};
+      return {
+        nivel: G.save.level, xp: G.save.xp, islasRestauradas: REGIONS.filter(r => restored(r.key)).map(r => r.name).join(', '),
+        jefes: Object.keys(BOSSES).filter(k => flag('boss_' + k)).length, miniJefes: Object.keys(MINI).filter(k => flag('mini_' + k)).length,
+        retosResueltos: s.puzzles, alPrimerIntento: s.firstTry, pistas: s.hints, errores: s.fails, derrotas: s.deaths || 0,
+        logros: Object.keys(G.save.achievements || {}).length, minutosJugados: Math.round((s.playTime || 0) / 60), dominio: G.save.mastery
+      };
+    } catch (e) { return null; }
+  },
+  // ---------- eventos con formato propio ----------
+  registro(p) { this.log('registro', p.full, 'consentimientos aceptados', '', { nombres: p.nombres, apellidos: p.apellidos, nombreEnElJuego: p.hero, consentimientos: p.consent.items, version: p.consent.version, fecha: p.consent.at }); },
+  inicioSesion(nueva) { this.sesion = null; this.log('inicio_sesion', nueva ? 'partida nueva' : 'continuar partida', '', '', this.resumen()); this.enviar(); },
+  reto(sc, r, clase) {
+    const cfg = sc.cfg || {};
+    const tipo = cfg.label === 'PARCHE' ? 'parche_jefe' : clase === 'SimScene' ? 'simulador' : 'reto';
+    let programa;
+    try { if (r && r.program && typeof progToText === 'function') programa = progToText(r.program).slice(0, 1500); } catch (e) { }
+    this.log(tipo, cfg.title || '', r && r.success ? 'superado' : 'salió sin terminar', r && r.success ? (r.stars || 0) : '', {
+      tipoDeReto: clase, conceptos: (cfg.concepts || []).join(', '), ejecuciones: (r && r.attempts) || sc.runs || 0,
+      errores: sc.fails || 0, pistas: sc.hintLevel || 0, alPrimerIntento: !!(r && r.firstTry), segundos: Math.round(sc.t || 0), programa
+    });
+  },
+  error(sc, msg) { this.log('error_en_reto', (sc.cfg && sc.cfg.title) || '', String(msg || ''), sc.fails || ''); },
+  // banderas de la historia: las importantes con un nombre legible; el resto, como «hito»
+  hito(k) {
+    if (!this.activo()) return;
+    const isla = key => { const r = REGIONS.find(x => x.key === key); return r ? r.name : key; };
+    let m;
+    if ((m = /^restored_(.+)/.exec(k))) this.log('isla_restaurada', isla(m[1]));
+    else if ((m = /^boss_(.+)/.exec(k))) this.log('jefe_vencido', BOSSES[m[1]] ? BOSSES[m[1]].name : m[1], isla(m[1]));
+    else if ((m = /^mini_(.+)/.exec(k))) this.log('minijefe_vencido', MINI[m[1]] ? MINI[m[1]].name : m[1], isla(m[1]));
+    else if (k === 'ending') this.log('final_del_juego', 'créditos vistos');
+    else this.log('hito', k);
+  }
+};
+Registro.cargar();
+// envío periódico y al ocultar o cerrar la página
+setInterval(() => { if (Registro.cola.length) Registro.enviar(); }, 20000);
+document.addEventListener('visibilitychange', () => {
+  if (!Registro.sesion || !Registro.activo()) return;
+  if (document.visibilityState === 'hidden') { Registro.log('pausa', 'la pestaña se ocultó', '', Math.round((Date.now() - Registro.inicio) / 1000)); Registro.enviar(true); }
+  else Registro.log('reanuda', 'la pestaña volvió a estar visible');
+});
+window.addEventListener('pagehide', () => {
+  if (!Registro.sesion || !Registro.activo()) return;
+  Registro.log('fin_sesion', 'cierre de la página', '', Math.round((Date.now() - Registro.inicio) / 1000), Registro.resumen());
+  Registro.enviar(true);
+});
+
+
 // ===== 04_save.js · Lumina Loop · © Aslin Gonzalo Botello Plata =====
 // =====================================================================
 //  ESTADO GLOBAL, GUARDADO (localStorage), MAESTRÍA, XP, LOGROS
@@ -1031,7 +1157,9 @@ function newSave() {
     // cartas del Atlas (repaso espaciado), racha de repaso y reto del día
     cards: {}, review: { streak: 0, best: 0, last: null, coreDay: null }, daily: {},
     // mejoras forjadas del Lumisable y poderes ganados a los jefes
-    forge: {}, powers: {}, sims: {}, stars: {}
+    forge: {}, powers: {}, sims: {}, stars: {},
+    // estudiante registrado: nombre completo y consentimientos
+    player: null
   };
 }
 
@@ -1058,6 +1186,7 @@ const Save = {
       data.stats = Object.assign(base.stats, data.stats || {});
       data.collectibles = Object.assign(base.collectibles, data.collectibles || {});
       G.save = data;
+      setHero(data.player);
       if (data.settings.bindings) Input.bindings = mergeBindings(data.settings.bindings);
       return true;
     } catch (e) { return false; }
@@ -1087,7 +1216,7 @@ const Save = {
   },
   resetAll() {
     const settings = G.save.settings;
-    G.save = newSave(); G.save.settings = settings;
+    G.save = newSave(); G.save.settings = settings; setHero(null);
     try { localStorage.removeItem(SAVE_KEY); } catch (e) { }
     Save.writeSettings();
   },
@@ -1103,7 +1232,7 @@ function mergeBindings(saved) {
 
 // ---------- banderas de historia ----------
 const flag = k => !!G.save.storyFlags[k];
-const setFlag = (k, v = true) => { G.save.storyFlags[k] = v; };
+const setFlag = (k, v = true) => { if (v && !G.save.storyFlags[k]) Registro.hito(k); G.save.storyFlags[k] = v; };
 const hasAbility = k => !!G.save.abilities[k];
 
 // ---------- XP y nivel ----------
@@ -1166,6 +1295,7 @@ const ACHIEVEMENTS = {
 function achieve(id) {
   if (G.save.achievements[id] || !ACHIEVEMENTS[id]) return;
   G.save.achievements[id] = Date.now();
+  Registro.log('logro', ACHIEVEMENTS[id].name, ACHIEVEMENTS[id].desc);
   G.save.collectibles.stickers[id] = true;
   Toast.show('★ LOGRO: ' + ACHIEVEMENTS[id].name, PAL.pink, 3);
   AudioSys.sfx('chispa');
@@ -1189,6 +1319,7 @@ const ABILITIES = {
 function giveAbility(id) {
   if (G.save.abilities[id]) return;
   G.save.abilities[id] = true;
+  Registro.log('habilidad', ABILITIES[id] ? ABILITIES[id].name : id, ABILITIES[id] ? ABILITIES[id].concept : '');
   if (ABILITY_ORDER.includes(id)) G.save.currentAbility = id;
 }
 const ABILITY_ORDER = ['spark', 'shield', 'glide', 'portal', 'pack', 'shift', 'beam', 'dash', 'link'];
@@ -1199,6 +1330,7 @@ function setQuest(id, st) {
   const prev = G.save.quests[id];
   G.save.quests[id] = st;
   const q = QUESTS[id];
+  if (q && st !== prev) Registro.log('mision', q.title, st === 'done' ? 'completada' : st === 'active' ? 'iniciada' : st, '', { principal: !!q.main });
   if (!q) return;
   if (st === 'active' && prev !== 'active') Toast.show('▶ MISIÓN: ' + q.title, q.main ? PAL.sun : PAL.teal, 2.5);
   if (st === 'done') setFlag('qdone_' + id);
@@ -4849,6 +4981,11 @@ class Player {
     const sx = src && src.x != null ? src.x + (src.w || 0) / 2 : null;
     const dir = sx != null && Math.abs(sx - this.cx) > 1 ? sign(this.cx - sx) : -this.face;
     this.cells--; this.inv = forged('guard') ? 1.9 : 1.3; this.vy = -180; this.vx = dir * 150; this.hurtT = 0.28; this.lastHurt = src || null;
+    // ataque especial de un jefe (ERROR CRÍTICO): además de la célula se lleva energía, y se ve
+    if (src && (src.bossSpawn || (src.owner && src.owner.special))) {
+      this.spend(ENERGY.specialHit);
+      Particles.text(this.cx, this.y - 16, '−1 célula · −' + ENERGY.specialHit + ' energía', PAL.coral);
+    }
     // poder PUNTO DE INTERRUPCIÓN: con 1 célula el mundo se ralentiza (una vez por punto de control)
     if (hasPower('breakpoint') && this.cells === 1 && !this.lv.bpUsed) { this.lv.bpUsed = true; this.lv.slowT = 4; Particles.text(this.cx, this.y - 16, '⏸ PUNTO DE INTERRUPCIÓN', PAL.lilac); AudioSys.sfx('debug'); }
     if (src && src.knockPlayer) src.knockPlayer(this);
@@ -5968,7 +6105,7 @@ const SABER = {
 };
 const CHARGE_TIME = 0.65, PASSIVE_ENERGY_CAP = 50;
 // energía: la recarga sola llega hasta 50, despacio, y se detiene un rato después de gastar
-const ENERGY = { regen: 4.5, regenDark: 2.5, delay: 2.2, hit: 6, hitForged: 9, shieldHit: 34, spin: 12, rush: 15, twin: 10 };
+const ENERGY = { regen: 4.5, regenDark: 2.5, delay: 2.2, hit: 6, hitForged: 9, shieldHit: 34, spin: 12, rush: 15, twin: 10, specialHit: 20 };
 // mejoras de la Forja del Lumisable (cada una es un concepto: ver 29_forge.js)
 const forged = k => !!(G.save.forge && G.save.forge[k]);
 // coste del pulso y de la recarga (la forja los abarata)
@@ -7597,6 +7734,7 @@ class CodeLabScene {
   }
   bpKey(path, fn) { return (fn || 'main') + ':' + pathKey(path); }
   fail(err) {
+    Registro.error(this, err && err.message);
     this.state = 'error'; this.gen = null; this.fails++; this.firstTry = false; G.save.stats.fails++;
     if (err.kind === 'infinite') { G.save.stats.infiniteLoops++; this.sawInfinite = true; }
     this.errPath = err.path; this.errFn = this.env.curFn;
@@ -7643,6 +7781,7 @@ class CodeLabScene {
     if (this.exited) return; this.exited = true;
     UI.nav = false; UI.cancelHeld(); Scenes.pop();
     const r = result || { success: false, hints: this.hintLevel, attempts: this.runs, fails: this.fails };
+    Registro.reto(this, r, 'CodeLabScene');
     if (r.success) {
       G.save.stats.puzzles++;
       if (r.firstTry) { G.save.stats.firstTry++; if (this.cfg.main) achieve('no_hints'); }
@@ -8728,7 +8867,7 @@ class PuzzleBase {
     if (h.apply) h.apply(this);
     AudioSys.sfx('confirm');
   }
-  failed(msg) { this.fails++; G.save.stats.fails++; this.state = 'error'; this.say('✗ ' + msg, PAL.coral); AudioSys.sfx('fail'); addMastery(this.cfg.concepts || [], -1); if (this.fails === 2 && this.hintLevel === 0) this.msg += ' (Prueba una PISTA.)'; }
+  failed(msg) { Registro.error(this, msg); this.fails++; G.save.stats.fails++; this.state = 'error'; this.say('✗ ' + msg, PAL.coral); AudioSys.sfx('fail'); addMastery(this.cfg.concepts || [], -1); if (this.fails === 2 && this.hintLevel === 0) this.msg += ' (Prueba una PISTA.)'; }
   succeeded(msg, extra) {
     this.state = 'success'; this.resultT = this.t; this.say('✓ ' + msg, PAL.lime); AudioSys.sfx('win');
     const stars = puzzleStars(this.fails, this.hintLevel);
@@ -8740,6 +8879,7 @@ class PuzzleBase {
     if (this.exited) return; this.exited = true;
     UI.nav = false; UI.scope = null; UI.cancelHeld(); Scenes.pop();
     r = r || { success: false, hints: this.hintLevel, fails: this.fails };
+    Registro.reto(this, r, this.constructor.name);
     if (r.success) {
       G.save.stats.puzzles++;
       if (r.firstTry) { G.save.stats.firstTry++; if (this.cfg.main) achieve('no_hints'); }
@@ -10598,6 +10738,155 @@ class SimLabScene {
 }
 
 
+// ===== 17_registro.js · Lumina Loop · © Aslin Gonzalo Botello Plata =====
+// =====================================================================
+//  REGISTRO DEL ESTUDIANTE (al empezar una partida)
+//  Lumina Loop: El Código de los Elementos · © Aslin Gonzalo Botello Plata
+//  · Nombres y apellidos (al menos un nombre y un apellido). El primer
+//    nombre es el de la protagonista en toda la historia; el nombre
+//    completo aparece en los créditos y en el registro para el docente.
+//  · Tres consentimientos explícitos (hay que marcar los tres): qué datos
+//    se envían y adónde, para qué se usan (ver el rendimiento y calificar)
+//    y la autorización del acudiente si el estudiante es menor de edad.
+//  · Los campos son <input> reales, transparentes, sobre el lienzo (así
+//    funcionan el teclado del móvil, las tildes y la ñ); el juego dibuja el
+//    texto con su propia fuente.
+// =====================================================================
+const CONSENT_VERSION = 'v1';
+const CONSENTS = [
+  'Acepto que mis datos de juego se envíen a una hoja de cálculo de Google Drive de mi docente: mi nombre completo, mis avances, respuestas, aciertos y errores, logros, objetivos y tiempos de juego.',
+  'Entiendo que mi docente usará esa información para ver mi rendimiento y calificarme.',
+  'Si soy menor de edad, mi madre, mi padre o mi acudiente conoce y autoriza este registro.'
+];
+const NAME_CHAR = /[A-Za-zÁÉÍÓÚÑÜáéíóúñü' -]/;
+// deja solo letras que la fuente sabe dibujar (ç → c, ã → a...), espacios, guiones y apóstrofos
+function cleanNameInput(s) {
+  let out = '';
+  for (const ch of s) {
+    if (NAME_CHAR.test(ch)) out += ch;
+    else { const b = ch.normalize('NFD')[0]; if (/[A-Za-z]/.test(b)) out += b; }
+  }
+  return out.replace(/\s+/g, ' ').replace(/^[ '-]+/, '').slice(0, 30);
+}
+const NAME_SMALL = ['de', 'del', 'la', 'las', 'los', 'y', 'e', 'da', 'do', 'dos', 'van', 'von'];
+function nameCase(s) {
+  return s.trim().toLowerCase().split(' ').filter(Boolean)
+    .map((w, i) => i > 0 && NAME_SMALL.includes(w) ? w : w.replace(/(^|[-'])([a-záéíóúñü])/g, (m, a, b) => a + b.toUpperCase()))
+    .join(' ');
+}
+// palabras con al menos dos letras
+const nameWords = s => s.trim().split(' ').filter(w => (w.match(/[A-Za-zÁÉÍÓÚÑÜáéíóúñü]/g) || []).length >= 2);
+function makePlayer(nombres, apellidos) {
+  const n = nameCase(nombres), a = nameCase(apellidos), w = nameWords(n);
+  return {
+    nombres: n, apellidos: a, full: n + ' ' + a, hero: (w[0] || n).slice(0, 12),
+    id: 'est-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+    consent: { ok: true, at: new Date().toISOString(), version: CONSENT_VERSION, items: CONSENTS.slice() }
+  };
+}
+
+class RegisterScene {
+  constructor(onDone, mode = 'new') {
+    this.onDone = onDone; this.mode = mode; this.opaque = true; this.t = 0; this.err = ''; this.done = false;
+    this.checks = CONSENTS.map(() => false);
+    this.prevNav = UI.nav; UI.nav = true; UI.focus = null;
+    this.bg = getBackground('festival');
+    this.fields = [
+      { id: 'nombres', label: 'NOMBRES', x: 44, y: 61, w: 230, h: 17, ph: 'p. ej. Ana María' },
+      { id: 'apellidos', label: 'APELLIDOS', x: 44, y: 93, w: 230, h: 17, ph: 'p. ej. Pérez Gómez' }
+    ];
+    this.makeInputs();
+  }
+  makeInputs() {
+    const stage = document.getElementById('stage') || document.body;
+    this.inputs = this.fields.map((f, i) => {
+      const el = document.createElement('input');
+      el.type = 'text'; el.maxLength = 30; el.autocomplete = 'off'; el.spellcheck = false;
+      el.setAttribute('autocapitalize', 'words'); el.setAttribute('aria-label', f.label);
+      Object.assign(el.style, {
+        position: 'absolute', left: (f.x / W * 100) + '%', top: (f.y / H * 100) + '%', width: (f.w / W * 100) + '%', height: (f.h / H * 100) + '%',
+        opacity: '0', border: '0', padding: '0', margin: '0', fontSize: '16px', zIndex: '5', background: 'transparent', color: 'transparent'
+      });
+      el.addEventListener('input', () => { const c = cleanNameInput(el.value); if (c !== el.value) el.value = c; this.err = ''; });
+      el.addEventListener('keydown', e => {
+        if (e.key === 'Enter') { e.preventDefault(); if (i === 0) this.inputs[1].focus(); else { el.blur(); cv.focus(); UI.focus = 'rg_c0'; } }
+        else if (e.key === 'Escape') { el.blur(); cv.focus(); }
+      });
+      stage.appendChild(el);
+      return el;
+    });
+    if (Input.lastDevice !== 'touch') setTimeout(() => { if (!this.done && this.inputs) this.inputs[0].focus(); }, 60);
+  }
+  removeInputs() { if (this.inputs) for (const el of this.inputs) el.remove(); this.inputs = null; }
+  val(i) { return this.inputs ? this.inputs[i].value : ''; }
+  problem() {
+    if (!nameWords(this.val(0)).length) return 'Escribe al menos un nombre (dos letras o más).';
+    if (!nameWords(this.val(1)).length) return 'Escribe al menos un apellido (dos letras o más).';
+    if (!this.checks.every(Boolean)) return 'Para empezar, marca las tres casillas del consentimiento.';
+    return '';
+  }
+  submit() {
+    const pr = this.problem();
+    if (pr) { this.err = pr; AudioSys.sfx('warn'); return; }
+    const player = makePlayer(this.val(0), this.val(1));
+    this.done = true; this.removeInputs(); UI.nav = this.prevNav; cv.focus();
+    AudioSys.sfx('confirm');
+    this.onDone(player);
+  }
+  close() { this.done = true; this.removeInputs(); UI.nav = this.prevNav; cv.focus(); Scenes.pop(); }
+  typing() { return !!(this.inputs && this.inputs.includes(document.activeElement)); }
+  update(dt) {
+    this.t += dt;
+    if (this.done) return;
+    if (!this.typing() && Input.hit('back')) { Input.consume(); this.close(); }
+  }
+  draw(g) {
+    if (this.done && !this.inputs) { rect(g, 0, 0, W, H, '#10162B'); return; }
+    g.drawImage(this.bg.sky, 0, 0, W, H);
+    this.bg.layers.forEach(L => g.drawImage(L.c, -Math.round((this.t * 6 * L.p * 3) % 960), 0));
+    rect(g, 0, 0, W, H, 'rgba(10,14,32,0.55)');
+    panel(g, 24, 8, 432, 254, { border: PAL.teal, accent: PAL.sun, accentW: 60 });
+    drawText(g, this.mode === 'continue' ? 'ANTES DE CONTINUAR' : 'REGISTRO DEL ESTUDIANTE', W / 2, 14, PAL.sun, { align: 'center', scale: 2, outline: PAL.ink });
+    drawText(g, this.mode === 'continue' ? 'Esta partida aún no tiene estudiante: regístrate para seguir.' : 'Escribe tu nombre completo: así te llamarás en la historia.', W / 2, 36, '#C9D2F0', { align: 'center' });
+    // campos de texto (los dibuja el juego; debajo hay un <input> real transparente)
+    this.fields.forEach((f, i) => {
+      const el = this.inputs && this.inputs[i], on = el && document.activeElement === el, v = this.val(i);
+      drawText(g, f.label, f.x, f.y - 10, on ? PAL.sun : PAL.teal);
+      rect(g, f.x, f.y, f.w, f.h, '#0B1020'); strokeRect(g, f.x, f.y, f.w, f.h, on ? PAL.sun : '#3E4C8A');
+      if (v) drawText(g, fitText(v, f.w - 10), f.x + 5, f.y + 5, PAL.white);
+      else if (!on) drawText(g, f.ph, f.x + 5, f.y + 5, '#565E8C');
+      if (on && Math.floor(this.t * 2.5) % 2 === 0) { const cx = f.x + 5 + Math.min(f.w - 10, v ? textW(v) + 2 : 0); rect(g, cx, f.y + 4, 1, 9, PAL.sun); }
+      if (!on) { const st = UI.register('rg_f' + i, f.x, f.y, f.w, f.h); if (st.focus && Input.lastDevice !== 'mouse' && Input.lastDevice !== 'touch') UI.focusRing(g, f.x, f.y, f.w, f.h); if (UI.clicked('rg_f' + i) && el) el.focus(); }
+    });
+    // vista previa: así se llamará la protagonista
+    panel(g, 290, 50, 150, 62, { border: '#3E4C8A' });
+    drawText(g, 'ASÍ TE LLAMARÁS', 365, 55, '#8C93B8', { align: 'center' });
+    const F = Spr.lia.idle[liaIdleFrame(this.t)];
+    if (F.rh) g.drawImage(F.rh, 300, 106 - F.r.height, F.r.width, F.r.height); else g.drawImage(F.r, 300, 106 - F.r.height);
+    const w = nameWords(nameCase(this.val(0))), hero = w.length ? w[0].slice(0, 12) : '';
+    drawText(g, hero ? fitText(hero, 104) : '...', 374, 74, hero ? PAL.sun : '#565E8C', { align: 'center', scale: hero && textW(hero) * 2 <= 104 ? 2 : 1 });
+    if (hero && nameWords(nameCase(this.val(1))).length) drawText(g, fitText(nameCase(this.val(0)) + ' ' + nameCase(this.val(1)), 104), 374, 96, '#C9D2F0', { align: 'center' });
+    // consentimientos
+    drawText(g, 'CONSENTIMIENTO · marca las tres casillas', 44, 120, PAL.teal);
+    let y = 131;
+    CONSENTS.forEach((c, i) => {
+      const lines = wrapRich(c, 380).length, h = lines * 9;
+      const st = UI.register('rg_c' + i, 40, y - 2, 404, h + 3);
+      if (UI.clicked('rg_c' + i)) { this.checks[i] = !this.checks[i]; this.err = ''; AudioSys.sfx('select'); }
+      rect(g, 44, y, 9, 9, '#0B1020'); strokeRect(g, 44, y, 9, 9, this.checks[i] ? PAL.lime : st.hover || st.focus ? PAL.sun : '#8C93B8');
+      if (this.checks[i]) drawText(g, '✓', 46, y + 1, PAL.lime);
+      drawPara(g, c, 58, y + 1, 380, this.checks[i] ? PAL.cream : '#C9D2F0', { lh: 9 });
+      if (st.focus && Input.lastDevice !== 'mouse' && Input.lastDevice !== 'touch') UI.focusRing(g, 40, y - 2, 404, h + 3);
+      y += h + 6;
+    });
+    if (this.err) drawText(g, this.err, W / 2, 224, PAL.coral, { align: 'center' });
+    if (UI.btn(g, 'rg_back', 44, 238, 70, 16, 'VOLVER', { color: PAL.teal })) { this.close(); return; }
+    if (UI.btn(g, 'rg_go', 320, 238, 120, 16, 'COMENZAR ▶', { color: PAL.lime, primary: !this.problem() })) this.submit();
+    UI.drawTooltip(g);
+  }
+}
+
+
 // ===== 17_scenes.js · Lumina Loop · © Aslin Gonzalo Botello Plata =====
 // =====================================================================
 //  ESCENAS: gestor, juego, HUD, título, mapa, pausa, ajustes, Atlas...
@@ -10680,15 +10969,19 @@ const Game = {
     Trans.draw(ctx);
     HD.present();
   },
-  newGame() {
+  newGame(player) {
     const settings = G.save.settings, teacher = G.save.teacherUnlocked, lab = G.save.labUnlocked;
     G.save = newSave(); G.save.settings = settings; G.save.started = true; G.save.teacherUnlocked = teacher; G.save.labUnlocked = lab;
+    G.save.player = player || null; setHero(G.save.player);
+    if (G.save.player) { Registro.registro(G.save.player); Registro.inicioSesion(true); }
     rebuildLia();
     Save.write();
     this.startLevel('festival');
   },
-  continueGame() {
+  continueGame(player) {
     Save.load(); rebuildLia(); syncPowers();
+    if (player) { G.save.player = player; setHero(player); Save.write(); Registro.registro(player); }
+    Registro.inicioSesion(false);
     const sc = G.save.scene;
     if (LEVELS[sc] && sc !== 'festival') this.startLevel(sc, 'checkpoint');
     else if (flag('prologueDone')) this.toMap();
@@ -10699,6 +10992,7 @@ const Game = {
       Scenes.clear(); Particles.clear(); Bark.clear();
       G.save.scene = key; G.save.lastRegion = LEVELS[key].region || G.save.lastRegion;
       Scenes.push(new GameplayScene(key, spawn));
+      Registro.log('entra_a_nivel', LEVELS[key].title || key);
     });
   },
   toMap(focus) {
@@ -10772,33 +11066,45 @@ function defeatCause(src, lv) {
   return 'un peligro del camino';
 }
 class DefeatScene {
+  // cinemática de derrota (≈ 5 s antes de poder continuar):
+  //  impact: el mundo se congela, Lía parpadea y su última célula se rompe sobre ella
+  //  fall:   cae a cámara lenta y queda tendida; Lumi parpadea y se apaga; el mundo pierde el color
+  //  dark:   el círculo de visión se cierra y aparece «Lía se quedó sin energía»
+  //  card:   tarjeta MISIÓN FALLIDA (qué la venció, consejo, vuelta al punto de control)
+  //  open:   reaparece en el punto de control con el círculo abriéndose
   constructor(lv) {
-    this.lv = lv; this.t = 0; this.opaque = false; this.phase = 'fall'; this.openT = 0; this.nav = false;
+    this.lv = lv; this.t = 0; this.opaque = false; this.phase = 'impact'; this.openT = 0; this.nav = false;
     const p = lv.player;
-    this.px = p.cx; this.py = p.y + p.h; this.face = p.face; this.vy = -150;
+    this.px = p.cx; this.py = p.y + p.h; this.face = p.face; this.vy = -110; this.ground = p.y + p.h;
     this.cause = defeatCause(p.lastHurt, lv);
+    Registro.log('derrota', 'sin células', 'la venció ' + this.cause, G.save.stats.deaths || '');
     this.tip = lv.rboss ? 'Usa la Lente (F) para leer su programa y golpéalo en su descanso. ¡Cada intento es una prueba!' : DEFEAT_TIPS[(G.save.stats.deaths || 0) % DEFEAT_TIPS.length];
     p.hidden = true;
-    AudioSys.stopSong(); AudioSys.sfx('defeat'); FX.flash('#FF6B6B', 0.5); FX.shake(4, 0.5);
+    AudioSys.stopSong(); AudioSys.sfx('defeat'); FX.flash('#FF6B6B', 0.6); FX.shake(4, 0.6);
     Particles.burst(p.cx, p.y + 8, 24, { colors: [PAL.sun, PAL.coral, PAL.white], min: 30, max: 110, type: 'star', lmax: 0.8 });
   }
   get skip() { return G.autoDialog; }
+  static get T() { return { impact: 0.9, fall: 2.6, dark: 3.8, wait: 1.6 }; }
   update(dt) {
     this.t += dt;
-    const lv = this.lv;
-    // caída del cuerpo hasta el suelo
-    if (this.phase === 'fall') {
-      this.vy += 600 * dt; this.py += this.vy * dt * 0.6;
-      const ground = lv.player.y + lv.player.h;
-      if (this.py >= ground && this.vy > 0) { this.py = ground; this.vy = 0; }
-      if (this.t > 1.6 || this.skip) { this.phase = 'card'; this.cardT = 0; }
+    const T = DefeatScene.T;
+    if (this.phase === 'impact') {
+      if (this.t >= T.impact || this.skip) this.phase = 'fall';
+    } else if (this.phase === 'fall') {
+      // caída lenta del cuerpo hasta el suelo
+      this.vy += 260 * dt; this.py += this.vy * dt * 0.5;
+      if (this.py >= this.ground && this.vy > 0) { this.py = this.ground; if (this.vy > 40) { AudioSys.sfx('land'); FX.shake(2, 0.2); } this.vy = 0; }
+      if (!this.lumiOff && this.t > 2.0) { this.lumiOff = true; AudioSys.sfx('powerdown'); }
+      if (this.t >= T.fall || this.skip) this.phase = 'dark';
+    } else if (this.phase === 'dark') {
+      if (this.t >= T.dark || this.skip) { this.phase = 'card'; this.cardT = 0; AudioSys.sfx('fail'); }
     } else if (this.phase === 'card') {
       this.cardT += dt;
-      const go = this.skip || (this.cardT > 1.1 && (Input.hit('interact') || Input.hit('confirm') || Input.hit('attack') || Input.hit('jump') || Input.pointer.pressed));
+      const go = this.skip || (this.cardT > T.wait && (Input.hit('interact') || Input.hit('confirm') || Input.hit('attack') || Input.hit('jump') || Input.pointer.pressed));
       if (go) { Input.consume(); this.retry(); }
     } else if (this.phase === 'open') {
       this.openT += dt;
-      if (this.openT > 0.7 || this.skip) this.finish();
+      if (this.openT > 1.0 || this.skip) this.finish();
     }
   }
   retry() {
@@ -10813,15 +11119,8 @@ class DefeatScene {
     Bark.say('pix', lv.rboss ? 'Otra vez. Ahora ya conoces su programa.' : choice(['¡Volvemos! Lumi recargó tus células.', 'Reiniciando desde el punto de control.', 'Depurar es fallar, mirar qué pasó y ajustar.']), 3);
     if (lv.rboss) Cut.run(() => bossRetry(lv));
   }
-  draw(g) {
-    const lv = this.lv, cx = lv.cam.x, cy = lv.cam.y;
-    const sx = Math.round(this.px - cx), sy = Math.round(this.py - cy);
-    // oscurecer y desaturar el mundo poco a poco
-    const k = this.phase === 'open' ? 1 - clamp(this.openT / 0.7, 0, 1) : clamp(this.t / 1.2, 0, 1);
-    g.globalAlpha = 0.35 * k; rect(g, 0, 0, W, H, '#2A0A1A'); g.globalAlpha = 1;
-    // círculo de visión que se cierra sobre Lía (y se abre al reaparecer)
-    const R = this.phase === 'open' ? lerp(24, 520, easeOut(clamp(this.openT / 0.7, 0, 1))) : lerp(520, 30, easeInOut(clamp((this.t - 0.4) / 1.1, 0, 1)));
-    const ox = this.phase === 'open' ? Math.round(lv.player.cx - cx) : sx, oy = this.phase === 'open' ? Math.round(lv.player.y + 10 - cy) : sy - 6;
+  // círculo de visión (se cierra sobre Lía o se abre en el punto de control)
+  drawIris(g, ox, oy, R) {
     g.fillStyle = '#05070F';
     for (let y = 0; y < H; y += 2) {
       const dy = y + 1 - oy, half = R * R - dy * dy;
@@ -10829,27 +11128,65 @@ class DefeatScene {
       const hw = Math.sqrt(half);
       g.fillRect(0, y, Math.max(0, ox - hw), 2); g.fillRect(ox + hw, y, W, 2);
     }
-    if (this.phase === 'open') return;
-    // Lía cae y queda tendida; Lumi se apaga a su lado
+  }
+  draw(g) {
+    const lv = this.lv, cx = lv.cam.x, cy = lv.cam.y, T = DefeatScene.T, t = this.t;
+    const sx = Math.round(this.px - cx), sy = Math.round(this.py - cy);
+    if (this.phase === 'open') {
+      const k = easeOut(clamp(this.openT / 1.0, 0, 1));
+      g.globalAlpha = 0.35 * (1 - k); rect(g, 0, 0, W, H, '#2A0A1A'); g.globalAlpha = 1;
+      this.drawIris(g, Math.round(lv.player.cx - cx), Math.round(lv.player.y + 10 - cy), lerp(24, 520, k));
+      g.globalAlpha = clamp(1 - k * 1.4, 0, 1); drawText(g, '¡DE VUELTA AL PUNTO DE CONTROL!', W / 2, 40, PAL.lime, { align: 'center', outline: PAL.ink }); g.globalAlpha = 1;
+      return;
+    }
+    // el mundo pierde el color y se oscurece poco a poco
+    const gray = clamp((t - 0.3) / 2.0, 0, 1);
+    if (gray > 0) { g.globalCompositeOperation = 'saturation'; g.fillStyle = 'rgba(128,128,128,' + gray + ')'; g.fillRect(0, 0, W, H); g.globalCompositeOperation = 'source-over'; }
+    const pulse = this.phase === 'impact' ? 0.25 + 0.2 * Math.abs(Math.sin(t * 9)) : 0.35;
+    g.globalAlpha = pulse * clamp(t / 0.4, 0, 1); rect(g, 0, 0, W, H, '#2A0A1A'); g.globalAlpha = 1;
+    // viñeta roja en los bordes
+    g.globalAlpha = 0.5 * clamp(t / 0.6, 0, 1);
+    for (let i = 0; i < 10; i++) { strokeRect(g, i, i, W - i * 2, H - i * 2, '#7A1A2A'); g.globalAlpha *= 0.82; }
+    g.globalAlpha = 1;
+    // círculo de visión que se cierra sobre Lía
+    const R = lerp(520, 30, easeInOut(clamp((t - T.fall + 0.4) / (T.dark - T.fall + 0.2), 0, 1)));
+    if (t > T.fall - 0.4) this.drawIris(g, sx, sy - 6, R);
+    // Lía: parpadea con el golpe final, cae a cámara lenta y queda tendida
     const S = Spr.lia.hurt[0], img = this.face > 0 ? S.rh : S.lh, base = this.face > 0 ? S.r : S.l;
-    if (this.vy !== 0 || this.t < 0.45) g.drawImage(img, sx - base.width / 2, sy - base.height + 1, base.width, base.height);
+    if (this.phase === 'impact') {
+      if (Math.floor(t * 14) % 2 === 0) g.drawImage(img, sx - base.width / 2 + Math.round(Math.sin(t * 40)), sy - base.height + 1, base.width, base.height);
+      // la última célula se rompe sobre su cabeza
+      const k = clamp(t / T.impact, 0, 1), cyy = sy - base.height - 14 - k * 6, spread = Math.round(k * 5);
+      g.globalAlpha = 1 - k * 0.6;
+      drawLumiShape(g, sx - 4 - spread, cyy, Spr.lumi[0], PAL.coral, '#7A1A2A', false);
+      drawLumiShape(g, sx - 3 + spread, cyy + spread, Spr.lumi[0], PAL.coral, '#7A1A2A', false);
+      g.globalAlpha = 1;
+      if (t > 0.25) drawText(g, '0 células', sx, cyy - 10, PAL.coral, { align: 'center', outline: PAL.ink });
+    } else if (this.vy !== 0) g.drawImage(img, sx - base.width / 2, sy - base.height + 1, base.width, base.height);
     else {
-      // tendida en el suelo: el sprite girado 90°
       g.save(); g.translate(sx, sy - 5); g.rotate(this.face > 0 ? -Math.PI / 2 : Math.PI / 2);
       g.drawImage(img, -base.width / 2, -base.height / 2, base.width, base.height); g.restore();
     }
-    const lumiK = clamp(1 - (this.t - 0.6) / 0.9, 0, 1), lx = sx + this.face * 10, ly = sy - 18 + Math.sin(this.t * 3) * 2;
-    if (lumiK > 0) { g.globalAlpha = lumiK; pcircle(g, lx, ly, 3, PAL.sun); g.globalAlpha = lumiK * 0.3; pcircle(g, lx, ly, 6, PAL.sun); g.globalAlpha = 1; }
-    else { pcircle(g, lx, ly + 6, 2, '#565E8C'); }
+    // Lumi parpadea y se apaga a su lado
+    const lx = sx + this.face * 10, ly = sy - 18 + Math.sin(t * 3) * 2;
+    const flick = t < 1.2 ? 1 : t < 2.0 ? (Math.floor(t * 10) % 3 === 0 ? 0.2 : 0.9) : 0;
+    if (flick > 0) { g.globalAlpha = flick; pcircle(g, lx, ly, 3, PAL.sun); g.globalAlpha = flick * 0.3; pcircle(g, lx, ly, 6, PAL.sun); g.globalAlpha = 1; }
+    else pcircle(g, lx, ly + 6, 2, '#565E8C');
+    // frase en la oscuridad
+    if (t > T.fall + 0.2) {
+      const msg = 'Lía se quedó sin energía...', n = Math.floor((t - T.fall - 0.2) * 24);
+      drawText(g, msg.slice(0, n), W / 2, this.phase === 'card' ? 18 : 120, '#FFB0B8', { align: 'center', outline: '#2A0A1A' });
+    }
     // tarjeta
     if (this.phase === 'card') {
-      const a = easeBack(clamp(this.cardT * 2.5, 0, 1)), w = 300, h = 100, x = (W - w) / 2, y = 42 + (1 - a) * -60;
+      const a = easeBack(clamp(this.cardT * 2.2, 0, 1)), w = 300, h = 120, x = (W - w) / 2, y = 34 + (1 - a) * -70;
       panel(g, x, y, w, h, { border: PAL.coral, accent: PAL.coral, accentW: 90 });
-      drawText(g, '¡SIN CÉLULAS!', W / 2, y + 10, PAL.coral, { align: 'center', scale: 2, outline: '#2A0A1A' });
-      drawText(g, 'Misión fallida · te venció ' + this.cause, W / 2, y + 32, PAL.cream, { align: 'center' });
+      drawText(g, 'MISIÓN FALLIDA', W / 2, y + 10, PAL.coral, { align: 'center', scale: 2, outline: '#2A0A1A' });
+      drawText(g, 'Te quedaste sin células · te venció ' + this.cause, W / 2, y + 32, PAL.cream, { align: 'center' });
       drawPara(g, '{y}Consejo:{/} ' + this.tip, x + 12, y + 46, w - 24, '#C9D2F0', { lh: 10 });
-      if (this.cardT > 1.1) drawText(g, (Input.lastDevice === 'touch' ? 'Toca' : 'E / ENTER') + ': volver al punto de control', W / 2, y + h - 13, Math.floor(this.t * 3) % 2 ? PAL.lime : PAL.sun, { align: 'center' });
-      else bar(g, x + 60, y + h - 10, w - 120, 3, this.cardT, 1.1, PAL.coral, '#1E2748');
+      drawText(g, 'Volverás al último punto de control con todas tus células.', W / 2, y + 82, '#8C93B8', { align: 'center' });
+      if (this.cardT > T.wait) drawText(g, (Input.lastDevice === 'touch' ? 'Toca' : 'E / ENTER') + ': volver a intentarlo', W / 2, y + h - 14, Math.floor(t * 3) % 2 ? PAL.lime : PAL.sun, { align: 'center' });
+      else bar(g, x + 60, y + h - 11, w - 120, 3, this.cardT, T.wait, PAL.coral, '#1E2748');
     }
   }
 }
@@ -10999,8 +11336,11 @@ class TitleScene {
   }
   pick(id) {
     AudioSys.unlock();
-    if (id === 'new') { if (this.hasSave) Scenes.push(new ConfirmScene('¿Empezar de nuevo? Se sobrescribirá la partida guardada (los ajustes se conservan).', () => Game.newGame())); else Game.newGame(); }
-    if (id === 'cont') Game.continueGame();
+    // nueva partida: primero el registro del estudiante (nombre completo y consentimientos)
+    const register = () => Scenes.push(new RegisterScene(p => Game.newGame(p)));
+    if (id === 'new') { if (this.hasSave) Scenes.push(new ConfirmScene('¿Empezar de nuevo? Se sobrescribirá la partida guardada (los ajustes se conservan).', register)); else register(); }
+    // continuar una partida guardada sin estudiante registrado: se registra antes de seguir
+    if (id === 'cont') { Save.load(); if (G.save.player) Game.continueGame(); else Scenes.push(new RegisterScene(p => Game.continueGame(p), 'continue')); }
     if (id === 'lab') { Save.load(); Scenes.push(new LabScene()); }
     if (id === 'teacher') Scenes.push(new TeacherScene());
     if (id === 'settings') Scenes.push(new SettingsScene());
@@ -11045,6 +11385,8 @@ class PauseScene {
     ].filter(Boolean);
     opts.forEach(([id, label, fn], i) => { if (UI.btn(g, 'p_' + id, 170, 70 + i * 18, 140, 15, label, { color: i === 0 ? PAL.lime : id === 'o' ? PAL.sun : PAL.teal })) fn(); });
     drawText(g, 'Nivel ' + G.save.level + ' · ' + rankName(), 240, 236, '#8C93B8', { align: 'center' });
+    // transparencia: el estudiante ve con quién se comparte su progreso
+    if (G.save.player) drawText(g, fitText(G.save.player.full + ' · tu progreso se comparte con tu docente', 470), 240, 254, '#6A7090', { align: 'center' });
   }
 }
 
@@ -11165,7 +11507,7 @@ class RemapScene {
 // ---------------------------------------------------------------------
 function unlockCodex(id) {
   if (!CODEX[id]) return;
-  if (!G.save.codex[id]) { G.save.codex[id] = { read: false, t: Date.now() }; Toast.show('+ ATLAS: ' + CODEX[id].title, PAL.teal, 2); }
+  if (!G.save.codex[id]) { G.save.codex[id] = { read: false, t: Date.now() }; Toast.show('+ ATLAS: ' + CODEX[id].title, PAL.teal, 2); Registro.log('atlas', CODEX[id].title); }
 }
 const CODEX_CATS = [['algoritmos', 'ALGORITMOS', PAL.teal], ['energias', 'ENERGÍAS', PAL.lime], ['personajes', 'PERSONAJES', PAL.pink], ['islas', 'ISLAS', PAL.sun], ['misterios', 'MISTERIOS', PAL.violet], ['bestiario', 'BESTIARIO', PAL.coral]];
 class CodexScene {
@@ -17298,6 +17640,7 @@ class CodeLock extends Entity {
     if (this.solved || this.busy) return;
     const st = (G.save.locks = G.save.locks || {})[this.id] || (G.save.locks[this.id] = { tries: 0 });
     st.tries = (st.tries || 0) + 1; this.tries++;
+    Registro.log('cerradura', this.q.title + ': ' + this.q.ask, c.opt.ok ? 'acierto' : 'error', this.tries, { respuesta: c.opt.v, conceptos: (this.q.keys || []).join(', ') });
     if (c.opt.ok) {
       this.solved = true; st.solved = true; st.first = this.tries === 1;
       c.state = 'ok';
@@ -17884,6 +18227,7 @@ class ReviewScene {
     // Enter / E pasan a la siguiente carta (el foco va al botón SIGUIENTE)
     this.focusBtn = 'rvnext'; this.focusN = 3; UI.clicks.clear();
     if (!this.practice) this.newBox = Cards.answer(k, ok);
+    Registro.log('carta_repaso', k, ok ? 'acierto' : 'error', '', { practica: !!this.practice });
     this.res.push({ k, ok });
     if (ok) {
       this.combo++; this.best = Math.max(this.best, this.combo);
@@ -18232,6 +18576,7 @@ class ForgeTrialScene {
     if (this.pick >= 0) return;
     this.pick = j; UI.clicks.clear();
     const f = this.f;
+    Registro.log('forja', f.name, this.q.options[j].ok ? 'acierto: mejora forjada' : 'error', '', { concepto: f.key });
     if (this.q.options[j].ok) {
       G.save.forgeCores = Math.max(0, (G.save.forgeCores || 0) - f.cost);
       (G.save.forge = G.save.forge || {})[f.id] = true;
@@ -18765,7 +19110,9 @@ class TallerScene {
       glow(TL.glass.x + TL.glass.w / 2, TL.glass.y + TL.glass.h / 2, 70, '#9FB8FF', 0.12);
     }
     // ---- rótulos (encima de la luz: siempre legibles) ----
-    drawText(g, 'TALLER DE LÍA', 240, 15, PAL.sun, { align: 'center', scale: 2, shadow: '#3A2010' });
+    // con un nombre largo (el del estudiante) el rótulo baja de tamaño para caber en la placa
+    const big = textW('TALLER DE LÍA') * 2 <= 146;
+    drawText(g, 'TALLER DE LÍA', 240, big ? 15 : 18, PAL.sun, { align: 'center', scale: big ? 2 : 1, shadow: '#3A2010' });
     const B = TL.board;
     drawText(g, 'PEGATINAS ' + got + '/' + keys.length, B.x + 79, B.y + 8, '#5A3A20', { align: 'center' });
     const bossesDone = Object.keys(BOSSES).filter(k => flag('boss_' + k)).length, minisDone = Object.keys(MINI).filter(k => flag('mini_' + k)).length;
@@ -18853,6 +19200,7 @@ function trainFinish(lv) {
   Toast.show('¡ENTRENAMIENTO COMPLETO! ' + fmtSec(P.t) + (rec && best ? ' · ¡nuevo récord!' : ''), PAL.sun, 4);
   if (first) { G.save.forgeCores = (G.save.forgeCores || 0) + 1; Toast.show('◆ +1 núcleo de forja', PAL.orange, 3.5); addXP(30, 'Entrenamiento completo'); }
   achieve('trainer');
+  Registro.log('entrenamiento', 'Patio de entrenamiento', 'lista completa', Math.round(P.t), { record: rec });
   Bark.say('pix', first ? '¡Lista completa! Ahora ya sabes TODO lo que puede hacer tu sable.' : rec ? '¡Más rápido que nunca! Optimizar también es programar.' : 'Lista completa. ¿Otra vuelta para bajar el tiempo?', 4);
   Save.write();
 }
@@ -19585,7 +19933,7 @@ class CreditsScene {
       ['LUMINA LOOP', 'title'], ['El Código de los Elementos', 'sub'], ['', ''],
       ['UN JUEGO CREADO POR', 'h'], [AUTORIA.autor, 'txt'], ['', ''],
       ['Un videojuego educativo sobre algoritmos', 'txt'], ['y energías alternativas.', 'txt'], ['', ''],
-      ['PROTAGONISTAS', 'h'], ['Lía Loop · PÍX · Lumi', 'txt'], ['', 'v0'],
+      ['PROTAGONISTAS', 'h'], [(G.save.player ? G.save.player.full : 'Lía Loop') + ' · PÍX · Lumi', 'txt'], ['', 'v0'],
       ['EL EQUIPO', 'h'], ['Teó, constructor y ancla', 'txt'], ['', 'v1'],
       ['LA MENTORA', 'h'], ['Profesora Vega', 'txt'], ['', 'v2'],
       ['EL ARCHIPIÉLAGO', 'h'], ['Abuela Menta · Don Vento · Suri · Ing. Sol', 'txt'], ['Capitán H2O · BETA · Voltia · Roca', 'txt'], ['', 'v3'], ['', 'v4'], ['', 'v5'], ['', 'v6'], ['', 'v7'],
@@ -19672,10 +20020,10 @@ function boot() {
 
 // Interfaz mínima para depuración y pruebas automáticas
 window.LL = {
-  autoria: AUTORIA, G, Game, Scenes, HD, LEVELS, textW, TextAudit, Spr, DefeatScene, MINI, MiniBoss, placeMiniBoss, TRAIN_MOVES, trainList, TrainDummy, SOUVENIRS, COSMETICS, POWERS, hasPower, grantPower, syncPowers, PowersScene, PowerCardScene, LockHelpScene, SimScene, SIMS, SIM_SOLAR, VariableLabScene, SimLabScene, SIM_ORDER, simDone, simReward, placeSims, FORGE, forged, ForgeScene, ForgeTrialScene, pulseCost, healCost, Cards, cardQuestion, CardsScene, ReviewScene, CARD_BANK, CARD_META, dailyChallenge, dailyCode, launchDaily, makeLockQuestion, LOCK_GEN, CodeLock, TraceScene, buildLevel: (k, sp) => new Level(k, sp), Save, Input, UI, Cut, flag, setFlag, CODEX, QUESTS, CHALLENGES, REGIONS, makePuzzleScene, Particles, AudioSys, BOSSES, makeEnemy, unlocked, MapArt,
+  autoria: AUTORIA, Registro, makePlayer, cleanNameInput, nameCase, HERO, setHero, G, Game, Scenes, HD, LEVELS, textW, TextAudit, Spr, DefeatScene, MINI, MiniBoss, placeMiniBoss, TRAIN_MOVES, trainList, TrainDummy, SOUVENIRS, COSMETICS, POWERS, hasPower, grantPower, syncPowers, PowersScene, PowerCardScene, LockHelpScene, SimScene, SIMS, SIM_SOLAR, VariableLabScene, SimLabScene, SIM_ORDER, simDone, simReward, placeSims, FORGE, forged, ForgeScene, ForgeTrialScene, pulseCost, healCost, Cards, cardQuestion, CardsScene, ReviewScene, CARD_BANK, CARD_META, dailyChallenge, dailyCode, launchDaily, makeLockQuestion, LOCK_GEN, CodeLock, TraceScene, buildLevel: (k, sp) => new Level(k, sp), Save, Input, UI, Cut, flag, setFlag, CODEX, QUESTS, CHALLENGES, REGIONS, makePuzzleScene, Particles, AudioSys, BOSSES, makeEnemy, unlocked, MapArt,
   cfg: { CFG_FEST_BOOT, CFG_PUERTO_ROUTE, CFG_PUERTO_CHAIN, CFG_PUERTO_CARRERA, CFG_VALLE_RUTA, CFG_VALLE_SACOS, CFG_VALLE_MOLINO, CFG_SOL_FLOW, CFG_SOL_FLORES, CFG_SOL_SENSOR, CFG_SOL_MATRIZ, CFG_SOL_NUBE, CFG_AERIS_MOLINO, CFG_AERIS_VIENTO, CFG_AERIS_BUCLE, CFG_HYD_FORJA, CFG_HYD_RIO, CFG_HYD_DUP, cfgBioSorter, CFG_BIO_LISTA, CFG_BIO_MERCADO, CFG_GEA_FSM, CFG_GEA_AISLADA, CFG_GEA_CRISTAL, CFG_H2_PIPE, CFG_H2_BARCO, CFG_BAT_SORT, CFG_BAT_SEARCH, CFG_BAT_BETA, CFG_BAT_BUG, CFG_PRISMA_MG, CFG_PRISMA_FEST, CFG_PRISMA_SINSOL, pzPhaseCfg },
   A,
-  S: { CreditsScene, TitleScene, PauseScene, SettingsScene, RemapScene, CodexScene, TeacherScene, TallerScene, QuestLogScene, MasteryScene, MapScene, LabScene, ControlsScene, BlueprintScene, ConfirmScene, SparkEditorScene, ShieldRuleScene, Shot, RegionBoss, LumenWave, BossFX }
+  S: { RegisterScene, CreditsScene, TitleScene, PauseScene, SettingsScene, RemapScene, CodexScene, TeacherScene, TallerScene, QuestLogScene, MasteryScene, MapScene, LabScene, ControlsScene, BlueprintScene, ConfirmScene, SparkEditorScene, ShieldRuleScene, Shot, RegionBoss, LumenWave, BossFX }
 };
 try { boot(); } catch (e) {
   console.error(e);

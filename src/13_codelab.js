@@ -358,6 +358,7 @@ class CodeLabScene {
   }
   bpKey(path, fn) { return (fn || 'main') + ':' + pathKey(path); }
   fail(err) {
+    Registro.error(this, err && err.message);
     this.state = 'error'; this.gen = null; this.fails++; this.firstTry = false; G.save.stats.fails++;
     if (err.kind === 'infinite') { G.save.stats.infiniteLoops++; this.sawInfinite = true; }
     this.errPath = err.path; this.errFn = this.env.curFn;
@@ -404,6 +405,7 @@ class CodeLabScene {
     if (this.exited) return; this.exited = true;
     UI.nav = false; UI.cancelHeld(); Scenes.pop();
     const r = result || { success: false, hints: this.hintLevel, attempts: this.runs, fails: this.fails };
+    Registro.reto(this, r, 'CodeLabScene');
     if (r.success) {
       G.save.stats.puzzles++;
       if (r.firstTry) { G.save.stats.firstTry++; if (this.cfg.main) achieve('no_hints'); }

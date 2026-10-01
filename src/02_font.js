@@ -218,15 +218,25 @@ const Font = {
   charW(ch) { if (ch === ' ') return this.SPACE; return this.gl(ch).w + 1; }
 };
 
+// Nombre del protagonista: el que escribió el estudiante al registrarse.
+// Sustituye a «Lía» / «LÍA» en todos los textos que se miden y se dibujan
+// (solo la palabra completa: no toca otras palabras que la contengan).
+const HERO = { name: '', up: '' };
+function setHero(p) { HERO.name = p && p.hero ? p.hero : ''; HERO.up = HERO.name.toUpperCase(); }
+const _isLetter = c => !!c && /[A-Za-zÁÉÍÓÚÑÜáéíóúñü]/.test(c);
+function heroSub(s) {
+  if (!HERO.name || s.indexOf('L') < 0) return s;
+  return s.replace(/Lía|LÍA/g, (m, i, str) => _isLetter(str[i - 1]) || _isLetter(str[i + 3]) ? m : (m === 'LÍA' ? HERO.up : HERO.name));
+}
 // recorta un texto con «…» para que quepa en maxW píxeles
 function fitText(str, maxW) {
-  str = String(str);
+  str = heroSub(String(str));
   if (textW(str) <= maxW) return str;
   while (str.length > 1 && textW(str + '…') > maxW) str = str.slice(0, -1);
   return str.trimEnd() + '…';
 }
 function textW(str, scale = 1) {
-  str = stripMarkup(String(str));
+  str = stripMarkup(heroSub(String(str)));
   let w = 0;
   for (const ch of str) w += Font.charW(ch);
   return Math.max(0, w - 1) * scale;
@@ -238,7 +248,7 @@ const TextAudit = { on: false, list: [],
   cover(g, x, y, w, h) { if (g !== ctx) return; const m = g.getTransform(), X = x + m.e / RES, Y = y + m.f / RES; for (const r of this.list) if (r.l === this.layer && r.x < X + w && r.x + r.w > X && r.y < Y + h && r.y + r.h > Y) r.hidden = true; },
   add(g, t, x, y, w, h) { if (this.on && g === ctx && String(t).trim()) { const m = g.getTransform(), k = m.a / RES || 1; this.list.push({ t: String(t), x: x * k + m.e / RES, y: y * k + m.f / RES, w: w * k, h: h * k, a: g.globalAlpha, l: this.layer }); } } };
 function drawText(g, str, x, y, color = PAL.cream, opts = {}) {
-  str = String(str);
+  str = heroSub(String(str));
   const scale = opts.scale || 1;
   const w = textW(str, scale);
   if (opts.align === 'center') x -= Math.floor(w / 2);
@@ -288,7 +298,7 @@ function parseRich(str, base) {
 // Envuelve texto enriquecido en líneas (conserva marcas de color entre líneas)
 function wrapRich(str, maxW, base = PAL.cream) {
   const out = [];
-  for (const para of String(str).split('\n')) {
+  for (const para of heroSub(String(str)).split('\n')) {
     const segs = parseRich(para, base);
     const words = []; // {t,c} por palabra con espacios
     for (const s of segs) {

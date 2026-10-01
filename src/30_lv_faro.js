@@ -546,7 +546,7 @@ class CreditsScene {
       ['LUMINA LOOP', 'title'], ['El Código de los Elementos', 'sub'], ['', ''],
       ['UN JUEGO CREADO POR', 'h'], [AUTORIA.autor, 'txt'], ['', ''],
       ['Un videojuego educativo sobre algoritmos', 'txt'], ['y energías alternativas.', 'txt'], ['', ''],
-      ['PROTAGONISTAS', 'h'], ['Lía Loop · PÍX · Lumi', 'txt'], ['', 'v0'],
+      ['PROTAGONISTAS', 'h'], [(G.save.player ? G.save.player.full : 'Lía Loop') + ' · PÍX · Lumi', 'txt'], ['', 'v0'],
       ['EL EQUIPO', 'h'], ['Teó, constructor y ancla', 'txt'], ['', 'v1'],
       ['LA MENTORA', 'h'], ['Profesora Vega', 'txt'], ['', 'v2'],
       ['EL ARCHIPIÉLAGO', 'h'], ['Abuela Menta · Don Vento · Suri · Ing. Sol', 'txt'], ['Capitán H2O · BETA · Voltia · Roca', 'txt'], ['', 'v3'], ['', 'v4'], ['', 'v5'], ['', 'v6'], ['', 'v7'],

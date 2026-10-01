@@ -36,7 +36,9 @@ function newSave() {
     // cartas del Atlas (repaso espaciado), racha de repaso y reto del día
     cards: {}, review: { streak: 0, best: 0, last: null, coreDay: null }, daily: {},
     // mejoras forjadas del Lumisable y poderes ganados a los jefes
-    forge: {}, powers: {}, sims: {}, stars: {}
+    forge: {}, powers: {}, sims: {}, stars: {},
+    // estudiante registrado: nombre completo y consentimientos
+    player: null
   };
 }
 
@@ -63,6 +65,7 @@ const Save = {
       data.stats = Object.assign(base.stats, data.stats || {});
       data.collectibles = Object.assign(base.collectibles, data.collectibles || {});
       G.save = data;
+      setHero(data.player);
       if (data.settings.bindings) Input.bindings = mergeBindings(data.settings.bindings);
       return true;
     } catch (e) { return false; }
@@ -92,7 +95,7 @@ const Save = {
   },
   resetAll() {
     const settings = G.save.settings;
-    G.save = newSave(); G.save.settings = settings;
+    G.save = newSave(); G.save.settings = settings; setHero(null);
     try { localStorage.removeItem(SAVE_KEY); } catch (e) { }
     Save.writeSettings();
   },
@@ -108,7 +111,7 @@ function mergeBindings(saved) {
 
 // ---------- banderas de historia ----------
 const flag = k => !!G.save.storyFlags[k];
-const setFlag = (k, v = true) => { G.save.storyFlags[k] = v; };
+const setFlag = (k, v = true) => { if (v && !G.save.storyFlags[k]) Registro.hito(k); G.save.storyFlags[k] = v; };
 const hasAbility = k => !!G.save.abilities[k];
 
 // ---------- XP y nivel ----------
@@ -171,6 +174,7 @@ const ACHIEVEMENTS = {
 function achieve(id) {
   if (G.save.achievements[id] || !ACHIEVEMENTS[id]) return;
   G.save.achievements[id] = Date.now();
+  Registro.log('logro', ACHIEVEMENTS[id].name, ACHIEVEMENTS[id].desc);
   G.save.collectibles.stickers[id] = true;
   Toast.show('★ LOGRO: ' + ACHIEVEMENTS[id].name, PAL.pink, 3);
   AudioSys.sfx('chispa');
@@ -194,6 +198,7 @@ const ABILITIES = {
 function giveAbility(id) {
   if (G.save.abilities[id]) return;
   G.save.abilities[id] = true;
+  Registro.log('habilidad', ABILITIES[id] ? ABILITIES[id].name : id, ABILITIES[id] ? ABILITIES[id].concept : '');
   if (ABILITY_ORDER.includes(id)) G.save.currentAbility = id;
 }
 const ABILITY_ORDER = ['spark', 'shield', 'glide', 'portal', 'pack', 'shift', 'beam', 'dash', 'link'];
@@ -204,6 +209,7 @@ function setQuest(id, st) {
   const prev = G.save.quests[id];
   G.save.quests[id] = st;
   const q = QUESTS[id];
+  if (q && st !== prev) Registro.log('mision', q.title, st === 'done' ? 'completada' : st === 'active' ? 'iniciada' : st, '', { principal: !!q.main });
   if (!q) return;
   if (st === 'active' && prev !== 'active') Toast.show('▶ MISIÓN: ' + q.title, q.main ? PAL.sun : PAL.teal, 2.5);
   if (st === 'done') setFlag('qdone_' + id);
