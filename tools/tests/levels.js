@@ -4,7 +4,7 @@ const { chromium, gameFile, outDir } = require('./_pw');
 (async () => {
   const file = gameFile, out = outDir + '/lv';
   const arenas = 'puerto,valle,solaria,aeris,hydria,bioloop,gea,h2,bateria,prisma'.split(',').map(k => 'jefe_' + k).join(',');
-  const keys = (process.argv[2] || 'festival,puerto,valle,solaria,aeris,hydria,bioloop,gea,h2,bateria,prisma,faro,faro_top,festival_end,' + arenas).split(',');
+  const keys = (process.argv[2] || 'festival,puerto,valle,solaria,aeris,hydria,bioloop,gea,h2,bateria,prisma,faro,faro_top,festival_end,practica,' + arenas).split(',');
   const b = await chromium.launch();
   for (const k of keys) {
     const p = await b.newPage({ viewport: { width: 960, height: 540 } });

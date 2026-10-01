@@ -21,8 +21,10 @@ Videojuego educativo de plataformas, combate y puzzles en **pixel art animado**,
 | Saltar (mantener = más alto / planear) | Espacio / Z / K | A |
 | Correr | Shift | Gatillos (LT/RT) |
 | **Atacar con el Lumisable** (mantener = pulso cargado) | X / J | X |
-| Tajo hacia arriba / rebote en el aire | ↑ + ataque / ↓ + ataque | Stick + X |
-| Recargar una célula (quieta) | mantener ↓ | Stick abajo |
+| **Agacharse** (los disparos altos pasan por encima; por túneles bajos se avanza gateando) | mantener ↓ | Stick abajo |
+| **Gancho** (en el suelo: salta golpeando hacia arriba) / tajo hacia arriba en el aire | ↑ + ataque | Stick arriba + X |
+| **Barrida** (en el suelo: se desliza agachada con el sable a ras de suelo) / rebote en el aire | ↓ + ataque | Stick abajo + X |
+| Recargar una célula (quieta y agachada) | mantener ↓ | Stick abajo |
 | Hablar / usar | E (o ataque si no hay peligro cerca) | B (o X) |
 | Volver / cancelar | Esc / Retroceso | B |
 | Usar habilidad | Q / L | Y |
@@ -65,10 +67,12 @@ Cada habilidad es un concepto que se *juega* además de programarse: el **If Shi
 
 Lumi concentra su luz en una hoja: el **Lumisable**. Los enemigos son programas corrompidos por el apagón y, al vencerlos, se **depuran** y vuelven a ser criaturas felices.
 
-- **Combo de 3 tajos**, tajo hacia arriba, **rebote (pogo)** hacia abajo sobre enemigos, proyectiles y pinchos, **pulso cargado** (mantener el ataque) y **parada**: golpear un proyectil justo a tiempo lo devuelve a quien lo lanzó.
-- **Energía**: se gana golpeando y con orbes. Quieta, manteniendo ↓, Lumi convierte 50 de energía en una **célula**. Con la **Lente Debug** activa cada golpe es **crítico**.
+- **Combo de 3 tajos**, **gancho** (↑ + ataque en el suelo: Lía salta con un arco de luz en forma de gancho), **barrida** (↓ + ataque en el suelo: se desliza agachada y golpea a ras de suelo), tajo hacia arriba y **rebote (pogo)** en el aire, **pulso cargado** (mantener el ataque) y **parada**: golpear un proyectil justo a tiempo lo devuelve a quien lo lanzó. Con ↓ **se agacha** (caja más baja: los disparos altos pasan por encima) y gatea por los túneles bajos. Lía mira hacia donde camina y su sprite se dibuja a doble resolución.
+- **Energía** (ahora más exigente): se gana golpeando (6 por golpe) y con orbes; sola solo sube **hasta 50 y despacio** (4,5/s, menos a oscuras) y **se pausa 2,2 s** después de gastarla. El pulso cuesta 35, el torbellino 12 y la embestida 15. Quieta y agachada, Lumi convierte 50 de energía en una **célula**. El **escudo IF** bloquea golpes, pero **cada golpe le quita un tercio de la energía: al tercero se rompe**. Con la **Lente Debug** activa cada golpe es **crítico**.
+- **Derrota clara**: al perder la última célula el mundo se detiene, Lía cae, Lumi se apaga y el círculo de visión se cierra; aparece la tarjeta **«¡SIN CÉLULAS!»** con qué la venció y un consejo, y con E vuelve al punto de control.
+- **Mini jefes a mitad de cada isla** (10): Cangrejo Voltio, Espantapájaros Bug, Girasol Sobrecargado, Halcón Bucle, Anguila Compuerta, Hongo Recursivo, Magmita, Medusa de Presión, Rata Cortocircuito y Cristal Errante. Al entrar en su zona se cierran dos barreras de luz; cada uno avisa antes de atacar, ejecuta su patrón (embestidas, saltos, disparos, picados) y **descansa** (golpe +1). Al depurarlo da un **núcleo de forja**; si Lía cae, el combate vuelve a empezar.
 - **Enemigos con personalidad** en todas las islas, con los colores de su región: Bit Saltarín, Zumbyte, Toro-Ohm, Torretín, más los enemigos conceptuales (Bugglin, Loopling, Shadow If, Drainer...). Con la Lente muestran su algoritmo.
-- **Un jefe al final de cada isla**, que *ejecuta un algoritmo* del concepto de esa isla: con la Lente se lee su programa con la línea actual resaltada. Tienen el **triple de vida** y **tres fases**: a 2/3 de vida reescribe su código y hay que aplicarle un **parche** (una pregunta rápida) para ralentizarlo; a 1/3 entra en **FURIA** y pide un **PARCHE FINAL** (predecir el resultado de un programa nuevo, generado como en las cerraduras).
+- **Un jefe al final de cada isla**, que *ejecuta un algoritmo* del concepto de esa isla: con la Lente se lee su programa con la línea actual resaltada. Tienen **seis veces su vida base** y **tres fases**: a 2/3 de vida reescribe su código y hay que aplicarle un **parche** (una pregunta rápida) para ralentizarlo; a 1/3 entra en **FURIA** y pide un **PARCHE FINAL** (predecir el resultado de un programa nuevo, generado como en las cerraduras).
 - **ERROR CRÍTICO**: si un parche falla, el jefe lanza su **ataque especial** (Lluvia de chatarra, Tormenta de rayos, Triple chorro, Erupción total...): columnas de rayos, lluvia de bloques de error, chorros que obligan a saltar o a quedarse abajo, u ondas por el suelo. Siempre hay aviso («!» y marcas en el suelo) y un hueco seguro; un golpe cuesta una célula y, al terminar, el jefe queda **sobrecalentado** (momento para golpearlo). En FURIA lo repite cada dos ciclos de su programa (cada tres si el parche final salió perfecto). El parche se puede volver a intentar en cada combate.
 - **Arte HD de los jefes**: cada jefe se dibuja a resolución de pantalla con detalle de medio píxel (remaches, brillos de metal, reflejos de cristal, texturas de roca, grietas de lava), brillos y sombras en los bordes, volumen, **aura por fase** (roja y palpitante en FURIA) y sombra en el suelo. Si el equipo va lento, el acabado se simplifica solo.
 
@@ -86,7 +90,7 @@ Lumi concentra su luz en una hoja: el **Lumisable**. Los enemigos son programas 
 | Microred Prisma | Sobrecarga | Integración |
 | Faro Aurora | Perfect Zero | La función objetivo |
 
-Al vencerlos se vuelven amistosos, entran en el **Bestiario** del Atlas, dejan un **fragmento de célula** (3 fragmentos = +1 célula máxima) y **enseñan un poder nuevo del Lumisable**. Tras dos derrotas, PÍX ofrece la **ayuda de combate** (+2 células, jefes más lentos y con el doble de vida en vez del triple).
+Al vencerlos se vuelven amistosos, entran en el **Bestiario** del Atlas, dejan un **fragmento de célula** (3 fragmentos = +1 célula máxima) y **enseñan un poder nuevo del Lumisable**. Tras dos derrotas, PÍX ofrece la **ayuda de combate** (+2 células, jefes más lentos y con cuatro veces su vida base en vez de seis).
 
 ### Poderes del Lumisable: uno por cada jefe depurado
 
@@ -103,7 +107,7 @@ Cada poder es el concepto de la isla convertido en una forma de jugar. Se presen
 | Magmatón | **Estado sobrecarga** | Estados | Con la energía llena el sable hace +1 de daño hasta bajar de 70 |
 | Kraken de Fugas | **Embestida de luz** | Pipeline: `correr → impulso → tajo` | Corriendo, atacar: embiste sin recibir daño |
 | Drenadora Suprema | **Rayo buscador** | Búsqueda: `enemigo_más_cercano()` | El pulso cargado persigue al enemigo más cercano |
-| Sobrecarga | **Recarga solar** | Microred: `MIENTRAS energía < 100: +4/s` | La energía se recarga sola hasta llenarse |
+| Sobrecarga | **Recarga solar** | Microred: `MIENTRAS energía < 100: +2/s` | La energía se recarga sola hasta llenarse (también por encima de 50) |
 
 ### Simuladores de energía
 
@@ -111,11 +115,11 @@ Un quiosco **SIM** cerca del inicio de cada isla de energía abre un simulador c
 
 | Isla | Simulador | Energía | Programación |
 |---|---|---|---|
-| Solaria | Panel de pruebas | Solar: mejor inclinación ≈ 90° − altura del sol | Variables |
+| Solaria | Panel de pruebas | Solar: mejor inclinación ≈ 90° − altura del sol; con el sol bajo la luz cruza más atmósfera y llega menos | Variables |
 | Aeris | Aerogenerador | Eólica: P crece con v³, orientación, paso de pala, tormenta | `SI viento > 25 ENTONCES bandera` en un bucle |
 | Hydria | Presa | Hidro: `potencia(caudal, altura) = 9,8 × Q × H × 0,9` | Función con dos parámetros |
 | BioLoop | Biodigestor | Biomasa: bacterias a 37 °C, acidez por sobrecarga | La cola (lista) de residuos |
-| Gea | Pozo geotérmico | Geotermia: extracción, reinyección, presión y temperatura | Máquina de estados |
+| Gea | Pozo geotérmico | Geotermia: extracción (t/h), reinyección, presión y temperatura que sube con la profundidad | Máquina de estados |
 | Bahía H2 | Cadena del hidrógeno | Hidrógeno verde: de 100 kWh de sol vuelven ≈ 35 | Pipeline de etapas |
 
 Ninguna misión se cumple sola y los errores típicos (no poner las palas en bandera, inundar el pueblo, empachar el digestor...) tienen consecuencias visibles. El primero de cada simulador da un **núcleo de forja**, y todos se pueden repetir en el **Laboratorio de simuladores** del Taller.
@@ -125,7 +129,7 @@ Ninguna misión se cumple sola y los errores típicos (no poner las palas en ban
 - **Cerraduras de código** (en todas las islas): cofres sellados con un programa corto del concepto de la isla. Lía lee el código en un holograma, **predice el resultado** y golpea con el Lumisable (o elige con E) el cristal correcto. Cada opción incorrecta es un **error típico** (contar desde 1, una vuelta de menos, ejecutar las dos ramas de un SI, olvidar el valor inicial, cambiar el orden de un pipeline...). Si falla, el programa se **ejecuta paso a paso** con la explicación del error y llega una **variante nueva** con otros números. Con la Lente Debug el holograma da una pista.
 - **Cartas del Atlas con repaso espaciado**: cada concepto practicado se vuelve una carta coleccionable (NUEVA → BRONCE → PLATA → ORO). El **repaso relámpago** sigue el sistema de Leitner: acertar aleja el siguiente repaso (10 min, 1 día, 3, 7 y 21 días) y fallar lo acerca, porque recordar justo antes de olvidar es lo que fija lo aprendido. Hay combo, XP y **racha de días**. En el mapa, el botón **CARTAS** (tecla R) avisa cuando hay cartas pendientes.
 - **Reto del día**: el mismo reto del banco para toda la clase. Al superarlo aparece un **código de 4 cifras** que el modo docente también muestra, para comprobarlo en clase.
-- **Forja del Lumisable** (en el Taller): siete mejoras del sable que son conceptos (*alcance ← alcance + 5*, *Filtro SI* para parar mejor, *bucle de energía*, *función pulso()* más barata, *lista de células*, *estado GUARDIA*, *tajo ordenado*). Se pagan con **núcleos de forja** (cerraduras, repaso diario y reto del día) y se forjan **respondiendo bien una pregunta** del concepto; fallar no cuesta núcleos.
+- **Forja del Lumisable** (en el Taller): siete mejoras del sable que son conceptos (*alcance ← alcance + 5*, *Filtro SI* para parar mejor, *bucle de energía*, *función pulso()* más barata, *lista de células*, *estado GUARDIA*, *tajo ordenado*). Se pagan con **núcleos de forja** (cerraduras, mini jefes, simuladores, patio de entrenamiento, repaso diario y reto del día) y se forjan **respondiendo bien una pregunta** del concepto; fallar no cuesta núcleos.
 
 ### Tipos de puzzle
 
@@ -149,9 +153,11 @@ Cada reto pasa por **DEMO → LO HACEMOS JUNTOS → TÚ SOLO**, ofrece **pistas 
 - **Lente Debug** (F): muestra variables, estados y secretos ocultos en el escenario.
 - **Blueprint** (B): tu último algoritmo como un plano.
 - **Mapa del archipiélago ilustrado** (a doble resolución): cada isla tiene su propia ilustración animada que representa su tema y su energía (el faro y los muelles del Puerto, el molino y los cultivos del Valle, los paneles y la torre solar de Solaria, las islas flotantes con turbinas de Aeris, las cascadas de Hydria, la selva y los biodigestores de BioLoop, el volcán y la planta geotérmica de Gea, los tanques de hidrógeno de la Bahía H2, los rascacielos-batería de neón, la torre-prisma de la microred y el gran Faro Aurora). Las islas aparecen **apagadas** hasta restaurarlas y **cubiertas de niebla** hasta descubrirlas; los viajes siguen rutas marítimas animadas.
-- **Misiones**: 12 principales y 20 secundarias. **22 Chispas de Aurora** escondidas y **27 pegatinas** (logros).
+- **Misiones**: 12 principales y 20 secundarias. **22 Chispas de Aurora** escondidas y **29 pegatinas** (logros).
 - **Mapa de dominio estimado**: progreso por concepto y por energía (presentado como una estimación, nunca como una nota).
-- **Taller de Lía**: recuerdos de cada isla, pegatinas, cosméticos, el **Laboratorio de simuladores** y la **Forja del Lumisable**.
+- **Taller de Lía**: una habitación ilustrada y viva. Por la **ventana** se ve el archipiélago de noche (cada isla restaurada enciende sus luces); en los estantes, **11 recuerdos animados** (faro, molinillo, mini panel, cometa, frasco de cascada...) que muestran **un dato real de su energía**; un **tablero de corcho** con las pegatinas (cada una explica cómo se consigue); el **armario** de cosméticos; la **casa solar** (de noche el panel no genera y la casa usa la batería) y una **lámpara LED** que se puede apagar. Desde aquí se va al **patio de entrenamiento**, al **Laboratorio de simuladores** y a la **Forja del Lumisable**.
+- **Patio de entrenamiento**: una lista de movimientos para practicar contra muñecos que no se rompen (agacharse en un túnel, combo, barrida, gancho a un dron, rebote sobre una seta, pulso a una diana, recarga y los poderes que se tengan), con cronómetro y récord. La primera vez da un núcleo de forja y una pegatina.
+- **Escenarios con subsuelo**: el interior del terreno tiene estratos y lo que hay bajo tierra en cada isla (raíces y fósiles, cables enterrados, cristales, acuíferos, vetas de magma, tuberías, circuitos), hierba que cuelga de los bordes y decoraciones propias (vallas, fardos, cactus, juncos, troncos, estalagmitas, barriles...).
 - **Aurora Lab** (tras el final): sandbox de microred para experimentar sin penalización y comparar experimentos.
 
 ### Modo docente
@@ -246,16 +252,20 @@ Requieren [Playwright](https://playwright.dev/) (local o global) con Chromium:
 
 ```bash
 node tools/tests/glyphs.js    # comprueba que las flechas de la fuente apuntan bien (sin navegador)
-node tools/tests/levels.js    # carga los 14 niveles y las 10 arenas de jefe y guarda capturas
+node tools/tests/levels.js    # carga los 15 niveles (con el patio) y las 10 arenas de jefe y guarda capturas
 node tools/tests/puzzles.js   # resuelve los puzzles principales y construye los 115 retos
 node tools/tests/presets.js   # cada reto de código empieza armado pero sin resolver, y su solución funciona
-node tools/tests/bosses.js    # sable y los 10 jefes: vida triple, 3 fases, ERROR CRÍTICO, parche fallido que cuesta célula
+node tools/tests/bosses.js    # sable y los 10 jefes: vida ×6, 3 fases, ERROR CRÍTICO, parche fallido que cuesta célula
 node tools/tests/map.js       # mapa ilustrado, viaje entre islas e index.html idéntico a lumina_loop.html
 node tools/tests/hd.js        # modo HD: el filtro WebGL compila, cubre el lienzo y se puede apagar
 node tools/tests/locks.js     # cerraduras de código: 3000 preguntas válidas, cofres en cada isla, fallo → traza → variante
 node tools/tests/cards.js     # cartas: calendario de Leitner, racha, repaso desde el mapa, reto del día y forja
 node tools/tests/sims.js      # los 6 simuladores se completan con sus mandos, no se cumplen solos y los errores no cuentan
 node tools/tests/powers.js    # los 10 poderes funcionan, tarjeta y pantalla PODERES
+node tools/tests/moves.js     # Lía mira a donde camina, se agacha, barrida, gancho, escudo de 3 golpes, recarga lenta y derrota
+node tools/tests/minibosses.js # los 10 mini jefes: barreras, avisos, descanso, núcleo y reinicio al caer
+node tools/tests/taller.js    # taller (datos de los recuerdos, lámpara) y patio: cada movimiento se marca con el teclado
+node tools/tests/overlap.js   # ninguna pantalla (menús, retos, simuladores, niveles) tiene textos encima de otros
 node tools/tests/walk.js      # recorre la campaña completa hasta el epílogo
 node tools/tests/menus.js     # abre todas las pantallas de menú
 ```
