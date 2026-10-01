@@ -144,6 +144,7 @@ const AudioSys = {
       case 'roar': T({ f: 110, f2: 55, dur: 0.7, type: 'sawtooth', vol: 0.09, lp: 700, vib: 9, vibDepth: 12 }); N({ ff: 700, ff2: 200, dur: 0.7, vol: 0.1, a: 0.08 }); this.caption('[rugido del jefe]'); break;
       case 'stun': for (let i = 0; i < 5; i++) T({ f: 1400 - i * 150, dur: 0.05, type: 'square', vol: 0.045, delay: i * 0.05, lp: 3500 }); this.caption('[jefe aturdido]'); break;
       case 'bossDown': N({ ff: 1200, ff2: 60, dur: 1.2, vol: 0.2 }); T({ f: 220, f2: 40, dur: 1.1, type: 'sawtooth', vol: 0.08, lp: 900 }); [0, 4, 7, 12].forEach((s, i) => T({ f: 523 * Math.pow(2, s / 12), dur: 0.2, type: 'triangle', vol: 0.07, delay: 0.9 + i * 0.1 })); this.caption('[jefe depurado]'); break;
+      case 'defeat': [0, -3, -7, -12].forEach((s, i) => T({ f: 392 * Math.pow(2, s / 12), dur: 0.32, type: 'triangle', vol: 0.08, delay: i * 0.22 })); T({ f: 70, f2: 35, dur: 0.9, type: 'sine', vol: 0.16, delay: 0.1 }); this.caption('[Lía sin energía]'); break;
       case 'warn': T({ f: 880, dur: 0.07, type: 'square', vol: 0.05, lp: 2500 }); T({ f: 880, dur: 0.07, type: 'square', vol: 0.05, delay: 0.12, lp: 2500 }); break;
     }
   },

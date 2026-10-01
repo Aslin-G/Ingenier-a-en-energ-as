@@ -784,6 +784,7 @@ const AudioSys = {
       case 'roar': T({ f: 110, f2: 55, dur: 0.7, type: 'sawtooth', vol: 0.09, lp: 700, vib: 9, vibDepth: 12 }); N({ ff: 700, ff2: 200, dur: 0.7, vol: 0.1, a: 0.08 }); this.caption('[rugido del jefe]'); break;
       case 'stun': for (let i = 0; i < 5; i++) T({ f: 1400 - i * 150, dur: 0.05, type: 'square', vol: 0.045, delay: i * 0.05, lp: 3500 }); this.caption('[jefe aturdido]'); break;
       case 'bossDown': N({ ff: 1200, ff2: 60, dur: 1.2, vol: 0.2 }); T({ f: 220, f2: 40, dur: 1.1, type: 'sawtooth', vol: 0.08, lp: 900 }); [0, 4, 7, 12].forEach((s, i) => T({ f: 523 * Math.pow(2, s / 12), dur: 0.2, type: 'triangle', vol: 0.07, delay: 0.9 + i * 0.1 })); this.caption('[jefe depurado]'); break;
+      case 'defeat': [0, -3, -7, -12].forEach((s, i) => T({ f: 392 * Math.pow(2, s / 12), dur: 0.32, type: 'triangle', vol: 0.08, delay: i * 0.22 })); T({ f: 70, f2: 35, dur: 0.9, type: 'sine', vol: 0.16, delay: 0.1 }); this.caption('[Lía sin energía]'); break;
       case 'warn': T({ f: 880, dur: 0.07, type: 'square', vol: 0.05, lp: 2500 }); T({ f: 880, dur: 0.07, type: 'square', vol: 0.05, delay: 0.12, lp: 2500 }); break;
     }
   },
@@ -4600,7 +4601,7 @@ class Player {
     // el golpe empuja lejos de quien lo dio
     const sx = src && src.x != null ? src.x + (src.w || 0) / 2 : null;
     const dir = sx != null && Math.abs(sx - this.cx) > 1 ? sign(this.cx - sx) : -this.face;
-    this.cells--; this.inv = forged('guard') ? 1.9 : 1.3; this.vy = -180; this.vx = dir * 150; this.hurtT = 0.28;
+    this.cells--; this.inv = forged('guard') ? 1.9 : 1.3; this.vy = -180; this.vx = dir * 150; this.hurtT = 0.28; this.lastHurt = src || null;
     // poder PUNTO DE INTERRUPCIÓN: con 1 célula el mundo se ralentiza (una vez por punto de control)
     if (hasPower('breakpoint') && this.cells === 1 && !this.lv.bpUsed) { this.lv.bpUsed = true; this.lv.slowT = 4; Particles.text(this.cx, this.y - 16, '⏸ PUNTO DE INTERRUPCIÓN', PAL.lilac); AudioSys.sfx('debug'); }
     if (src && src.knockPlayer) src.knockPlayer(this);
@@ -4828,6 +4829,7 @@ class Player {
     if (this.onGround && !this.inWater) this.lv.lastSafe = { x: this.x, y: this.y };
   }
   draw(g, cx, cy) {
+    if (this.hidden) return;
     if (this.inv > 0 && Math.floor(this.inv * 15) % 2 === 0) return;
     const A = Spr.lia[this.anim] || Spr.lia.idle;
     const fps = { walk: 11, run: 14, climb: 6, swim: 4, interact: 8, program: 5, celebrate: 4, crouch: 1.5, crawl: 6, slide: 12 }[this.anim] || 8;
@@ -4942,14 +4944,11 @@ class LumiCompanion {
 
 // ---------- utilidades de nivel ----------
 Level.prototype.gameOver = function () {
-  const lv = this;
-  lv.frozen = true;
-  Cut.run(function* () {
-    yield C.title('La red perdió estabilidad.', 'Recalculando ruta...', 2.4, PAL.coral);
-    lv.respawn();
-    lv.frozen = false;
-    if (lv.rboss) yield* bossRetry(lv);
-  });
+  // derrota: una escena propia deja claro qué pasó antes de volver al punto de control
+  if (this.defeated) return;
+  this.defeated = true; this.frozen = true;
+  G.save.stats.deaths = (G.save.stats.deaths || 0) + 1;
+  Scenes.push(new DefeatScene(this));
 };
 Level.prototype.fellOut = function () {
   const p = this.player;
@@ -4964,7 +4963,8 @@ Level.prototype.respawn = function () {
   const p = this.player;
   const cp = this.checkpoints.filter(c => c.active).pop();
   const s = cp ? { x: cp.x + 3, y: cp.y - 4 } : this.spawn;
-  p.x = s.x; p.y = s.y; p.vx = p.vy = 0; p.cells = p.maxCells; p.inv = 1.5; p.energy = 100; p.atk = null; p.chargeT = 0;
+  p.crouching = false; p.h = 20; p.hidden = false; p.shieldArmed = false;
+  p.x = s.x; p.y = s.y; p.vx = p.vy = 0; p.cells = p.maxCells; p.inv = 1.5; p.energy = 100; p.regenDelay = 0; p.atk = null; p.chargeT = 0;
   for (const e of this.entities) if (e instanceof Shot || e instanceof BossHazard) e.dead = true;
   this.snapCamera();
   Particles.burst(p.cx, p.y + 10, 20, { colors: [PAL.sun, PAL.teal], min: 20, max: 60 });
@@ -10406,6 +10406,115 @@ class GameplayScene {
     this.lv.draw(g);
     drawHUD(g, this.lv);
     Cut.draw(g);
+  }
+}
+
+// ---------------------------------------------------------------------
+//  DERROTA: Lía se queda sin células
+//  1) golpe final: destello, cámara lenta y Lía cae al suelo; Lumi se apaga
+//  2) el círculo de visión se cierra sobre ella
+//  3) tarjeta «¡SIN CÉLULAS!» con qué la venció y un consejo (E para reintentar)
+//  4) reaparece en el punto de control con el círculo abriéndose
+// ---------------------------------------------------------------------
+const FOE_NAMES = { hopper: 'un Bit Saltarín', flyer: 'un Zumbyte', charger: 'un Toro-Ohm', turret: 'un Torretín', bugglin: 'un Bugglin', loopling: 'un Loopling', shadowif: 'una Sombra SI', drainer: 'un Drainer', chaos: 'un Paquete Caótico', overflow: 'un Desbordamiento' };
+const DEFEAT_TIPS = [
+  'Agáchate (↓) para que los disparos altos pasen por encima.',
+  'Agachada y quieta, Lumi convierte 50 de energía en una célula.',
+  'Golpea un proyectil justo cuando llega: vuelve a quien lo lanzó.',
+  'El escudo IF aguanta 3 golpes: elige una condición que no lo gaste de más.',
+  'La barrida (↓ + ataque) pasa por debajo y el gancho (↑ + ataque) alcanza lo que vuela.',
+  'Con la Lente Debug (F) cada golpe es crítico y ves el algoritmo de los enemigos.',
+  'Los puntos de control guardan tu avance: actívalos al pasar.'
+];
+function defeatCause(src, lv) {
+  if (!src) return 'un peligro del camino';
+  const own = src.owner || src;
+  if (own.D && own.D.name) return own.D.name;
+  if (own.mini && own.name) return own.name;
+  if (own.type && FOE_NAMES[own.type]) return FOE_NAMES[own.type];
+  if (src instanceof Shot) return 'un proyectil';
+  return 'un peligro del camino';
+}
+class DefeatScene {
+  constructor(lv) {
+    this.lv = lv; this.t = 0; this.opaque = false; this.phase = 'fall'; this.openT = 0; this.nav = false;
+    const p = lv.player;
+    this.px = p.cx; this.py = p.y + p.h; this.face = p.face; this.vy = -150;
+    this.cause = defeatCause(p.lastHurt, lv);
+    this.tip = lv.rboss ? 'Usa la Lente (F) para leer su programa y golpéalo en su descanso. ¡Cada intento es una prueba!' : DEFEAT_TIPS[(G.save.stats.deaths || 0) % DEFEAT_TIPS.length];
+    p.hidden = true;
+    AudioSys.stopSong(); AudioSys.sfx('defeat'); FX.flash('#FF6B6B', 0.5); FX.shake(4, 0.5);
+    Particles.burst(p.cx, p.y + 8, 24, { colors: [PAL.sun, PAL.coral, PAL.white], min: 30, max: 110, type: 'star', lmax: 0.8 });
+  }
+  get skip() { return G.autoDialog; }
+  update(dt) {
+    this.t += dt;
+    const lv = this.lv;
+    // caída del cuerpo hasta el suelo
+    if (this.phase === 'fall') {
+      this.vy += 600 * dt; this.py += this.vy * dt * 0.6;
+      const ground = lv.player.y + lv.player.h;
+      if (this.py >= ground && this.vy > 0) { this.py = ground; this.vy = 0; }
+      if (this.t > 1.6 || this.skip) { this.phase = 'card'; this.cardT = 0; }
+    } else if (this.phase === 'card') {
+      this.cardT += dt;
+      const go = this.skip || (this.cardT > 1.1 && (Input.hit('interact') || Input.hit('confirm') || Input.hit('attack') || Input.hit('jump') || Input.pointer.pressed));
+      if (go) { Input.consume(); this.retry(); }
+    } else if (this.phase === 'open') {
+      this.openT += dt;
+      if (this.openT > 0.7 || this.skip) this.finish();
+    }
+  }
+  retry() {
+    const lv = this.lv;
+    lv.respawn(); lv.player.hidden = false;
+    AudioSys.playSong(lv.def.music || lv.theme.music); AudioSys.sfx('restore');
+    this.phase = 'open'; this.openT = 0;
+  }
+  finish() {
+    const lv = this.lv;
+    Scenes.pop(); lv.frozen = false; lv.defeated = false;
+    Bark.say('pix', lv.rboss ? 'Otra vez. Ahora ya conoces su programa.' : choice(['¡Volvemos! Lumi recargó tus células.', 'Reiniciando desde el punto de control.', 'Depurar es fallar, mirar qué pasó y ajustar.']), 3);
+    if (lv.rboss) Cut.run(() => bossRetry(lv));
+  }
+  draw(g) {
+    const lv = this.lv, cx = lv.cam.x, cy = lv.cam.y;
+    const sx = Math.round(this.px - cx), sy = Math.round(this.py - cy);
+    // oscurecer y desaturar el mundo poco a poco
+    const k = this.phase === 'open' ? 1 - clamp(this.openT / 0.7, 0, 1) : clamp(this.t / 1.2, 0, 1);
+    g.globalAlpha = 0.35 * k; rect(g, 0, 0, W, H, '#2A0A1A'); g.globalAlpha = 1;
+    // círculo de visión que se cierra sobre Lía (y se abre al reaparecer)
+    const R = this.phase === 'open' ? lerp(24, 520, easeOut(clamp(this.openT / 0.7, 0, 1))) : lerp(520, 30, easeInOut(clamp((this.t - 0.4) / 1.1, 0, 1)));
+    const ox = this.phase === 'open' ? Math.round(lv.player.cx - cx) : sx, oy = this.phase === 'open' ? Math.round(lv.player.y + 10 - cy) : sy - 6;
+    g.fillStyle = '#05070F';
+    for (let y = 0; y < H; y += 2) {
+      const dy = y + 1 - oy, half = R * R - dy * dy;
+      if (half <= 0) { g.fillRect(0, y, W, 2); continue; }
+      const hw = Math.sqrt(half);
+      g.fillRect(0, y, Math.max(0, ox - hw), 2); g.fillRect(ox + hw, y, W, 2);
+    }
+    if (this.phase === 'open') return;
+    // Lía cae y queda tendida; Lumi se apaga a su lado
+    const S = Spr.lia.hurt[0], img = this.face > 0 ? S.rh : S.lh, base = this.face > 0 ? S.r : S.l;
+    if (this.vy !== 0 || this.t < 0.45) g.drawImage(img, sx - base.width / 2, sy - base.height + 1, base.width, base.height);
+    else {
+      // tendida en el suelo: el sprite girado 90°
+      g.save(); g.translate(sx, sy - 5); g.rotate(this.face > 0 ? -Math.PI / 2 : Math.PI / 2);
+      g.drawImage(img, -base.width / 2, -base.height / 2, base.width, base.height); g.restore();
+    }
+    const lumiK = clamp(1 - (this.t - 0.6) / 0.9, 0, 1), lx = sx + this.face * 10, ly = sy - 18 + Math.sin(this.t * 3) * 2;
+    if (lumiK > 0) { g.globalAlpha = lumiK; pcircle(g, lx, ly, 3, PAL.sun); g.globalAlpha = lumiK * 0.3; pcircle(g, lx, ly, 6, PAL.sun); g.globalAlpha = 1; }
+    else { pcircle(g, lx, ly + 6, 2, '#565E8C'); }
+    // tarjeta
+    if (this.phase === 'card') {
+      const a = easeBack(clamp(this.cardT * 2.5, 0, 1)), w = 300, h = 100, x = (W - w) / 2, y = 42 + (1 - a) * -60;
+      panel(g, x, y, w, h, { border: PAL.coral, accent: PAL.coral, accentW: 90 });
+      drawText(g, '¡SIN CÉLULAS!', W / 2, y + 10, PAL.coral, { align: 'center', scale: 2, outline: '#2A0A1A' });
+      drawText(g, 'Misión fallida · te venció ' + this.cause, W / 2, y + 32, PAL.cream, { align: 'center' });
+      drawPara(g, '{y}Consejo:{/} ' + this.tip, x + 12, y + 46, w - 24, '#C9D2F0', { lh: 10 });
+      if (this.cardT > 1.1) drawText(g, (Input.lastDevice === 'touch' ? 'Toca' : 'E / ENTER') + ': volver al punto de control', W / 2, y + h - 13, Math.floor(this.t * 3) % 2 ? PAL.lime : PAL.sun, { align: 'center' });
+      else bar(g, x + 60, y + h - 10, w - 120, 3, this.cardT, 1.1, PAL.coral, '#1E2748');
+    }
   }
 }
 
@@ -18065,7 +18174,7 @@ class CreditsScene {
 // Navegación con teclado por escena: los menús la activan, el juego no
 [TitleScene, PauseScene, SettingsScene, RemapScene, CodexScene, TeacherScene, TallerScene, ConfirmScene, QuestLogScene, SparkEditorScene, ShieldRuleScene, CodeLabScene, PuzzleBase].forEach(K => K.prototype.nav = true);
 // los avisos (MISIÓN, ATLAS, XP...) se muestran al volver al juego, no encima de puzzles o menús
-[PuzzleBase, CodeLabScene, CodexScene, SettingsScene, RemapScene, QuestLogScene, MasteryScene, LabScene, TallerScene, ControlsScene, BlueprintScene, ConceptCardScene, AbilityCardScene, CardsScene, ReviewScene, TraceScene, ForgeScene, ForgeTrialScene, LockHelpScene, SparkEditorScene, ShieldRuleScene, PowersScene, PowerCardScene, SimLabScene].forEach(K => K.prototype.hideToasts = true);
+[PuzzleBase, CodeLabScene, CodexScene, SettingsScene, RemapScene, QuestLogScene, MasteryScene, LabScene, TallerScene, ControlsScene, BlueprintScene, ConceptCardScene, AbilityCardScene, CardsScene, ReviewScene, TraceScene, ForgeScene, ForgeTrialScene, LockHelpScene, SparkEditorScene, ShieldRuleScene, PowersScene, PowerCardScene, SimLabScene, DefeatScene].forEach(K => K.prototype.hideToasts = true);
 [GameplayScene, MapScene, ChispaScene, AbilityCardScene, ConceptCardScene, MasteryScene, ControlsScene, BlueprintScene].forEach(K => K.prototype.nav = false);
 
 const STEP = 1 / 60;
@@ -18109,7 +18218,7 @@ function boot() {
 
 // Interfaz mínima para depuración y pruebas automáticas
 window.LL = {
-  G, Game, Scenes, HD, LEVELS, textW, TextAudit, Spr, POWERS, hasPower, grantPower, syncPowers, PowersScene, PowerCardScene, LockHelpScene, SimScene, SIMS, SIM_SOLAR, VariableLabScene, SimLabScene, SIM_ORDER, simDone, simReward, placeSims, FORGE, forged, ForgeScene, ForgeTrialScene, pulseCost, healCost, Cards, cardQuestion, CardsScene, ReviewScene, CARD_BANK, CARD_META, dailyChallenge, dailyCode, launchDaily, makeLockQuestion, LOCK_GEN, CodeLock, TraceScene, buildLevel: (k, sp) => new Level(k, sp), Save, Input, UI, Cut, flag, setFlag, CODEX, QUESTS, CHALLENGES, REGIONS, makePuzzleScene, Particles, AudioSys, BOSSES, makeEnemy, unlocked, MapArt,
+  G, Game, Scenes, HD, LEVELS, textW, TextAudit, Spr, DefeatScene, POWERS, hasPower, grantPower, syncPowers, PowersScene, PowerCardScene, LockHelpScene, SimScene, SIMS, SIM_SOLAR, VariableLabScene, SimLabScene, SIM_ORDER, simDone, simReward, placeSims, FORGE, forged, ForgeScene, ForgeTrialScene, pulseCost, healCost, Cards, cardQuestion, CardsScene, ReviewScene, CARD_BANK, CARD_META, dailyChallenge, dailyCode, launchDaily, makeLockQuestion, LOCK_GEN, CodeLock, TraceScene, buildLevel: (k, sp) => new Level(k, sp), Save, Input, UI, Cut, flag, setFlag, CODEX, QUESTS, CHALLENGES, REGIONS, makePuzzleScene, Particles, AudioSys, BOSSES, makeEnemy, unlocked, MapArt,
   cfg: { CFG_FEST_BOOT, CFG_PUERTO_ROUTE, CFG_PUERTO_CHAIN, CFG_PUERTO_CARRERA, CFG_VALLE_RUTA, CFG_VALLE_SACOS, CFG_VALLE_MOLINO, CFG_SOL_FLOW, CFG_SOL_FLORES, CFG_SOL_SENSOR, CFG_SOL_MATRIZ, CFG_SOL_NUBE, CFG_AERIS_MOLINO, CFG_AERIS_VIENTO, CFG_AERIS_BUCLE, CFG_HYD_FORJA, CFG_HYD_RIO, CFG_HYD_DUP, cfgBioSorter, CFG_BIO_LISTA, CFG_BIO_MERCADO, CFG_GEA_FSM, CFG_GEA_AISLADA, CFG_GEA_CRISTAL, CFG_H2_PIPE, CFG_H2_BARCO, CFG_BAT_SORT, CFG_BAT_SEARCH, CFG_BAT_BETA, CFG_BAT_BUG, CFG_PRISMA_MG, CFG_PRISMA_FEST, CFG_PRISMA_SINSOL, pzPhaseCfg },
   A,
   S: { TitleScene, PauseScene, SettingsScene, RemapScene, CodexScene, TeacherScene, TallerScene, QuestLogScene, MasteryScene, MapScene, LabScene, ControlsScene, BlueprintScene, ConfirmScene, SparkEditorScene, ShieldRuleScene, Shot, RegionBoss, LumenWave, BossFX }

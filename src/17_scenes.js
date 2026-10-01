@@ -144,6 +144,115 @@ class GameplayScene {
   }
 }
 
+// ---------------------------------------------------------------------
+//  DERROTA: Lía se queda sin células
+//  1) golpe final: destello, cámara lenta y Lía cae al suelo; Lumi se apaga
+//  2) el círculo de visión se cierra sobre ella
+//  3) tarjeta «¡SIN CÉLULAS!» con qué la venció y un consejo (E para reintentar)
+//  4) reaparece en el punto de control con el círculo abriéndose
+// ---------------------------------------------------------------------
+const FOE_NAMES = { hopper: 'un Bit Saltarín', flyer: 'un Zumbyte', charger: 'un Toro-Ohm', turret: 'un Torretín', bugglin: 'un Bugglin', loopling: 'un Loopling', shadowif: 'una Sombra SI', drainer: 'un Drainer', chaos: 'un Paquete Caótico', overflow: 'un Desbordamiento' };
+const DEFEAT_TIPS = [
+  'Agáchate (↓) para que los disparos altos pasen por encima.',
+  'Agachada y quieta, Lumi convierte 50 de energía en una célula.',
+  'Golpea un proyectil justo cuando llega: vuelve a quien lo lanzó.',
+  'El escudo IF aguanta 3 golpes: elige una condición que no lo gaste de más.',
+  'La barrida (↓ + ataque) pasa por debajo y el gancho (↑ + ataque) alcanza lo que vuela.',
+  'Con la Lente Debug (F) cada golpe es crítico y ves el algoritmo de los enemigos.',
+  'Los puntos de control guardan tu avance: actívalos al pasar.'
+];
+function defeatCause(src, lv) {
+  if (!src) return 'un peligro del camino';
+  const own = src.owner || src;
+  if (own.D && own.D.name) return own.D.name;
+  if (own.mini && own.name) return own.name;
+  if (own.type && FOE_NAMES[own.type]) return FOE_NAMES[own.type];
+  if (src instanceof Shot) return 'un proyectil';
+  return 'un peligro del camino';
+}
+class DefeatScene {
+  constructor(lv) {
+    this.lv = lv; this.t = 0; this.opaque = false; this.phase = 'fall'; this.openT = 0; this.nav = false;
+    const p = lv.player;
+    this.px = p.cx; this.py = p.y + p.h; this.face = p.face; this.vy = -150;
+    this.cause = defeatCause(p.lastHurt, lv);
+    this.tip = lv.rboss ? 'Usa la Lente (F) para leer su programa y golpéalo en su descanso. ¡Cada intento es una prueba!' : DEFEAT_TIPS[(G.save.stats.deaths || 0) % DEFEAT_TIPS.length];
+    p.hidden = true;
+    AudioSys.stopSong(); AudioSys.sfx('defeat'); FX.flash('#FF6B6B', 0.5); FX.shake(4, 0.5);
+    Particles.burst(p.cx, p.y + 8, 24, { colors: [PAL.sun, PAL.coral, PAL.white], min: 30, max: 110, type: 'star', lmax: 0.8 });
+  }
+  get skip() { return G.autoDialog; }
+  update(dt) {
+    this.t += dt;
+    const lv = this.lv;
+    // caída del cuerpo hasta el suelo
+    if (this.phase === 'fall') {
+      this.vy += 600 * dt; this.py += this.vy * dt * 0.6;
+      const ground = lv.player.y + lv.player.h;
+      if (this.py >= ground && this.vy > 0) { this.py = ground; this.vy = 0; }
+      if (this.t > 1.6 || this.skip) { this.phase = 'card'; this.cardT = 0; }
+    } else if (this.phase === 'card') {
+      this.cardT += dt;
+      const go = this.skip || (this.cardT > 1.1 && (Input.hit('interact') || Input.hit('confirm') || Input.hit('attack') || Input.hit('jump') || Input.pointer.pressed));
+      if (go) { Input.consume(); this.retry(); }
+    } else if (this.phase === 'open') {
+      this.openT += dt;
+      if (this.openT > 0.7 || this.skip) this.finish();
+    }
+  }
+  retry() {
+    const lv = this.lv;
+    lv.respawn(); lv.player.hidden = false;
+    AudioSys.playSong(lv.def.music || lv.theme.music); AudioSys.sfx('restore');
+    this.phase = 'open'; this.openT = 0;
+  }
+  finish() {
+    const lv = this.lv;
+    Scenes.pop(); lv.frozen = false; lv.defeated = false;
+    Bark.say('pix', lv.rboss ? 'Otra vez. Ahora ya conoces su programa.' : choice(['¡Volvemos! Lumi recargó tus células.', 'Reiniciando desde el punto de control.', 'Depurar es fallar, mirar qué pasó y ajustar.']), 3);
+    if (lv.rboss) Cut.run(() => bossRetry(lv));
+  }
+  draw(g) {
+    const lv = this.lv, cx = lv.cam.x, cy = lv.cam.y;
+    const sx = Math.round(this.px - cx), sy = Math.round(this.py - cy);
+    // oscurecer y desaturar el mundo poco a poco
+    const k = this.phase === 'open' ? 1 - clamp(this.openT / 0.7, 0, 1) : clamp(this.t / 1.2, 0, 1);
+    g.globalAlpha = 0.35 * k; rect(g, 0, 0, W, H, '#2A0A1A'); g.globalAlpha = 1;
+    // círculo de visión que se cierra sobre Lía (y se abre al reaparecer)
+    const R = this.phase === 'open' ? lerp(24, 520, easeOut(clamp(this.openT / 0.7, 0, 1))) : lerp(520, 30, easeInOut(clamp((this.t - 0.4) / 1.1, 0, 1)));
+    const ox = this.phase === 'open' ? Math.round(lv.player.cx - cx) : sx, oy = this.phase === 'open' ? Math.round(lv.player.y + 10 - cy) : sy - 6;
+    g.fillStyle = '#05070F';
+    for (let y = 0; y < H; y += 2) {
+      const dy = y + 1 - oy, half = R * R - dy * dy;
+      if (half <= 0) { g.fillRect(0, y, W, 2); continue; }
+      const hw = Math.sqrt(half);
+      g.fillRect(0, y, Math.max(0, ox - hw), 2); g.fillRect(ox + hw, y, W, 2);
+    }
+    if (this.phase === 'open') return;
+    // Lía cae y queda tendida; Lumi se apaga a su lado
+    const S = Spr.lia.hurt[0], img = this.face > 0 ? S.rh : S.lh, base = this.face > 0 ? S.r : S.l;
+    if (this.vy !== 0 || this.t < 0.45) g.drawImage(img, sx - base.width / 2, sy - base.height + 1, base.width, base.height);
+    else {
+      // tendida en el suelo: el sprite girado 90°
+      g.save(); g.translate(sx, sy - 5); g.rotate(this.face > 0 ? -Math.PI / 2 : Math.PI / 2);
+      g.drawImage(img, -base.width / 2, -base.height / 2, base.width, base.height); g.restore();
+    }
+    const lumiK = clamp(1 - (this.t - 0.6) / 0.9, 0, 1), lx = sx + this.face * 10, ly = sy - 18 + Math.sin(this.t * 3) * 2;
+    if (lumiK > 0) { g.globalAlpha = lumiK; pcircle(g, lx, ly, 3, PAL.sun); g.globalAlpha = lumiK * 0.3; pcircle(g, lx, ly, 6, PAL.sun); g.globalAlpha = 1; }
+    else { pcircle(g, lx, ly + 6, 2, '#565E8C'); }
+    // tarjeta
+    if (this.phase === 'card') {
+      const a = easeBack(clamp(this.cardT * 2.5, 0, 1)), w = 300, h = 100, x = (W - w) / 2, y = 42 + (1 - a) * -60;
+      panel(g, x, y, w, h, { border: PAL.coral, accent: PAL.coral, accentW: 90 });
+      drawText(g, '¡SIN CÉLULAS!', W / 2, y + 10, PAL.coral, { align: 'center', scale: 2, outline: '#2A0A1A' });
+      drawText(g, 'Misión fallida · te venció ' + this.cause, W / 2, y + 32, PAL.cream, { align: 'center' });
+      drawPara(g, '{y}Consejo:{/} ' + this.tip, x + 12, y + 46, w - 24, '#C9D2F0', { lh: 10 });
+      if (this.cardT > 1.1) drawText(g, (Input.lastDevice === 'touch' ? 'Toca' : 'E / ENTER') + ': volver al punto de control', W / 2, y + h - 13, Math.floor(this.t * 3) % 2 ? PAL.lime : PAL.sun, { align: 'center' });
+      else bar(g, x + 60, y + h - 10, w - 120, 3, this.cardT, 1.1, PAL.coral, '#1E2748');
+    }
+  }
+}
+
 // con controles táctiles, el botón de pausa ocupa la esquina: el contador se aparta
 const touchOff = () => TouchPad.visible ? 32 : 0;
 function drawHUD(g, lv) {

@@ -835,7 +835,7 @@ class Player {
     // el golpe empuja lejos de quien lo dio
     const sx = src && src.x != null ? src.x + (src.w || 0) / 2 : null;
     const dir = sx != null && Math.abs(sx - this.cx) > 1 ? sign(this.cx - sx) : -this.face;
-    this.cells--; this.inv = forged('guard') ? 1.9 : 1.3; this.vy = -180; this.vx = dir * 150; this.hurtT = 0.28;
+    this.cells--; this.inv = forged('guard') ? 1.9 : 1.3; this.vy = -180; this.vx = dir * 150; this.hurtT = 0.28; this.lastHurt = src || null;
     // poder PUNTO DE INTERRUPCIÓN: con 1 célula el mundo se ralentiza (una vez por punto de control)
     if (hasPower('breakpoint') && this.cells === 1 && !this.lv.bpUsed) { this.lv.bpUsed = true; this.lv.slowT = 4; Particles.text(this.cx, this.y - 16, '⏸ PUNTO DE INTERRUPCIÓN', PAL.lilac); AudioSys.sfx('debug'); }
     if (src && src.knockPlayer) src.knockPlayer(this);
@@ -1063,6 +1063,7 @@ class Player {
     if (this.onGround && !this.inWater) this.lv.lastSafe = { x: this.x, y: this.y };
   }
   draw(g, cx, cy) {
+    if (this.hidden) return;
     if (this.inv > 0 && Math.floor(this.inv * 15) % 2 === 0) return;
     const A = Spr.lia[this.anim] || Spr.lia.idle;
     const fps = { walk: 11, run: 14, climb: 6, swim: 4, interact: 8, program: 5, celebrate: 4, crouch: 1.5, crawl: 6, slide: 12 }[this.anim] || 8;
@@ -1177,14 +1178,11 @@ class LumiCompanion {
 
 // ---------- utilidades de nivel ----------
 Level.prototype.gameOver = function () {
-  const lv = this;
-  lv.frozen = true;
-  Cut.run(function* () {
-    yield C.title('La red perdió estabilidad.', 'Recalculando ruta...', 2.4, PAL.coral);
-    lv.respawn();
-    lv.frozen = false;
-    if (lv.rboss) yield* bossRetry(lv);
-  });
+  // derrota: una escena propia deja claro qué pasó antes de volver al punto de control
+  if (this.defeated) return;
+  this.defeated = true; this.frozen = true;
+  G.save.stats.deaths = (G.save.stats.deaths || 0) + 1;
+  Scenes.push(new DefeatScene(this));
 };
 Level.prototype.fellOut = function () {
   const p = this.player;
@@ -1199,7 +1197,8 @@ Level.prototype.respawn = function () {
   const p = this.player;
   const cp = this.checkpoints.filter(c => c.active).pop();
   const s = cp ? { x: cp.x + 3, y: cp.y - 4 } : this.spawn;
-  p.x = s.x; p.y = s.y; p.vx = p.vy = 0; p.cells = p.maxCells; p.inv = 1.5; p.energy = 100; p.atk = null; p.chargeT = 0;
+  p.crouching = false; p.h = 20; p.hidden = false; p.shieldArmed = false;
+  p.x = s.x; p.y = s.y; p.vx = p.vy = 0; p.cells = p.maxCells; p.inv = 1.5; p.energy = 100; p.regenDelay = 0; p.atk = null; p.chargeT = 0;
   for (const e of this.entities) if (e instanceof Shot || e instanceof BossHazard) e.dead = true;
   this.snapCamera();
   Particles.burst(p.cx, p.y + 10, 20, { colors: [PAL.sun, PAL.teal], min: 20, max: 60 });

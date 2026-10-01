@@ -117,6 +117,23 @@ const ok = (cond, msg) => { console.log((cond ? '  ok   ' : '  FALLO') + ' ' + m
   ok(en.cells1 === en.cells0 - 1, 'con el escudo roto el siguiente golpe quita una célula');
   ok(en.afterPause < 0.5 && en.after > 2 && en.after < 12, `tras gastar energía la recarga espera y luego sube despacio (${en.afterPause.toFixed(1)} → ${en.after.toFixed(1)})`);
 
+  // 7) derrota: escena clara (caída, tarjeta con la causa y un consejo, E para volver)
+  await p.evaluate(() => { const lv = LL.G.run.level, pl = lv.player; LL.G.noDamage = false; pl.inv = 0; pl.cells = 1;
+    const e = LL.makeEnemy(lv, Math.round(pl.x + 30), Math.round(pl.y), { type: 'charger' }); lv.addEntity(e); pl.hurt(e); e.dead = true; });
+  await p.waitForTimeout(700);
+  const d1 = await p.evaluate(() => ({ top: LL.Scenes.top().constructor.name, hidden: LL.G.run.level.player.hidden, frozen: LL.G.run.level.frozen }));
+  await p.screenshot({ path: outDir + '/defeat_fall.png' });
+  await p.waitForTimeout(2300);
+  const d2 = await p.evaluate(() => { const s = LL.Scenes.top(); return { phase: s.phase, cause: s.cause, tip: s.tip }; });
+  await p.screenshot({ path: outDir + '/defeat_card.png' });
+  await p.keyboard.press('KeyE');
+  await p.waitForTimeout(1200);
+  const d3 = await p.evaluate(() => { const pl = LL.G.run.level.player; return { top: LL.Scenes.top().constructor.name, cells: pl.cells, max: pl.maxCells, hidden: pl.hidden, frozen: LL.G.run.level.frozen }; });
+  ok(d1.top === 'DefeatScene' && d1.hidden && d1.frozen, 'al perder la última célula empieza la escena de derrota (el mundo se detiene)');
+  ok(d2.phase === 'card' && /Toro-Ohm/.test(d2.cause) && d2.tip.length > 10, `la tarjeta dice qué la venció (${d2.cause}) y da un consejo`);
+  ok(d3.top === 'GameplayScene' && d3.cells === d3.max && !d3.hidden && !d3.frozen, 'con E vuelve al punto de control con todas las células');
+  await p.evaluate(() => { LL.G.noDamage = true; });
+
   ok(errs.length === 0, 'sin errores de consola' + (errs.length ? '\n     ' + errs.join('\n     ') : ''));
   await b.close();
   console.log(fails ? `${fails} FALLO(S)` : 'MOVIMIENTOS OK');
