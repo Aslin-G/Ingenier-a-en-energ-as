@@ -206,6 +206,30 @@ const TouchPad = {
 };
 
 // ---------- Utilidades de HUD ----------
+// ---------- Estrellas de un reto: 3 = a la primera sin pistas; se guarda el récord ----------
+const puzzleStars = (fails, hints) => fails === 0 && hints === 0 ? 3 : fails <= 2 && hints <= 1 ? 2 : 1;
+function recordStars(cfg, n) {
+  const k = cfg.title || cfg.id || '?';
+  G.save.stars = G.save.stars || {};
+  const prev = G.save.stars[k] || 0;
+  if (n > prev) G.save.stars[k] = n;
+  return { n, prev, best: Math.max(prev, n), isNew: n > prev && prev > 0, t: Time.t };
+}
+// fila de 3 estrellas que aparecen una a una (rec = resultado de recordStars)
+function drawStarRow(g, x, y, rec) {
+  if (!rec) return;
+  const dt = Time.t - rec.t;
+  for (let i = 0; i < 3; i++) {
+    const k = clamp((dt - i * 0.25) * 4, 0, 1), on = i < rec.n;
+    if (k <= 0) continue;
+    const sc = on && k < 1 ? 2 : 1, ox = sc === 2 ? -3 : 0;
+    drawText(g, '★', x + i * 10 + ox, y + ox, on ? PAL.sun : '#3A4068', { outline: PAL.ink, scale: sc });
+  }
+  if (dt > 0.9) {
+    if (rec.isNew) drawText(g, '¡RÉCORD!', x + 34, y, Math.floor(Time.t * 4) % 2 ? PAL.sun : PAL.lime);
+    else if (rec.best > rec.n) drawText(g, 'mejor: ' + '★'.repeat(rec.best), x + 34, y, '#8C93B8');
+  }
+}
 function keyHint(g, x, y, action, label, col = PAL.cream) {
   const k = Input.lastDevice === 'touch' ? ({ jump: 'A', interact: 'E', attack: '⚔', ability: 'Q', lens: 'F', hint: 'H', pause: '≡', codex: 'C', blueprint: 'B', confirm: 'TOCA', back: '✗' }[action] || action) : bindName(action);
   const kw = textW(k) + 6;

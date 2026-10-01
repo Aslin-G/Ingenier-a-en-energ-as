@@ -392,7 +392,8 @@ class CodeLabScene {
     this.msg = '✓ ' + (res.msg || '¡Algoritmo correcto!'); this.msgColor = PAL.lime;
     if (this.confidence === 0) { this.msg += ' Dudaste, pero razonaste bien.'; achieve('humble'); }
     this.confidence = null;
-    this.result = { success: true, firstTry: this.firstTry && this.hintLevel === 0, hints: this.hintLevel, attempts: this.runs, fails: this.fails, stars: res.stars || (this.fails === 0 ? 3 : this.fails < 3 ? 2 : 1), sawInfinite: !!this.sawInfinite, program: cloneProg(this.prog), st: this.st, extra: res.extra };
+    this.result = { success: true, firstTry: this.firstTry && this.hintLevel === 0, hints: this.hintLevel, attempts: this.runs, fails: this.fails, stars: res.stars || puzzleStars(this.fails, this.hintLevel), sawInfinite: !!this.sawInfinite, program: cloneProg(this.prog), st: this.st, extra: res.extra };
+    this.starRec = recordStars(this.cfg, this.result.stars);
     for (let i = 0; i < 30; i++) Particles.spawn({ x: rand(290, 476), y: rand(20, 150), vx: rand(-40, 40), vy: rand(-60, -10), grav: 60, life: rand(0.8, 1.6), type: 'star', color: choice([PAL.sun, PAL.lime, PAL.teal, PAL.pink]), screen: true });
   }
   nextStage() {
@@ -963,6 +964,7 @@ class CodeLabScene {
     if (b('atlas', 40, 'ATLAS', { color: PAL.teal })) Scenes.push(new CodexScene(this.cfg.codex));
     if (b('exit', 34, 'SALIR', { color: PAL.cream })) this.askExit();
     if (this.goalMsg && !this.result && b('goal', 36, 'META', { color: PAL.lime, tip: 'Recordar el objetivo de esta etapa' })) { this.msg = 'META: ' + this.goalMsg; this.msgColor = PAL.lime; AudioSys.sfx('click'); }
+    if (this.result) drawStarRow(g, x + 6, y + 5, this.starRec);
     // mensaje
     const mx = 4, my = y + 20;
     const pt = Portraits.get(this.msgWho || 'pix', this.state === 'error' ? 'pensando' : this.state === 'success' ? 'feliz' : 'n');

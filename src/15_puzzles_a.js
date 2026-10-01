@@ -21,7 +21,9 @@ class PuzzleBase {
   failed(msg) { this.fails++; G.save.stats.fails++; this.state = 'error'; this.say('✗ ' + msg, PAL.coral); AudioSys.sfx('fail'); addMastery(this.cfg.concepts || [], -1); if (this.fails === 2 && this.hintLevel === 0) this.msg += ' (Prueba una PISTA.)'; }
   succeeded(msg, extra) {
     this.state = 'success'; this.say('✓ ' + msg, PAL.lime); AudioSys.sfx('win');
-    this.result = { success: true, firstTry: this.fails === 0 && this.hintLevel === 0, hints: this.hintLevel, fails: this.fails, attempts: this.runs, extra };
+    const stars = puzzleStars(this.fails, this.hintLevel);
+    this.starRec = recordStars(this.cfg, stars);
+    this.result = { success: true, firstTry: this.fails === 0 && this.hintLevel === 0, hints: this.hintLevel, fails: this.fails, attempts: this.runs, stars, extra };
     for (let i = 0; i < 30; i++) Particles.spawn({ x: rand(40, W - 40), y: rand(30, 180), vx: rand(-40, 40), vy: rand(-60, -10), grav: 60, life: rand(0.8, 1.6), type: 'star', color: choice([PAL.sun, PAL.lime, PAL.teal, PAL.pink]), screen: true });
   }
   exit(r) {
@@ -62,7 +64,7 @@ class PuzzleBase {
     if (!this.result && goal && UI.btn(g, 'goal', x, y + 2, 36, 15, 'META', { color: PAL.lime, tip: 'Recordar el objetivo' })) { this.say('META: ' + goal, PAL.lime); AudioSys.sfx('click'); }
     if (!this.result && goal) x += 39;
     if (UI.btn(g, 'atlas', x, y + 2, 40, 15, 'ATLAS', { color: PAL.teal })) Scenes.push(new CodexScene(this.cfg.codex)); x += 43;
-    if (this.result) { if (UI.btn(g, 'cont', W - 124, y + 2, 120, 15, 'CONTINUAR ▶', { primary: true, color: PAL.lime })) this.exit(this.result); }
+    if (this.result) { drawStarRow(g, W - 196, y + 5, this.starRec); if (UI.btn(g, 'cont', W - 124, y + 2, 120, 15, 'CONTINUAR ▶', { primary: true, color: PAL.lime })) this.exit(this.result); }
     else if (UI.btn(g, 'exit', W - 40, y + 2, 36, 15, 'SALIR', {})) this.exit(null);
     const my = y + 20;
     g.drawImage(Portraits.get(this.msgWho, this.state === 'error' ? 'pensando' : this.state === 'success' ? 'feliz' : 'n'), 0, 0, 32, 32, 4, my, 16, 16);

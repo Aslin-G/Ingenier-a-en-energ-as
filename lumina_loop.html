@@ -985,7 +985,7 @@ function newSave() {
     // cartas del Atlas (repaso espaciado), racha de repaso y reto del día
     cards: {}, review: { streak: 0, best: 0, last: null, coreDay: null }, daily: {},
     // mejoras forjadas del Lumisable y poderes ganados a los jefes
-    forge: {}, powers: {}, sims: {}
+    forge: {}, powers: {}, sims: {}, stars: {}
   };
 }
 
@@ -3310,6 +3310,30 @@ const TouchPad = {
 };
 
 // ---------- Utilidades de HUD ----------
+// ---------- Estrellas de un reto: 3 = a la primera sin pistas; se guarda el récord ----------
+const puzzleStars = (fails, hints) => fails === 0 && hints === 0 ? 3 : fails <= 2 && hints <= 1 ? 2 : 1;
+function recordStars(cfg, n) {
+  const k = cfg.title || cfg.id || '?';
+  G.save.stars = G.save.stars || {};
+  const prev = G.save.stars[k] || 0;
+  if (n > prev) G.save.stars[k] = n;
+  return { n, prev, best: Math.max(prev, n), isNew: n > prev && prev > 0, t: Time.t };
+}
+// fila de 3 estrellas que aparecen una a una (rec = resultado de recordStars)
+function drawStarRow(g, x, y, rec) {
+  if (!rec) return;
+  const dt = Time.t - rec.t;
+  for (let i = 0; i < 3; i++) {
+    const k = clamp((dt - i * 0.25) * 4, 0, 1), on = i < rec.n;
+    if (k <= 0) continue;
+    const sc = on && k < 1 ? 2 : 1, ox = sc === 2 ? -3 : 0;
+    drawText(g, '★', x + i * 10 + ox, y + ox, on ? PAL.sun : '#3A4068', { outline: PAL.ink, scale: sc });
+  }
+  if (dt > 0.9) {
+    if (rec.isNew) drawText(g, '¡RÉCORD!', x + 34, y, Math.floor(Time.t * 4) % 2 ? PAL.sun : PAL.lime);
+    else if (rec.best > rec.n) drawText(g, 'mejor: ' + '★'.repeat(rec.best), x + 34, y, '#8C93B8');
+  }
+}
 function keyHint(g, x, y, action, label, col = PAL.cream) {
   const k = Input.lastDevice === 'touch' ? ({ jump: 'A', interact: 'E', attack: '⚔', ability: 'Q', lens: 'F', hint: 'H', pause: '≡', codex: 'C', blueprint: 'B', confirm: 'TOCA', back: '✗' }[action] || action) : bindName(action);
   const kw = textW(k) + 6;
@@ -7222,7 +7246,8 @@ class CodeLabScene {
     this.msg = '✓ ' + (res.msg || '¡Algoritmo correcto!'); this.msgColor = PAL.lime;
     if (this.confidence === 0) { this.msg += ' Dudaste, pero razonaste bien.'; achieve('humble'); }
     this.confidence = null;
-    this.result = { success: true, firstTry: this.firstTry && this.hintLevel === 0, hints: this.hintLevel, attempts: this.runs, fails: this.fails, stars: res.stars || (this.fails === 0 ? 3 : this.fails < 3 ? 2 : 1), sawInfinite: !!this.sawInfinite, program: cloneProg(this.prog), st: this.st, extra: res.extra };
+    this.result = { success: true, firstTry: this.firstTry && this.hintLevel === 0, hints: this.hintLevel, attempts: this.runs, fails: this.fails, stars: res.stars || puzzleStars(this.fails, this.hintLevel), sawInfinite: !!this.sawInfinite, program: cloneProg(this.prog), st: this.st, extra: res.extra };
+    this.starRec = recordStars(this.cfg, this.result.stars);
     for (let i = 0; i < 30; i++) Particles.spawn({ x: rand(290, 476), y: rand(20, 150), vx: rand(-40, 40), vy: rand(-60, -10), grav: 60, life: rand(0.8, 1.6), type: 'star', color: choice([PAL.sun, PAL.lime, PAL.teal, PAL.pink]), screen: true });
   }
   nextStage() {
@@ -7793,6 +7818,7 @@ class CodeLabScene {
     if (b('atlas', 40, 'ATLAS', { color: PAL.teal })) Scenes.push(new CodexScene(this.cfg.codex));
     if (b('exit', 34, 'SALIR', { color: PAL.cream })) this.askExit();
     if (this.goalMsg && !this.result && b('goal', 36, 'META', { color: PAL.lime, tip: 'Recordar el objetivo de esta etapa' })) { this.msg = 'META: ' + this.goalMsg; this.msgColor = PAL.lime; AudioSys.sfx('click'); }
+    if (this.result) drawStarRow(g, x + 6, y + 5, this.starRec);
     // mensaje
     const mx = 4, my = y + 20;
     const pt = Portraits.get(this.msgWho || 'pix', this.state === 'error' ? 'pensando' : this.state === 'success' ? 'feliz' : 'n');
@@ -8317,7 +8343,9 @@ class PuzzleBase {
   failed(msg) { this.fails++; G.save.stats.fails++; this.state = 'error'; this.say('✗ ' + msg, PAL.coral); AudioSys.sfx('fail'); addMastery(this.cfg.concepts || [], -1); if (this.fails === 2 && this.hintLevel === 0) this.msg += ' (Prueba una PISTA.)'; }
   succeeded(msg, extra) {
     this.state = 'success'; this.say('✓ ' + msg, PAL.lime); AudioSys.sfx('win');
-    this.result = { success: true, firstTry: this.fails === 0 && this.hintLevel === 0, hints: this.hintLevel, fails: this.fails, attempts: this.runs, extra };
+    const stars = puzzleStars(this.fails, this.hintLevel);
+    this.starRec = recordStars(this.cfg, stars);
+    this.result = { success: true, firstTry: this.fails === 0 && this.hintLevel === 0, hints: this.hintLevel, fails: this.fails, attempts: this.runs, stars, extra };
     for (let i = 0; i < 30; i++) Particles.spawn({ x: rand(40, W - 40), y: rand(30, 180), vx: rand(-40, 40), vy: rand(-60, -10), grav: 60, life: rand(0.8, 1.6), type: 'star', color: choice([PAL.sun, PAL.lime, PAL.teal, PAL.pink]), screen: true });
   }
   exit(r) {
@@ -8358,7 +8386,7 @@ class PuzzleBase {
     if (!this.result && goal && UI.btn(g, 'goal', x, y + 2, 36, 15, 'META', { color: PAL.lime, tip: 'Recordar el objetivo' })) { this.say('META: ' + goal, PAL.lime); AudioSys.sfx('click'); }
     if (!this.result && goal) x += 39;
     if (UI.btn(g, 'atlas', x, y + 2, 40, 15, 'ATLAS', { color: PAL.teal })) Scenes.push(new CodexScene(this.cfg.codex)); x += 43;
-    if (this.result) { if (UI.btn(g, 'cont', W - 124, y + 2, 120, 15, 'CONTINUAR ▶', { primary: true, color: PAL.lime })) this.exit(this.result); }
+    if (this.result) { drawStarRow(g, W - 196, y + 5, this.starRec); if (UI.btn(g, 'cont', W - 124, y + 2, 120, 15, 'CONTINUAR ▶', { primary: true, color: PAL.lime })) this.exit(this.result); }
     else if (UI.btn(g, 'exit', W - 40, y + 2, 36, 15, 'SALIR', {})) this.exit(null);
     const my = y + 20;
     g.drawImage(Portraits.get(this.msgWho, this.state === 'error' ? 'pensando' : this.state === 'success' ? 'feliz' : 'n'), 0, 0, 32, 32, 4, my, 16, 16);
@@ -8913,6 +8941,16 @@ class SortScene extends PuzzleBase {
       strokeRect(g, x + 1, 36, cw * 2 - 2, 136, Math.floor(this.t * 4) % 2 ? PAL.sun : '#8A6A2A');
       drawText(g, '¿' + this.cfg.fmt(this.arr[this.i]) + (this.cfg.desc ? ' < ' : ' > ') + this.cfg.fmt(this.arr[this.i + 1]) + '?', x + cw, 26, PAL.sun, { align: 'center', outline: PAL.ink });
     }
+    // búsqueda binaria: el rango que queda [lo, hi] y su MEDIO
+    if (this.cfg.mode === 'search' && this.state !== 'success' && this.lo <= this.hi) {
+      const x0 = ox + this.lo * cw + 2, x1 = ox + (this.hi + 1) * cw - 2, by = 154, mid = Math.floor((this.lo + this.hi) / 2);
+      rect(g, x0, by, x1 - x0, 1, PAL.sky); rect(g, x0, by - 3, 1, 4, PAL.sky); rect(g, x1 - 1, by - 3, 1, 4, PAL.sky);
+      drawText(g, 'quedan ' + (this.hi - this.lo + 1), (x0 + x1) / 2, by + 3, PAL.sky, { align: 'center' });
+      if (this.inspected.length || this.hintLevel > 0) {
+        drawText(g, '▲', ox + mid * cw + cw / 2, by - 10, PAL.sun, { align: 'center' });
+        drawText(g, 'lo = ' + this.lo + ' · hi = ' + this.hi + ' · medio = (' + this.lo + ' + ' + this.hi + ') ÷ 2 = ' + mid, W / 2, 172, '#C9D2F0', { align: 'center' });
+      }
+    }
     const info = this.cfg.mode === 'search' ? `buscando: ${this.cfg.target} · intentos: ${this.inspected.length}/${this.cfg.limit}` : `pasada ${this.pass} · comparaciones ${this.comps} · intercambios ${this.swaps} · errores ${this.mistakes}`;
     drawText(g, info, W / 2, 184, PAL.aqua, { align: 'center' });
     if (this.state === 'success' && this.cfg.after) this.cfg.after(g, this);
@@ -9067,7 +9105,13 @@ class MicrogridScene extends PuzzleBase {
       const w = sc.weather[h];
       rect(g, x, gy - 2, bw - 1, 2, w === 'sol' ? PAL.sun : w === 'nube' ? '#C9D2F0' : '#59C7FF');
       if ((sc.events || {})[h]) { rect(g, x, gy, bw - 1, gh, 'rgba(255,127,207,0.12)'); }
-      if (!R || h >= this.showH) continue;
+      // previsión: la demanda esperada (punteada) para pensar las reglas antes de simular
+      if (!R || h >= this.showH) {
+        const fd = sc.demand[h] * ((sc.events || {})[h] === 'festival' ? 1.6 : 1), fy = gy + gh - fd / maxY * gh;
+        for (let k = 0; k < bw - 1; k += 2) px(g, x + k, fy, '#8C93B8');
+        if (w === 'sol' && h >= 7 && h <= 18) { const sh = Math.sin((h - 6) / 13 * Math.PI) * gh * 0.5; for (let k = 0; k < bw - 1; k += 3) px(g, x + k, gy + gh - sh, '#8A7A2A'); }
+        continue;
+      }
       const d = R.hours[h];
       let yy = gy + gh;
       const seg = (v, c) => { const hh = v / maxY * gh; rect(g, x, yy - hh, bw - 1, hh, c); yy -= hh; };
@@ -9077,6 +9121,7 @@ class MicrogridScene extends PuzzleBase {
       rect(g, x, gy + gh - d.soc / 100 * gh, bw - 1, 1, '#1FA85A');
     }
     rect(g, gx, gy + gh, gw, 1, '#565E8C');
+    if (!R) drawText(g, 'PREVISIÓN (antes de simular)', gx + gw / 2, gy + 4, '#8C93B8', { align: 'center' });
     const leg = [['sol', PAL.sun], ['viento', PAL.aqua], ['hidro', PAL.sky], ['bat', PAL.lime], ['H2', PAL.pink], ['demanda', '#FFFFFF']];
     leg.forEach(([l, c], i) => { rect(g, 212 + i * 42, 130, 5, 5, c); drawText(g, l, 219 + i * 42, 129, '#8C93B8'); });
     // métricas

@@ -102,6 +102,16 @@ class SortScene extends PuzzleBase {
       strokeRect(g, x + 1, 36, cw * 2 - 2, 136, Math.floor(this.t * 4) % 2 ? PAL.sun : '#8A6A2A');
       drawText(g, '¿' + this.cfg.fmt(this.arr[this.i]) + (this.cfg.desc ? ' < ' : ' > ') + this.cfg.fmt(this.arr[this.i + 1]) + '?', x + cw, 26, PAL.sun, { align: 'center', outline: PAL.ink });
     }
+    // búsqueda binaria: el rango que queda [lo, hi] y su MEDIO
+    if (this.cfg.mode === 'search' && this.state !== 'success' && this.lo <= this.hi) {
+      const x0 = ox + this.lo * cw + 2, x1 = ox + (this.hi + 1) * cw - 2, by = 154, mid = Math.floor((this.lo + this.hi) / 2);
+      rect(g, x0, by, x1 - x0, 1, PAL.sky); rect(g, x0, by - 3, 1, 4, PAL.sky); rect(g, x1 - 1, by - 3, 1, 4, PAL.sky);
+      drawText(g, 'quedan ' + (this.hi - this.lo + 1), (x0 + x1) / 2, by + 3, PAL.sky, { align: 'center' });
+      if (this.inspected.length || this.hintLevel > 0) {
+        drawText(g, '▲', ox + mid * cw + cw / 2, by - 10, PAL.sun, { align: 'center' });
+        drawText(g, 'lo = ' + this.lo + ' · hi = ' + this.hi + ' · medio = (' + this.lo + ' + ' + this.hi + ') ÷ 2 = ' + mid, W / 2, 172, '#C9D2F0', { align: 'center' });
+      }
+    }
     const info = this.cfg.mode === 'search' ? `buscando: ${this.cfg.target} · intentos: ${this.inspected.length}/${this.cfg.limit}` : `pasada ${this.pass} · comparaciones ${this.comps} · intercambios ${this.swaps} · errores ${this.mistakes}`;
     drawText(g, info, W / 2, 184, PAL.aqua, { align: 'center' });
     if (this.state === 'success' && this.cfg.after) this.cfg.after(g, this);
@@ -256,7 +266,13 @@ class MicrogridScene extends PuzzleBase {
       const w = sc.weather[h];
       rect(g, x, gy - 2, bw - 1, 2, w === 'sol' ? PAL.sun : w === 'nube' ? '#C9D2F0' : '#59C7FF');
       if ((sc.events || {})[h]) { rect(g, x, gy, bw - 1, gh, 'rgba(255,127,207,0.12)'); }
-      if (!R || h >= this.showH) continue;
+      // previsión: la demanda esperada (punteada) para pensar las reglas antes de simular
+      if (!R || h >= this.showH) {
+        const fd = sc.demand[h] * ((sc.events || {})[h] === 'festival' ? 1.6 : 1), fy = gy + gh - fd / maxY * gh;
+        for (let k = 0; k < bw - 1; k += 2) px(g, x + k, fy, '#8C93B8');
+        if (w === 'sol' && h >= 7 && h <= 18) { const sh = Math.sin((h - 6) / 13 * Math.PI) * gh * 0.5; for (let k = 0; k < bw - 1; k += 3) px(g, x + k, gy + gh - sh, '#8A7A2A'); }
+        continue;
+      }
       const d = R.hours[h];
       let yy = gy + gh;
       const seg = (v, c) => { const hh = v / maxY * gh; rect(g, x, yy - hh, bw - 1, hh, c); yy -= hh; };
@@ -266,6 +282,7 @@ class MicrogridScene extends PuzzleBase {
       rect(g, x, gy + gh - d.soc / 100 * gh, bw - 1, 1, '#1FA85A');
     }
     rect(g, gx, gy + gh, gw, 1, '#565E8C');
+    if (!R) drawText(g, 'PREVISIÓN (antes de simular)', gx + gw / 2, gy + 4, '#8C93B8', { align: 'center' });
     const leg = [['sol', PAL.sun], ['viento', PAL.aqua], ['hidro', PAL.sky], ['bat', PAL.lime], ['H2', PAL.pink], ['demanda', '#FFFFFF']];
     leg.forEach(([l, c], i) => { rect(g, 212 + i * 42, 130, 5, 5, c); drawText(g, l, 219 + i * 42, 129, '#8C93B8'); });
     // métricas
