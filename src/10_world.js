@@ -54,6 +54,7 @@ class Level {
     populateFoes(this);
     placeLocks(this);
     placeSims(this);
+    placeMiniBoss(this);
     this.bg = getBackground(def.theme);
     this.buildStatic();
     const start = this.findSpawn(spawnId);
@@ -1195,6 +1196,7 @@ Level.prototype.fellOut = function () {
 };
 Level.prototype.respawn = function () {
   const p = this.player;
+  this.respawns = (this.respawns || 0) + 1; // el mini jefe vuelve a empezar
   const cp = this.checkpoints.filter(c => c.active).pop();
   const s = cp ? { x: cp.x + 3, y: cp.y - 4 } : this.spawn;
   p.crouching = false; p.h = 20; p.hidden = false; p.shieldArmed = false;

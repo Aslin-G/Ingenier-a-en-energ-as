@@ -3,7 +3,7 @@
 //  Cada isla termina con un guardián corrompido por el apagón. Cada uno
 //  EJECUTA UN ALGORITMO del concepto de su isla: con la Lente Debug se lee
 //  su programa (línea actual resaltada) y se pueden predecir sus ataques.
-//  Tienen el TRIPLE de vida y tres fases: a 2/3 reescribe su código (un
+//  Tienen SEIS veces su vida base y tres fases: a 2/3 reescribe su código (un
 //  «parche», pregunta rápida, lo ralentiza) y a 1/3 entra en FURIA (un
 //  segundo parche: predecir el resultado de un programa). Si un parche
 //  falla, el jefe lanza su ERROR CRÍTICO: un ataque especial con aviso
@@ -14,8 +14,8 @@
 const ARENA_FLOOR = 15 * TILE;           // parte superior del suelo de la arena
 const ARENA_L = TILE, ARENA_R = 29 * TILE; // paredes interiores
 const BOSSES = {};
-// vida: el triple de la base (el doble con la ayuda de combate)
-const bossHpMul = () => G.save.settings.assist ? 2 : 3;
+// vida: seis veces la base (cuatro con la ayuda de combate)
+const bossHpMul = () => G.save.settings.assist ? 4 : 6;
 
 class RegionBoss extends Entity {
   constructor(lv, x, y, cfg) {

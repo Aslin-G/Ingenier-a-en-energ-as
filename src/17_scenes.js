@@ -273,6 +273,8 @@ function drawHUD(g, lv) {
     rect(g, 1, 1, hudW, hudH, 'rgba(10,14,32,0.5)'); rect(g, 2, 0, hudW - 2, 1, 'rgba(10,14,32,0.5)');
     rect(g, W - 75 - touchOff(), 1, 72, 15, 'rgba(10,14,32,0.5)');
   }
+  // barra del mini jefe (durante su pelea)
+  if (lv.miniFight) drawMiniHUD(g, lv);
   // células de energía (forma de Lumi)
   for (let i = 0; i < p.maxCells; i++) {
     const on = i < p.cells;

@@ -109,7 +109,7 @@ const { chromium, gameFile, outDir } = require('./_pw');
       }
       await sleep(10);
       // vida triple (doble con la ayuda de combate)
-      L.push('  vida: ' + (bo.maxHp === bo.D.hp * (LL.G.save.settings.assist ? 2 : 3) ? 'TRIPLE OK' : 'MAL ' + bo.maxHp + ' vs base ' + bo.D.hp));
+      L.push('  vida: ' + (bo.maxHp === bo.D.hp * (LL.G.save.settings.assist ? 4 : 6) ? '×6 OK' : 'MAL ' + bo.maxHp + ' vs base ' + bo.D.hp));
       // fase 2 a 2/3 de vida (el parche se resuelve solo en la prueba)
       LL.G.autoDialog = true;
       bo.hurtCD = 0; bo.damage({ dmg: Math.ceil(bo.hp - bo.maxHp * 2 / 3) + 1, dir: 1 });
@@ -149,7 +149,7 @@ const { chromium, gameFile, outDir } = require('./_pw');
       return L;
     }, k);
     console.log(r.join('\n'));
-    const ok = ['vida: TRIPLE OK', 'fase 2: OK', 'fase 3: OK', 'especial: OK', 'alcance: OK'].every(w => r.some(l => l.includes(w))) && r.some(l => l.includes('flag=true') && l.includes('MapScene'));
+    const ok = ['vida: ×6 OK', 'fase 2: OK', 'fase 3: OK', 'especial: OK', 'alcance: OK'].every(w => r.some(l => l.includes(w))) && r.some(l => l.includes('flag=true') && l.includes('MapScene'));
     console.log('  ' + (ok ? 'OK' : 'FALLO') + (errs.length ? '\n   ' + errs.join('\n   ') : ''));
     if (!ok || errs.length) fails++;
     await p.close();
