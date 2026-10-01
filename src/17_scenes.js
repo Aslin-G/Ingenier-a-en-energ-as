@@ -54,9 +54,11 @@ const Game = {
     if (!Scenes.stack.length) rect(ctx, 0, 0, W, H, PAL.ink);
     for (let i = start; i < Scenes.stack.length; i++) {
       const s = Scenes.stack[i];
+      TextAudit.layer = i;
       if (i < Scenes.stack.length - 1) { const saved = UI.items; s.draw(ctx); UI.items = saved.length ? saved : []; UI.items = []; }
       else s.draw(ctx);
     }
+    TextAudit.layer = Scenes.stack.length - 1; // avisos y subtítulos: encima de la escena superior
     if (Cut.fadeA > 0.001) { ctx.globalAlpha = Cut.fadeA; rect(ctx, 0, 0, W, H, Cut.fadeColor || '#000'); ctx.globalAlpha = 1; }
     FX.drawFlash(ctx);
     if (!(Scenes.top() && Scenes.top().hideToasts)) Toast.draw(ctx);

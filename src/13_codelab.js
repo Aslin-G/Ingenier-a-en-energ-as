@@ -401,6 +401,7 @@ class CodeLabScene {
     AudioSys.sfx('confirm');
   }
   exit(result) {
+    if (this.exited) return; this.exited = true;
     UI.nav = false; UI.cancelHeld(); Scenes.pop();
     const r = result || { success: false, hints: this.hintLevel, attempts: this.runs, fails: this.fails };
     if (r.success) {
@@ -438,6 +439,8 @@ class CodeLabScene {
     if (this.state === 'running') for (let i = 0; i < 4 && this.state === 'running'; i++) { this.stepExec(i === 0 ? dt : 0); if (this.wait > 0) break; }
     // atajos
     if (!this.popup) {
+      // reto superado (o etapa terminada): E continúa
+      if (Input.hit('interact') && (this.result || this.stageDone)) { Input.consume(); if (this.stageDone) this.nextStage(); else this.exit(this.result); return; }
       if (Input.hit('hint')) this.hint();
       if (Input.hit('blueprint')) this.view = this.view === 'code' ? 'flow' : 'code';
       if (Input.codeHit('KeyR') && this.state === 'edit') this.startRun(false);
@@ -694,9 +697,12 @@ class CodeLabScene {
         if (UI.clicked('bp:' + bpk)) { if (this.breakpoints.has(bpk)) this.breakpoints.delete(bpk); else this.breakpoints.add(bpk); AudioSys.sfx('click'); }
         if (this.breakpoints.has(bpk)) pcircle(g, x + 6, yy + 5, 3, PAL.coral); else if (gst.hover) pring(g, x + 6, yy + 5, 3, '#7A3A4A');
       }
-      drawText(g, String(n).padStart(2, ' '), x + 17, yy + 2, active ? PAL.sun : '#4A5590', { align: 'right' });
-      if (active) { rect(g, ind - 2, yy, x + w - 4 - ind, LH - 1, 'rgba(255,216,74,0.25)'); drawText(g, '▶', ind - 8, yy + 2, PAL.sun); }
-      if (isErr) { rect(g, ind - 2, yy, x + w - 4 - ind, LH - 1, 'rgba(255,107,107,0.35)'); drawText(g, '✗', ind - 8, yy + 2, PAL.coral); }
+      // la línea que se ejecuta (o la del error) cambia su número por ▶ / ✗: nada se monta
+      if (active) drawText(g, '▶', x + 17, yy + 2, PAL.sun, { align: 'right' });
+      else if (isErr) drawText(g, '✗', x + 17, yy + 2, PAL.coral, { align: 'right' });
+      else drawText(g, String(n).padStart(2, ' '), x + 17, yy + 2, '#4A5590', { align: 'right' });
+      if (active) rect(g, ind - 2, yy, x + w - 4 - ind, LH - 1, 'rgba(255,216,74,0.25)');
+      if (isErr) rect(g, ind - 2, yy, x + w - 4 - ind, LH - 1, 'rgba(255,107,107,0.35)');
       if (l.kind === 'head') {
         const ctl = selected && editable && !b.locked;
         const lw = x + w - 6 - ind - (ctl ? 36 : 0);
@@ -707,8 +713,16 @@ class CodeLabScene {
         if (flashing) rect(g, ind - 1, yy - 1, x + w - 5 - ind, LH + 1, `rgba(255,216,74,${0.35 * this.flash.t})`);
         rect(g, ind, yy, 3, LH - 1, cat.color);
         if (selected) strokeRect(g, ind - 1, yy - 1, x + w - 5 - ind, LH + 1, PAL.sun);
-        if (b.locked) drawText(g, '■', x + w - 12, yy + 2, '#5A6090');
-        this.drawBlockLine(g, b, ind + 5, yy + 2, l.path, st.hover || st.focus, lw - 8 - (b.locked ? 10 : 0));
+        // insignias a la derecha (vueltas ↻ y VERDADERO/FALSO): el texto de la línea se acorta para no quedar debajo
+        const iter = this.env && this.env.iter[pathKey(l.path)] && (b.op === 'repeat' || b.op === 'while' || b.op === 'foreach') ? this.env.iter[pathKey(l.path)] : null;
+        const cond = active && this.condBubble && (b.op === 'if' || b.op === 'while') ? this.condBubble : null;
+        const badgeW = (iter ? 38 : 0) + (cond ? 26 : 0);
+        if (b.locked && !badgeW) drawText(g, '■', x + w - 12, yy + 2, '#5A6090');
+        this.drawBlockLine(g, b, ind + 5, yy + 2, l.path, st.hover || st.focus, lw - 8 - (b.locked && !badgeW ? 10 : 0) - (ctl ? 0 : badgeW));
+        let bxR = x + w - 4;
+        if (iter) { const lbl = '↻ ' + iter.k + '/' + iter.n; bxR -= 36; rect(g, bxR, yy - 1, 36, 11, '#1A4A7A'); drawText(g, lbl, bxR + 18, yy + 1, PAL.aqua, { align: 'center' }); bxR -= 2; }
+        // ¿se cumple la condición? SÍ / NO (el detalle VERDADERO / FALSO queda en la TRAZA)
+        if (cond) { bxR -= 24; rect(g, bxR, yy - 1, 24, 11, cond.v ? '#2A6A2A' : '#7A2A3A'); drawText(g, cond.v ? 'SÍ' : 'NO', bxR + 12, yy + 1, PAL.white, { align: 'center' }); }
         if (st.focus && Input.lastDevice === 'keyboard') UI.focusRing(g, ind, yy, lw, LH - 1);
         // controles de la línea marcada: subir, bajar, borrar
         if (ctl) {
@@ -717,17 +731,6 @@ class CodeLabScene {
           if (UI.btn(g, 'dn:' + pk, bx + 12, yy, 11, LH - 1, '▼', { color: PAL.sky, tip: 'Bajar una fila' })) { this.moveLine(l.path, 1); this.selMoved = true; }
           if (UI.btn(g, 'del:' + pk, bx + 24, yy, 11, LH - 1, '✗', { color: PAL.coral, tip: 'Borrar esta línea' })) { this.touchEdit(); this.removeAt(l.path); AudioSys.sfx('remove'); }
           selRow = n;
-        }
-        // burbuja de condición e iteración
-        if (active && this.condBubble && (b.op === 'if' || b.op === 'while')) {
-          const tx = this.condBubble.v ? 'VERDADERO' : 'FALSO';
-          const bx = x + w - 60;
-          rect(g, bx, yy - 1, 56, 11, this.condBubble.v ? '#2A6A2A' : '#7A2A3A'); drawText(g, tx, bx + 28, yy + 1, PAL.white, { align: 'center' });
-        }
-        if (this.env && this.env.iter[pathKey(l.path)] && (b.op === 'repeat' || b.op === 'while' || b.op === 'foreach')) {
-          const it = this.env.iter[pathKey(l.path)];
-          const lbl = '↻ ' + it.k + '/' + it.n;
-          rect(g, x + w - 40, yy - 1, 36, 11, '#1A4A7A'); drawText(g, lbl, x + w - 22, yy + 1, PAL.aqua, { align: 'center' });
         }
       } else {
         const txt = l.kind === 'else' ? 'SINO' : { if: 'FIN SI', repeat: 'FIN REPETIR', while: 'FIN MIENTRAS', foreach: 'FIN PARA' }[b.op];
@@ -898,7 +901,7 @@ class CodeLabScene {
     if (this.world.draw) this.world.draw(g, x + 2, y + 2, w - 4, h - 4, this.st, this.t, this);
     g.restore();
     if (this.state === 'success') { drawText(g, '✓ ÉXITO', x + w - 6, y + h - 12, PAL.lime, { align: 'right', outline: PAL.ink }); }
-    if (this.state === 'running' && this.ticks > 1 && this.cfg.tickLabel) drawText(g, this.cfg.tickLabel(this.tick), x + 6, y + h - 12, PAL.sun, { outline: PAL.ink });
+    if (this.state === 'running' && this.ticks > 1 && this.cfg.tickLabel && !this.world.drawsTime) drawText(g, this.cfg.tickLabel(this.tick), x + 6, y + h - 12, PAL.sun, { outline: PAL.ink });
   }
   drawPanel(g) {
     const x = 294, y = 158, w = 182, h = 66;
@@ -930,15 +933,14 @@ class CodeLabScene {
       if (this.env) for (const k in this.env.changed) this.env.changed[k] = Math.max(0, this.env.changed[k] - 0.02);
     } else {
       const tr = this.env ? this.env.trace : [];
-      const show = tr.slice(-4);
+      const show = tr.slice(-4), n0 = tr.length - show.length + 1;
+      const colW = Math.max(...show.map((s, i) => textW('PASO ' + (n0 + i))), 0);
       show.forEach((s, i) => {
-        const n = tr.length - show.length + i + 1;
-        const yy = y + 17 + i * 12;
+        const n = n0 + i, yy = y + 17 + i * 12;
         const failLine = this.state === 'error' && i === show.length - 1 && !s.ok;
         drawText(g, 'PASO ' + n, x + 6, yy, '#8C93B8');
-        drawText(g, s.ok ? '✓' : '✗', x + 42, yy, s.ok ? PAL.lime : PAL.coral);
-        const t = s.text.length > 24 ? s.text.slice(0, 23) + '…' : s.text;
-        drawText(g, t, x + 52, yy, failLine ? PAL.coral : PAL.cream);
+        drawText(g, s.ok ? '✓' : '✗', x + 9 + colW, yy, s.ok ? PAL.lime : PAL.coral);
+        drawText(g, fitText(s.text, w - 24 - colW), x + 19 + colW, yy, failLine ? PAL.coral : PAL.cream);
       });
       if (!tr.length) drawText(g, 'Ejecuta para ver cada paso.', x + 8, y + 20, '#5A6090');
     }
@@ -950,9 +952,9 @@ class CodeLabScene {
     const running = this.state === 'running' || this.state === 'paused';
     const b = (id, w, label, o) => { const r = UI.btn(g, id, x, y + 2, w, 15, label, o); x += w + 3; return r; };
     if (this.stageDone) {
-      if (b('next', 120, 'SIGUIENTE ETAPA ▶', { primary: true, color: PAL.lime })) this.nextStage();
+      if (b('next', 120, 'SIGUIENTE ETAPA (E) ▶', { primary: true, color: PAL.lime })) this.nextStage();
     } else if (this.result) {
-      if (b('cont', 120, 'CONTINUAR ▶', { primary: true, color: PAL.lime })) this.exit(this.result);
+      if (b('cont', 120, 'CONTINUAR (E) ▶', { primary: true, color: PAL.lime })) this.exit(this.result);
     } else {
       if (b('run', 64, running && this.state === 'paused' ? '▶ SEGUIR' : '▶ EJECUTAR', { primary: true, color: PAL.lime, disabled: this.state === 'running' && !this.stepMode })) { if (this.state === 'paused') { this.stepMode = false; this.state = 'running'; } else this.startRun(false); }
       if (b('step', 46, '⏯ PASO', { color: PAL.sky, tip: 'Ejecuta una línea cada vez para depurar.' })) { if (this.state === 'paused') { this.stepOnce = true; this.state = 'running'; } else if (!running) this.startRun(true); }

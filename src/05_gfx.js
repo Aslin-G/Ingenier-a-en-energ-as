@@ -119,6 +119,8 @@ function panel(g, x, y, w, h, o = {}) {
   const border = o.border || (hc ? PAL.white : '#3E4C8A');
   const hi = o.hi || (hc ? PAL.white : '#6A7BC4');
   x = Math.round(x); y = Math.round(y); w = Math.round(w); h = Math.round(h);
+  // auditoría de solapes: un panel opaco tapa los textos dibujados antes debajo de él
+  if (TextAudit.on) { const al = /rgba\([^)]*,\s*([\d.]+)\)/.exec(bg); if (!al || +al[1] >= 0.8) TextAudit.cover(g, x, y, w, h); }
   g.fillStyle = bg;
   g.fillRect(x + 1, y, w - 2, h); g.fillRect(x, y + 1, w, h - 2);
   g.fillStyle = border;
@@ -184,6 +186,11 @@ const Particles = {
     }
   },
   draw(g, cx, cy, screen = false, layer = 0) {
+    // partículas (chispas, bits, textos flotantes): pasajeras, no cuentan en la auditoría de solapes
+    const auditLayer = TextAudit.layer; TextAudit.layer = 'fx';
+    try { this._draw(g, cx, cy, screen, layer); } finally { TextAudit.layer = auditLayer; }
+  },
+  _draw(g, cx, cy, screen, layer) {
     for (const p of this.list) {
       if (p.screen !== screen || p.layer !== layer) continue;
       // posición en medios píxeles: el movimiento de chispas y hojas se ve más suave

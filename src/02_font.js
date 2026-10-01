@@ -232,6 +232,10 @@ function textW(str, scale = 1) {
 }
 
 // Dibuja texto plano. opts: {align:'left'|'center'|'right', shadow:color, outline:color, scale}
+// Auditoría de solapes (solo pruebas): guarda la caja de cada texto dibujado en pantalla
+const TextAudit = { on: false, list: [],
+  cover(g, x, y, w, h) { if (g !== ctx) return; const m = g.getTransform(), X = x + m.e / RES, Y = y + m.f / RES; for (const r of this.list) if (r.l === this.layer && r.x < X + w && r.x + r.w > X && r.y < Y + h && r.y + r.h > Y) r.hidden = true; },
+  add(g, t, x, y, w, h) { if (this.on && g === ctx && String(t).trim()) { const m = g.getTransform(), k = m.a / RES || 1; this.list.push({ t: String(t), x: x * k + m.e / RES, y: y * k + m.f / RES, w: w * k, h: h * k, a: g.globalAlpha, l: this.layer }); } } };
 function drawText(g, str, x, y, color = PAL.cream, opts = {}) {
   str = String(str);
   const scale = opts.scale || 1;
@@ -239,6 +243,7 @@ function drawText(g, str, x, y, color = PAL.cream, opts = {}) {
   if (opts.align === 'center') x -= Math.floor(w / 2);
   else if (opts.align === 'right') x -= w;
   x = Math.round(x); y = Math.round(y);
+  if (TextAudit.on) TextAudit.add(g, str, x, y, w, 8 * scale);
   if (opts.outline) {
     for (const [dx, dy] of [[-1, 0], [1, 0], [0, -1], [0, 1], [-1, -1], [1, 1], [-1, 1], [1, -1]])
       _rawText(g, str, x + dx * scale, y + dy * scale, opts.outline, scale);
@@ -313,6 +318,7 @@ function drawRichLine(g, line, x, y, opts = {}) {
     count += s.t.length;
     if (opts.shadow) _rawText(g, t, cx + 1, y + 1, opts.shadow, 1);
     _rawText(g, t, cx, y, s.c, 1);
+    if (TextAudit.on && t !== ' ') TextAudit.add(g, t, cx, y, textW(t), 8);
     cx += t === ' ' ? Font.SPACE : textW(t) + 1;
     if (count >= limit) break;
   }

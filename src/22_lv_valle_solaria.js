@@ -48,6 +48,7 @@ function W_flowers(o) {
       return null;
     },
     check() { return { ok: true, msg: '¡Las flores se abren con el sol y se guardan cuando no lo hay! Suri está feliz.' }; },
+    drawsTime: true, // la hora ya se ve en la ilustración
     draw(g, x, y, w, h, st, t) {
       const i = Math.min(st.i, hours.length - 1), hr = hours[i], k = Math.max(0, Math.sin((hr - 6) / 14 * Math.PI));
       vGradient(g, x, y, w, h * 0.65, [[0, mix('#1B2550', '#59C7FF', k)], [1, mix('#3A2E6E', '#FFE08A', k)]], false);

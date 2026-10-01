@@ -527,6 +527,10 @@ function textW(str, scale = 1) {
 }
 
 // Dibuja texto plano. opts: {align:'left'|'center'|'right', shadow:color, outline:color, scale}
+// Auditoría de solapes (solo pruebas): guarda la caja de cada texto dibujado en pantalla
+const TextAudit = { on: false, list: [],
+  cover(g, x, y, w, h) { if (g !== ctx) return; const m = g.getTransform(), X = x + m.e / RES, Y = y + m.f / RES; for (const r of this.list) if (r.l === this.layer && r.x < X + w && r.x + r.w > X && r.y < Y + h && r.y + r.h > Y) r.hidden = true; },
+  add(g, t, x, y, w, h) { if (this.on && g === ctx && String(t).trim()) { const m = g.getTransform(), k = m.a / RES || 1; this.list.push({ t: String(t), x: x * k + m.e / RES, y: y * k + m.f / RES, w: w * k, h: h * k, a: g.globalAlpha, l: this.layer }); } } };
 function drawText(g, str, x, y, color = PAL.cream, opts = {}) {
   str = String(str);
   const scale = opts.scale || 1;
@@ -534,6 +538,7 @@ function drawText(g, str, x, y, color = PAL.cream, opts = {}) {
   if (opts.align === 'center') x -= Math.floor(w / 2);
   else if (opts.align === 'right') x -= w;
   x = Math.round(x); y = Math.round(y);
+  if (TextAudit.on) TextAudit.add(g, str, x, y, w, 8 * scale);
   if (opts.outline) {
     for (const [dx, dy] of [[-1, 0], [1, 0], [0, -1], [0, 1], [-1, -1], [1, 1], [-1, 1], [1, -1]])
       _rawText(g, str, x + dx * scale, y + dy * scale, opts.outline, scale);
@@ -608,6 +613,7 @@ function drawRichLine(g, line, x, y, opts = {}) {
     count += s.t.length;
     if (opts.shadow) _rawText(g, t, cx + 1, y + 1, opts.shadow, 1);
     _rawText(g, t, cx, y, s.c, 1);
+    if (TextAudit.on && t !== ' ') TextAudit.add(g, t, cx, y, textW(t), 8);
     cx += t === ' ' ? Font.SPACE : textW(t) + 1;
     if (count >= limit) break;
   }
@@ -1285,6 +1291,8 @@ function panel(g, x, y, w, h, o = {}) {
   const border = o.border || (hc ? PAL.white : '#3E4C8A');
   const hi = o.hi || (hc ? PAL.white : '#6A7BC4');
   x = Math.round(x); y = Math.round(y); w = Math.round(w); h = Math.round(h);
+  // auditoría de solapes: un panel opaco tapa los textos dibujados antes debajo de él
+  if (TextAudit.on) { const al = /rgba\([^)]*,\s*([\d.]+)\)/.exec(bg); if (!al || +al[1] >= 0.8) TextAudit.cover(g, x, y, w, h); }
   g.fillStyle = bg;
   g.fillRect(x + 1, y, w - 2, h); g.fillRect(x, y + 1, w, h - 2);
   g.fillStyle = border;
@@ -1350,6 +1358,11 @@ const Particles = {
     }
   },
   draw(g, cx, cy, screen = false, layer = 0) {
+    // partículas (chispas, bits, textos flotantes): pasajeras, no cuentan en la auditoría de solapes
+    const auditLayer = TextAudit.layer; TextAudit.layer = 'fx';
+    try { this._draw(g, cx, cy, screen, layer); } finally { TextAudit.layer = auditLayer; }
+  },
+  _draw(g, cx, cy, screen, layer) {
     for (const p of this.list) {
       if (p.screen !== screen || p.layer !== layer) continue;
       // posición en medios píxeles: el movimiento de chispas y hojas se ve más suave
@@ -7255,6 +7268,7 @@ class CodeLabScene {
     AudioSys.sfx('confirm');
   }
   exit(result) {
+    if (this.exited) return; this.exited = true;
     UI.nav = false; UI.cancelHeld(); Scenes.pop();
     const r = result || { success: false, hints: this.hintLevel, attempts: this.runs, fails: this.fails };
     if (r.success) {
@@ -7292,6 +7306,8 @@ class CodeLabScene {
     if (this.state === 'running') for (let i = 0; i < 4 && this.state === 'running'; i++) { this.stepExec(i === 0 ? dt : 0); if (this.wait > 0) break; }
     // atajos
     if (!this.popup) {
+      // reto superado (o etapa terminada): E continúa
+      if (Input.hit('interact') && (this.result || this.stageDone)) { Input.consume(); if (this.stageDone) this.nextStage(); else this.exit(this.result); return; }
       if (Input.hit('hint')) this.hint();
       if (Input.hit('blueprint')) this.view = this.view === 'code' ? 'flow' : 'code';
       if (Input.codeHit('KeyR') && this.state === 'edit') this.startRun(false);
@@ -7548,9 +7564,12 @@ class CodeLabScene {
         if (UI.clicked('bp:' + bpk)) { if (this.breakpoints.has(bpk)) this.breakpoints.delete(bpk); else this.breakpoints.add(bpk); AudioSys.sfx('click'); }
         if (this.breakpoints.has(bpk)) pcircle(g, x + 6, yy + 5, 3, PAL.coral); else if (gst.hover) pring(g, x + 6, yy + 5, 3, '#7A3A4A');
       }
-      drawText(g, String(n).padStart(2, ' '), x + 17, yy + 2, active ? PAL.sun : '#4A5590', { align: 'right' });
-      if (active) { rect(g, ind - 2, yy, x + w - 4 - ind, LH - 1, 'rgba(255,216,74,0.25)'); drawText(g, '▶', ind - 8, yy + 2, PAL.sun); }
-      if (isErr) { rect(g, ind - 2, yy, x + w - 4 - ind, LH - 1, 'rgba(255,107,107,0.35)'); drawText(g, '✗', ind - 8, yy + 2, PAL.coral); }
+      // la línea que se ejecuta (o la del error) cambia su número por ▶ / ✗: nada se monta
+      if (active) drawText(g, '▶', x + 17, yy + 2, PAL.sun, { align: 'right' });
+      else if (isErr) drawText(g, '✗', x + 17, yy + 2, PAL.coral, { align: 'right' });
+      else drawText(g, String(n).padStart(2, ' '), x + 17, yy + 2, '#4A5590', { align: 'right' });
+      if (active) rect(g, ind - 2, yy, x + w - 4 - ind, LH - 1, 'rgba(255,216,74,0.25)');
+      if (isErr) rect(g, ind - 2, yy, x + w - 4 - ind, LH - 1, 'rgba(255,107,107,0.35)');
       if (l.kind === 'head') {
         const ctl = selected && editable && !b.locked;
         const lw = x + w - 6 - ind - (ctl ? 36 : 0);
@@ -7561,8 +7580,16 @@ class CodeLabScene {
         if (flashing) rect(g, ind - 1, yy - 1, x + w - 5 - ind, LH + 1, `rgba(255,216,74,${0.35 * this.flash.t})`);
         rect(g, ind, yy, 3, LH - 1, cat.color);
         if (selected) strokeRect(g, ind - 1, yy - 1, x + w - 5 - ind, LH + 1, PAL.sun);
-        if (b.locked) drawText(g, '■', x + w - 12, yy + 2, '#5A6090');
-        this.drawBlockLine(g, b, ind + 5, yy + 2, l.path, st.hover || st.focus, lw - 8 - (b.locked ? 10 : 0));
+        // insignias a la derecha (vueltas ↻ y VERDADERO/FALSO): el texto de la línea se acorta para no quedar debajo
+        const iter = this.env && this.env.iter[pathKey(l.path)] && (b.op === 'repeat' || b.op === 'while' || b.op === 'foreach') ? this.env.iter[pathKey(l.path)] : null;
+        const cond = active && this.condBubble && (b.op === 'if' || b.op === 'while') ? this.condBubble : null;
+        const badgeW = (iter ? 38 : 0) + (cond ? 26 : 0);
+        if (b.locked && !badgeW) drawText(g, '■', x + w - 12, yy + 2, '#5A6090');
+        this.drawBlockLine(g, b, ind + 5, yy + 2, l.path, st.hover || st.focus, lw - 8 - (b.locked && !badgeW ? 10 : 0) - (ctl ? 0 : badgeW));
+        let bxR = x + w - 4;
+        if (iter) { const lbl = '↻ ' + iter.k + '/' + iter.n; bxR -= 36; rect(g, bxR, yy - 1, 36, 11, '#1A4A7A'); drawText(g, lbl, bxR + 18, yy + 1, PAL.aqua, { align: 'center' }); bxR -= 2; }
+        // ¿se cumple la condición? SÍ / NO (el detalle VERDADERO / FALSO queda en la TRAZA)
+        if (cond) { bxR -= 24; rect(g, bxR, yy - 1, 24, 11, cond.v ? '#2A6A2A' : '#7A2A3A'); drawText(g, cond.v ? 'SÍ' : 'NO', bxR + 12, yy + 1, PAL.white, { align: 'center' }); }
         if (st.focus && Input.lastDevice === 'keyboard') UI.focusRing(g, ind, yy, lw, LH - 1);
         // controles de la línea marcada: subir, bajar, borrar
         if (ctl) {
@@ -7571,17 +7598,6 @@ class CodeLabScene {
           if (UI.btn(g, 'dn:' + pk, bx + 12, yy, 11, LH - 1, '▼', { color: PAL.sky, tip: 'Bajar una fila' })) { this.moveLine(l.path, 1); this.selMoved = true; }
           if (UI.btn(g, 'del:' + pk, bx + 24, yy, 11, LH - 1, '✗', { color: PAL.coral, tip: 'Borrar esta línea' })) { this.touchEdit(); this.removeAt(l.path); AudioSys.sfx('remove'); }
           selRow = n;
-        }
-        // burbuja de condición e iteración
-        if (active && this.condBubble && (b.op === 'if' || b.op === 'while')) {
-          const tx = this.condBubble.v ? 'VERDADERO' : 'FALSO';
-          const bx = x + w - 60;
-          rect(g, bx, yy - 1, 56, 11, this.condBubble.v ? '#2A6A2A' : '#7A2A3A'); drawText(g, tx, bx + 28, yy + 1, PAL.white, { align: 'center' });
-        }
-        if (this.env && this.env.iter[pathKey(l.path)] && (b.op === 'repeat' || b.op === 'while' || b.op === 'foreach')) {
-          const it = this.env.iter[pathKey(l.path)];
-          const lbl = '↻ ' + it.k + '/' + it.n;
-          rect(g, x + w - 40, yy - 1, 36, 11, '#1A4A7A'); drawText(g, lbl, x + w - 22, yy + 1, PAL.aqua, { align: 'center' });
         }
       } else {
         const txt = l.kind === 'else' ? 'SINO' : { if: 'FIN SI', repeat: 'FIN REPETIR', while: 'FIN MIENTRAS', foreach: 'FIN PARA' }[b.op];
@@ -7752,7 +7768,7 @@ class CodeLabScene {
     if (this.world.draw) this.world.draw(g, x + 2, y + 2, w - 4, h - 4, this.st, this.t, this);
     g.restore();
     if (this.state === 'success') { drawText(g, '✓ ÉXITO', x + w - 6, y + h - 12, PAL.lime, { align: 'right', outline: PAL.ink }); }
-    if (this.state === 'running' && this.ticks > 1 && this.cfg.tickLabel) drawText(g, this.cfg.tickLabel(this.tick), x + 6, y + h - 12, PAL.sun, { outline: PAL.ink });
+    if (this.state === 'running' && this.ticks > 1 && this.cfg.tickLabel && !this.world.drawsTime) drawText(g, this.cfg.tickLabel(this.tick), x + 6, y + h - 12, PAL.sun, { outline: PAL.ink });
   }
   drawPanel(g) {
     const x = 294, y = 158, w = 182, h = 66;
@@ -7784,15 +7800,14 @@ class CodeLabScene {
       if (this.env) for (const k in this.env.changed) this.env.changed[k] = Math.max(0, this.env.changed[k] - 0.02);
     } else {
       const tr = this.env ? this.env.trace : [];
-      const show = tr.slice(-4);
+      const show = tr.slice(-4), n0 = tr.length - show.length + 1;
+      const colW = Math.max(...show.map((s, i) => textW('PASO ' + (n0 + i))), 0);
       show.forEach((s, i) => {
-        const n = tr.length - show.length + i + 1;
-        const yy = y + 17 + i * 12;
+        const n = n0 + i, yy = y + 17 + i * 12;
         const failLine = this.state === 'error' && i === show.length - 1 && !s.ok;
         drawText(g, 'PASO ' + n, x + 6, yy, '#8C93B8');
-        drawText(g, s.ok ? '✓' : '✗', x + 42, yy, s.ok ? PAL.lime : PAL.coral);
-        const t = s.text.length > 24 ? s.text.slice(0, 23) + '…' : s.text;
-        drawText(g, t, x + 52, yy, failLine ? PAL.coral : PAL.cream);
+        drawText(g, s.ok ? '✓' : '✗', x + 9 + colW, yy, s.ok ? PAL.lime : PAL.coral);
+        drawText(g, fitText(s.text, w - 24 - colW), x + 19 + colW, yy, failLine ? PAL.coral : PAL.cream);
       });
       if (!tr.length) drawText(g, 'Ejecuta para ver cada paso.', x + 8, y + 20, '#5A6090');
     }
@@ -7804,9 +7819,9 @@ class CodeLabScene {
     const running = this.state === 'running' || this.state === 'paused';
     const b = (id, w, label, o) => { const r = UI.btn(g, id, x, y + 2, w, 15, label, o); x += w + 3; return r; };
     if (this.stageDone) {
-      if (b('next', 120, 'SIGUIENTE ETAPA ▶', { primary: true, color: PAL.lime })) this.nextStage();
+      if (b('next', 120, 'SIGUIENTE ETAPA (E) ▶', { primary: true, color: PAL.lime })) this.nextStage();
     } else if (this.result) {
-      if (b('cont', 120, 'CONTINUAR ▶', { primary: true, color: PAL.lime })) this.exit(this.result);
+      if (b('cont', 120, 'CONTINUAR (E) ▶', { primary: true, color: PAL.lime })) this.exit(this.result);
     } else {
       if (b('run', 64, running && this.state === 'paused' ? '▶ SEGUIR' : '▶ EJECUTAR', { primary: true, color: PAL.lime, disabled: this.state === 'running' && !this.stepMode })) { if (this.state === 'paused') { this.stepMode = false; this.state = 'running'; } else this.startRun(false); }
       if (b('step', 46, '⏯ PASO', { color: PAL.sky, tip: 'Ejecuta una línea cada vez para depurar.' })) { if (this.state === 'paused') { this.stepOnce = true; this.state = 'running'; } else if (!running) this.startRun(true); }
@@ -8064,6 +8079,7 @@ function W_solar(o) {
       return { ok: true, msg: o.okMsg || '¡La ciudad estuvo iluminada todo el día!' };
     },
     extraVars(st) { return []; },
+    drawsTime: true, // la hora ya se ve en la ilustración
     draw(g, x, y, w, h, st, t, scene) {
       const hi = Math.min(st.hi, hours.length - 1), hr = hours[hi], wth = wx[hi];
       const dayK = Math.max(0, Math.sin((hr - 6) / 14 * Math.PI));
@@ -8342,13 +8358,14 @@ class PuzzleBase {
   }
   failed(msg) { this.fails++; G.save.stats.fails++; this.state = 'error'; this.say('✗ ' + msg, PAL.coral); AudioSys.sfx('fail'); addMastery(this.cfg.concepts || [], -1); if (this.fails === 2 && this.hintLevel === 0) this.msg += ' (Prueba una PISTA.)'; }
   succeeded(msg, extra) {
-    this.state = 'success'; this.say('✓ ' + msg, PAL.lime); AudioSys.sfx('win');
+    this.state = 'success'; this.resultT = this.t; this.say('✓ ' + msg, PAL.lime); AudioSys.sfx('win');
     const stars = puzzleStars(this.fails, this.hintLevel);
     this.starRec = recordStars(this.cfg, stars);
     this.result = { success: true, firstTry: this.fails === 0 && this.hintLevel === 0, hints: this.hintLevel, fails: this.fails, attempts: this.runs, stars, extra };
     for (let i = 0; i < 30; i++) Particles.spawn({ x: rand(40, W - 40), y: rand(30, 180), vx: rand(-40, 40), vy: rand(-60, -10), grav: 60, life: rand(0.8, 1.6), type: 'star', color: choice([PAL.sun, PAL.lime, PAL.teal, PAL.pink]), screen: true });
   }
   exit(r) {
+    if (this.exited) return; this.exited = true;
     UI.nav = false; UI.scope = null; UI.cancelHeld(); Scenes.pop();
     r = r || { success: false, hints: this.hintLevel, fails: this.fails };
     if (r.success) {
@@ -8364,6 +8381,8 @@ class PuzzleBase {
   update(dt) {
     this.t += dt;
     if (G.autoWin && !this.result) { this.exit({ success: true, firstTry: true, hints: 0, fails: 0, extra: { tries: 3 } }); return; }
+    // reto superado: E, Enter o Espacio continúan (también en los simuladores, que usan las flechas para sus mandos)
+    if (this.result && this.t - (this.resultT || 0) > 0.4 && !this.popup && (Input.hit('interact') || Input.hit('confirm'))) { Input.consume(); this.exit(this.result); return; }
     if (Input.hit('hint') && !this.popup) this.hint();
     if (Input.hit('pause') && UI.held == null && !this.popup) { Input.consume(); if (this.result) this.exit(this.result); else this.exit(null); }
     if (this.tick) this.tick(dt);
@@ -8386,7 +8405,7 @@ class PuzzleBase {
     if (!this.result && goal && UI.btn(g, 'goal', x, y + 2, 36, 15, 'META', { color: PAL.lime, tip: 'Recordar el objetivo' })) { this.say('META: ' + goal, PAL.lime); AudioSys.sfx('click'); }
     if (!this.result && goal) x += 39;
     if (UI.btn(g, 'atlas', x, y + 2, 40, 15, 'ATLAS', { color: PAL.teal })) Scenes.push(new CodexScene(this.cfg.codex)); x += 43;
-    if (this.result) { drawStarRow(g, W - 196, y + 5, this.starRec); if (UI.btn(g, 'cont', W - 124, y + 2, 120, 15, 'CONTINUAR ▶', { primary: true, color: PAL.lime })) this.exit(this.result); }
+    if (this.result) { drawStarRow(g, W - 196, y + 5, this.starRec); if (UI.btn(g, 'cont', W - 124, y + 2, 120, 15, 'CONTINUAR (E) ▶', { primary: true, color: PAL.lime })) this.exit(this.result); }
     else if (UI.btn(g, 'exit', W - 40, y + 2, 36, 15, 'SALIR', {})) this.exit(null);
     const my = y + 20;
     g.drawImage(Portraits.get(this.msgWho, this.state === 'error' ? 'pensando' : this.state === 'success' ? 'feliz' : 'n'), 0, 0, 32, 32, 4, my, 16, 16);
@@ -8460,7 +8479,7 @@ class SeqScene extends PuzzleBase {
     panel(g, 6, 22, W - 12, 92, { border: '#2A3570', bg: '#0B1020' });
     if (cfg.visual) cfg.visual(g, 8, 24, W - 16, 88, this);
     // casillas
-    const sw = Math.min(106, Math.floor((W - 20) / n) - 6), sx0 = Math.round((W - n * (sw + 6)) / 2);
+    const sw = Math.min(106, Math.floor((W - 12) / n) - 6), sx0 = Math.round((W - n * (sw + 6) + 6) / 2);
     drawText(g, cfg.slotLabel || 'ALGORITMO (ordena los pasos):', 8, 120, PAL.sun);
     for (let i = 0; i < n; i++) {
       const x = sx0 + i * (sw + 6), y = 132;
@@ -8505,11 +8524,13 @@ class SeqScene extends PuzzleBase {
   }
   drawCard(g, c, x, y, w, held, hover) {
     rect(g, x, y, w, 18, held ? '#5A4A1A' : hover ? '#2A4A6A' : '#1C3350'); rect(g, x, y, 3, 18, c.color || PAL.teal);
-    if (c.icon) icon(g, c.icon, x + 5, y + 5);
-    const tx = x + (c.icon ? 15 : 6);
-    const lines = wrapPlain(c.label, w - (tx - x) - 2);
+    // tarjeta estrecha (casillas de pipelines largos): sin icono, para que quepan las palabras
+    const narrow = w < 64, showIcon = c.icon && !narrow;
+    if (showIcon) icon(g, c.icon, x + 5, y + 5);
+    const tx = x + (showIcon ? 15 : 5), tw = w - (tx - x) - 2;
+    const lines = wrapPlain(c.label, tw);
     if (lines.length > 2) { lines.length = 2; lines[1] = lines[1].replace(/.$/, '…'); }
-    lines.forEach((l, i) => drawText(g, l, tx, y + (lines.length > 1 ? 2 : 6) + i * 8, held ? PAL.sun : PAL.cream));
+    lines.forEach((l, i) => drawText(g, fitText(l, tw), tx, y + (lines.length > 1 ? 2 : 6) + i * 8, held ? PAL.sun : PAL.cream));
   }
 }
 
@@ -8569,12 +8590,13 @@ class FlowScene extends PuzzleBase {
     this.nextId = 100; this.conn = null; this.world = cfg.world; this.st = this.world.init();
     this.threshold = cfg.threshold0 || 800;
     this.running = false; this.tokenAt = null; this.errNode = null;
-    this.COLS = 4; this.ROWS = 6; this.CW = 62; this.CH = 30; this.OX = 100; this.OY = 22;
+    // 3 columnas anchas: los nombres de las acciones caben enteros
+    this.COLS = cfg.cols || 3; this.ROWS = 6; this.CW = Math.floor(248 / this.COLS); this.CH = 33; this.OX = 104; this.OY = 24;
     this.say(cfg.intro || 'Arrastra nodos a la cuadrícula y conéctalos: toca un puerto (●) y luego el nodo destino.');
   }
   nodeAt(c, r) { return this.nodes.find(n => n.c === c && n.r === r); }
   byId(id) { return this.nodes.find(n => n.id === id); }
-  nodeRect(n) { return { x: this.OX + n.c * this.CW + 3, y: this.OY + n.r * this.CH + 3, w: this.CW - 6, h: 16 }; }
+  nodeRect(n) { return { x: this.OX + n.c * this.CW + 4, y: this.OY + n.r * this.CH + 3, w: this.CW - 8, h: 18 }; }
   validate() {
     const starts = this.nodes.filter(n => n.type === 'start'), ends = this.nodes.filter(n => n.type === 'end');
     if (starts.length !== 1) return { msg: starts.length ? 'Solo puede haber un INICIO.' : 'Falta el nodo INICIO.', node: starts[1] };
@@ -8642,31 +8664,49 @@ class FlowScene extends PuzzleBase {
   }
   draw(g) {
     this.drawHeader(g, 'FLOWCHART');
-    // panel izquierdo: instrucciones y umbral (el diagrama ya viene armado: nada que arrastrar)
-    panel(g, 4, 20, 92, 204, { border: '#2A3570' });
+    // panel izquierdo: cómo se edita y el umbral (el diagrama ya viene armado: nada que arrastrar)
+    panel(g, 4, 20, 94, 204, { border: '#2A3570' });
     drawText(g, 'CÓMO SE EDITA', 10, 25, PAL.sun);
-    drawPara(g, 'Toca un nodo de {c}acción{/} para cambiarlo.\n\nToca {y}⇄{/} junto al rombo para intercambiar SÍ y NO.\n\nAbajo: umbral con − +.', 10, 38, 80, '#C9D2F0');
-    drawText(g, 'UMBRAL U', 10, 150, PAL.orange);
-    drawText(g, this.threshold + ' W/m²', 50, 162, PAL.sun, { align: 'center' });
+    let ly = 38 + drawPara(g, 'Toca una {c}acción{/} para cambiarla.', 10, 38, 84, '#C9D2F0');
+    ly += 6 + drawPara(g, 'Toca {y}⇄{/} junto a la decisión para cambiar SÍ por NO.', 10, ly + 6, 84, '#C9D2F0');
+    // leyenda de formas
+    ly += 12;
+    rect(g, 12, ly, 18, 9, '#1A2248'); strokeRect(g, 12, ly, 18, 9, PAL.teal); drawText(g, 'acción', 34, ly + 1, '#8C93B8');
+    for (let k = 0; k < 9; k++) { const ins = Math.round(Math.abs(k - 4) * 0.7); rect(g, 12 + ins, ly + 13 + k, 18 - ins * 2, 1, PAL.orange); if (k > 0 && k < 8) rect(g, 14 + ins, ly + 13 + k, 14 - ins * 2, 1, '#1A2248'); }
+    drawText(g, 'decisión (SI)', 34, ly + 14, '#8C93B8');
+    // umbral
+    const uy = 166;
+    rect(g, 8, uy - 4, 86, 46, '#0B1020'); strokeRect(g, 8, uy - 4, 86, 46, '#3A2A1A');
+    drawText(g, 'UMBRAL U', 51, uy, PAL.orange, { align: 'center' });
+    drawText(g, this.threshold + ' W/m²', 51, uy + 15, PAL.sun, { align: 'center' });
     const edit = () => { if (this.state !== 'edit') this.state = 'edit'; };
-    if (UI.btn(g, 'thDn', 8, 158, 14, 13, '−', { color: PAL.orange, disabled: this.running })) { edit(); this.threshold = Math.max(0, this.threshold - 100); AudioSys.sfx('click'); }
-    if (UI.btn(g, 'thUp', 78, 158, 14, 13, '+', { color: PAL.orange, disabled: this.running })) { edit(); this.threshold = Math.min(1000, this.threshold + 100); AudioSys.sfx('click'); }
+    if (UI.btn(g, 'thDn', 12, uy + 26, 34, 12, '− 100', { color: PAL.orange, disabled: this.running })) { edit(); this.threshold = Math.max(0, this.threshold - 100); AudioSys.sfx('click'); }
+    if (UI.btn(g, 'thUp', 56, uy + 26, 34, 12, '+ 100', { color: PAL.orange, disabled: this.running })) { edit(); this.threshold = Math.min(1000, this.threshold + 100); AudioSys.sfx('click'); }
     // cuadrícula
-    panel(g, this.OX - 4, 20, this.COLS * this.CW + 8, 204, { border: '#2A3570', bg: '#0B1020' });
+    const GX = this.OX - 4, GW = this.COLS * this.CW + 8;
+    panel(g, GX, 20, GW, 204, { border: '#2A3570', bg: '#0B1020' });
     for (let r = 0; r < this.ROWS; r++) for (let c = 0; c < this.COLS; c++) {
       const x = this.OX + c * this.CW, y = this.OY + r * this.CH;
-      if (!this.nodeAt(c, r)) { g.globalAlpha = 0.25; px(g, x + this.CW / 2, y + this.CH / 2, '#5A6090'); g.globalAlpha = 1; }
+      if (!this.nodeAt(c, r)) { g.globalAlpha = 0.3; px(g, x + this.CW / 2, y + this.CH / 2, '#5A6090'); g.globalAlpha = 1; }
     }
-    // conexiones
+    // conexiones con flecha; las salidas del rombo llevan su etiqueta SÍ / NO sobre el tramo horizontal
+    const labels = [];
     for (const n of this.nodes) for (const o of FLOW_TYPES[n.type].outs) {
       const t = n[o] && this.byId(n[o]); if (!t) continue;
       const a = this.portPos(n, o), R = this.nodeRect(t);
       const b = { x: R.x + R.w / 2, y: R.y - 1 };
+      const live = this.running && this.tokenAt === n.id;
       const col = o === 'yes' ? PAL.lime : o === 'no' ? PAL.coral : '#8C93B8';
-      if (b.y > a.y) { const my = a.y + 4; pline(g, a.x, a.y, a.x, my, col); pline(g, a.x, my, b.x, my, col); pline(g, b.x, my, b.x, b.y, col); }
-      else { const rx = this.OX + this.COLS * this.CW + (o === 'no' ? 0 : -2); pline(g, a.x, a.y, a.x, a.y + 3, col); pline(g, a.x, a.y + 3, rx, a.y + 3, col); pline(g, rx, a.y + 3, rx, b.y - 3, col); pline(g, rx, b.y - 3, b.x, b.y - 3, col); pline(g, b.x, b.y - 3, b.x, b.y, col); }
-      px(g, b.x - 1, b.y - 1, col); px(g, b.x + 1, b.y - 1, col);
+      if (b.y > a.y) {
+        const my = a.y + 5;
+        pline(g, a.x, a.y, a.x, my, col); pline(g, a.x, my, b.x, my, col); pline(g, b.x, my, b.x, b.y, col);
+        if (o !== 'next') labels.push({ t: o === 'yes' ? 'SÍ' : 'NO', x: (a.x + b.x) / 2, y: my - 9, col });
+      } else { const rx = this.OX + this.COLS * this.CW + (o === 'no' ? 0 : -2); pline(g, a.x, a.y, a.x, a.y + 3, col); pline(g, a.x, a.y + 3, rx, a.y + 3, col); pline(g, rx, a.y + 3, rx, b.y - 3, col); pline(g, rx, b.y - 3, b.x, b.y - 3, col); pline(g, b.x, b.y - 3, b.x, b.y, col); }
+      // punta de flecha
+      rect(g, b.x - 2, b.y - 3, 5, 1, col); rect(g, b.x - 1, b.y - 2, 3, 1, col); px(g, b.x, b.y - 1, col);
+      if (live) { const k = (this.t * 3) % 1; pcircle(g, lerp(a.x, b.x, k), lerp(a.y, b.y, k), 2, PAL.sun); }
     }
+    for (const L of labels) { const w = textW(L.t) + 4; rect(g, L.x - w / 2, L.y - 1, w, 9, '#0B1020'); drawText(g, L.t, L.x, L.y, L.col, { align: 'center' }); }
     // nodos
     for (const n of this.nodes) {
       const R = this.nodeRect(n), T = FLOW_TYPES[n.type];
@@ -8676,17 +8716,26 @@ class FlowScene extends PuzzleBase {
       if (UI.clicked('node:' + n.id) && isAct && !this.running) { this.state = 'edit'; n.type = acts[(acts.indexOf(n.type) + 1) % acts.length]; AudioSys.sfx('place'); }
       if (isAct && st.hover && !this.running) UI.tooltip = 'Toca para cambiar la acción';
       const active = this.tokenAt === n.id && this.running, err = this.errNode === n.id;
-      const bg = active ? '#5A4A1A' : err ? '#5A1A2A' : '#1A2248';
-      if (n.type === 'dec' || n.type === 'dec2') { for (let k = 0; k < R.h; k++) { const ww = Math.round((R.w / 2) * (1 - Math.abs(k - R.h / 2) / (R.h / 2 + 2))); rect(g, R.x + R.w / 2 - ww, R.y + k, ww * 2, 1, bg); } }
-      else if (n.type === 'start' || n.type === 'end') { rect(g, R.x + 3, R.y, R.w - 6, R.h, bg); rect(g, R.x, R.y + 3, R.w, R.h - 6, bg); }
-      else { rect(g, R.x, R.y, R.w, R.h, bg); if (n.type === 'read') { rect(g, R.x, R.y, 2, R.h, T.color); } }
-      strokeRect(g, R.x, R.y, R.w, R.h, active ? PAL.sun : err ? PAL.coral : st.hover || st.focus ? PAL.white : T.color);
-      const lbl = n.type === 'dec' ? 'rad > ' + this.threshold + '?' : T.label;
-      drawText(g, lbl.length > 11 ? lbl.slice(0, 10) + '…' : lbl, R.x + R.w / 2, R.y + 5, active ? PAL.sun : PAL.cream, { align: 'center' });
-      if (this.lastDec && this.lastDec.id === n.id && this.running) drawText(g, this.lastDec.v ? 'SÍ' : 'NO', R.x + R.w + 1, R.y + 5, this.lastDec.v ? PAL.lime : PAL.coral);
-      if ((n.type === 'dec' || n.type === 'dec2') && !this.running && UI.btn(g, 'swap:' + n.id, R.x + R.w + 2, R.y + 3, 12, 11, '⇄', { color: PAL.orange, tip: 'Intercambiar las salidas SÍ y NO' })) { this.state = 'edit'; [n.yes, n.no] = [n.no, n.yes]; AudioSys.sfx('swap'); }
-      // etiquetas de las salidas del rombo (sin puertos que conectar)
-      if (n.type === 'dec' || n.type === 'dec2') { const py = R.y + R.h + 3; drawText(g, 'SÍ', R.x + 2, py - 3, PAL.lime); drawText(g, 'NO', R.x + R.w - 12, py - 3, PAL.coral); }
+      const bg = active ? '#5A4A1A' : err ? '#5A1A2A' : '#1A2248', edge = active ? PAL.sun : err ? PAL.coral : st.hover || st.focus ? PAL.white : T.color;
+      const dec = n.type === 'dec' || n.type === 'dec2';
+      // sombra
+      g.globalAlpha = 0.45; rect(g, R.x + 2, R.y + 2, R.w, R.h, '#000000'); g.globalAlpha = 1;
+      if (dec) {
+        // decisión: hexágono (puntas a los lados) para que el texto quepa entero
+        for (let k = 0; k < R.h; k++) { const ins = Math.round(Math.abs(k - (R.h - 1) / 2) * 0.7); rect(g, R.x + ins, R.y + k, R.w - ins * 2, 1, edge); if (k > 0 && k < R.h - 1) rect(g, R.x + ins + 2, R.y + k, R.w - ins * 2 - 4, 1, bg); }
+      } else if (n.type === 'start' || n.type === 'end') {
+        rect(g, R.x + 3, R.y, R.w - 6, R.h, edge); rect(g, R.x, R.y + 3, R.w, R.h - 6, edge);
+        rect(g, R.x + 4, R.y + 1, R.w - 8, R.h - 2, bg); rect(g, R.x + 1, R.y + 4, R.w - 2, R.h - 8, bg);
+      } else {
+        rect(g, R.x, R.y, R.w, R.h, bg); strokeRect(g, R.x, R.y, R.w, R.h, edge);
+        if (n.type === 'read') { rect(g, R.x + 1, R.y + 1, 3, R.h - 2, T.color); }
+        if (isAct && !this.running) { rect(g, R.x + R.w - 7, R.y + 2, 5, 1, '#565E8C'); px(g, R.x + R.w - 5, R.y + 3, '#565E8C'); }
+      }
+      rect(g, R.x + 4, R.y + 1, R.w - 8, 1, 'rgba(255,255,255,0.12)');
+      const lbl = n.type === 'dec' ? '¿rad > ' + this.threshold + '?' : T.label;
+      drawText(g, fitText(lbl, R.w - (dec ? 14 : 8)), R.x + R.w / 2, R.y + 6, active ? PAL.sun : PAL.cream, { align: 'center' });
+      if (this.lastDec && this.lastDec.id === n.id && this.running) drawText(g, this.lastDec.v ? 'SÍ' : 'NO', R.x + R.w + 3, R.y + 6, this.lastDec.v ? PAL.lime : PAL.coral);
+      if (dec && !this.running && UI.btn(g, 'swap:' + n.id, R.x + R.w + 2, R.y + 3, 12, 12, '⇄', { color: PAL.orange, tip: 'Intercambiar las salidas SÍ y NO' })) { this.state = 'edit'; [n.yes, n.no] = [n.no, n.yes]; AudioSys.sfx('swap'); }
       if (this.cfg.editPorts) for (const o of T.outs) {
         const p = this.portPos(n, o);
         const pid = 'port:' + n.id + ':' + o;
@@ -8694,7 +8743,6 @@ class FlowScene extends PuzzleBase {
         const on = this.conn && this.conn.id === n.id && this.conn.o === o;
         pcircle(g, p.x, p.y, 3, on ? PAL.sun : o === 'yes' ? PAL.lime : o === 'no' ? PAL.coral : '#8C93B8');
         if (pst.hover || pst.focus) pring(g, p.x, p.y, 5, PAL.white);
-        if (o !== 'next') drawText(g, o === 'yes' ? 'SÍ' : 'NO', p.x + (o === 'yes' ? -14 : 5), p.y - 3, o === 'yes' ? PAL.lime : PAL.coral);
         if (UI.clicked(pid)) { this.conn = on ? null : { id: n.id, o }; AudioSys.sfx('select'); if (this.conn) this.say('Ahora toca el nodo al que debe ir esta salida.', PAL.sun); }
       }
       if (st.focus && Input.lastDevice === 'keyboard') UI.focusRing(g, R.x, R.y, R.w, R.h);
@@ -10147,9 +10195,11 @@ const Game = {
     if (!Scenes.stack.length) rect(ctx, 0, 0, W, H, PAL.ink);
     for (let i = start; i < Scenes.stack.length; i++) {
       const s = Scenes.stack[i];
+      TextAudit.layer = i;
       if (i < Scenes.stack.length - 1) { const saved = UI.items; s.draw(ctx); UI.items = saved.length ? saved : []; UI.items = []; }
       else s.draw(ctx);
     }
+    TextAudit.layer = Scenes.stack.length - 1; // avisos y subtítulos: encima de la escena superior
     if (Cut.fadeA > 0.001) { ctx.globalAlpha = Cut.fadeA; rect(ctx, 0, 0, W, H, Cut.fadeColor || '#000'); ctx.globalAlpha = 1; }
     FX.drawFlash(ctx);
     if (!(Scenes.top() && Scenes.top().hideToasts)) Toast.draw(ctx);
@@ -12343,6 +12393,7 @@ function W_flowers(o) {
       return null;
     },
     check() { return { ok: true, msg: '¡Las flores se abren con el sol y se guardan cuando no lo hay! Suri está feliz.' }; },
+    drawsTime: true, // la hora ya se ve en la ilustración
     draw(g, x, y, w, h, st, t) {
       const i = Math.min(st.i, hours.length - 1), hr = hours[i], k = Math.max(0, Math.sin((hr - 6) / 14 * Math.PI));
       vGradient(g, x, y, w, h * 0.65, [[0, mix('#1B2550', '#59C7FF', k)], [1, mix('#3A2E6E', '#FFE08A', k)]], false);
@@ -12886,7 +12937,8 @@ const CFG_HYD_RIO = {
           const wl = st.open[i] ? 4 : 12;
           rect(g, gx - 16, gy + 16 - wl, 44, wl, st.flood && !st.open[i] ? '#FF6B6B' : '#59C7FF');
           PROP_DRAW.sluice(g, gx + 26, gy - 12, { t, cfg: { open: () => st.open[i] ? 1 : 0 } });
-          drawText(g, String(i + 1), gx + 34, gy - 22, PAL.deep, { align: 'center' });
+          // número de compuerta en una placa a su izquierda (el % de apertura va encima)
+          pcircle(g, gx + 17, gy + 2, 5, PAL.deep); drawText(g, String(i + 1), gx + 17, gy - 1, PAL.white, { align: 'center' });
         }
         rect(g, x + w2 - 40, y + h - 26, 36, 20, '#FF9D8A'); drawText(g, 'pueblo', x + w2 - 22, y + h - 20, PAL.ink, { align: 'center' });
         if (st.flood) drawText(g, '¡INUNDACIÓN!', x + w2 / 2, y + 6, PAL.coral, { align: 'center', outline: PAL.ink });
@@ -17932,7 +17984,7 @@ function boot() {
 
 // Interfaz mínima para depuración y pruebas automáticas
 window.LL = {
-  G, Game, Scenes, HD, LEVELS, textW, POWERS, hasPower, grantPower, syncPowers, PowersScene, PowerCardScene, LockHelpScene, SimScene, SIMS, SIM_SOLAR, VariableLabScene, SimLabScene, SIM_ORDER, simDone, simReward, placeSims, FORGE, forged, ForgeScene, ForgeTrialScene, pulseCost, healCost, Cards, cardQuestion, CardsScene, ReviewScene, CARD_BANK, CARD_META, dailyChallenge, dailyCode, launchDaily, makeLockQuestion, LOCK_GEN, CodeLock, TraceScene, buildLevel: (k, sp) => new Level(k, sp), Save, Input, UI, Cut, flag, setFlag, CODEX, QUESTS, CHALLENGES, REGIONS, makePuzzleScene, Particles, AudioSys, BOSSES, makeEnemy, unlocked, MapArt,
+  G, Game, Scenes, HD, LEVELS, textW, TextAudit, POWERS, hasPower, grantPower, syncPowers, PowersScene, PowerCardScene, LockHelpScene, SimScene, SIMS, SIM_SOLAR, VariableLabScene, SimLabScene, SIM_ORDER, simDone, simReward, placeSims, FORGE, forged, ForgeScene, ForgeTrialScene, pulseCost, healCost, Cards, cardQuestion, CardsScene, ReviewScene, CARD_BANK, CARD_META, dailyChallenge, dailyCode, launchDaily, makeLockQuestion, LOCK_GEN, CodeLock, TraceScene, buildLevel: (k, sp) => new Level(k, sp), Save, Input, UI, Cut, flag, setFlag, CODEX, QUESTS, CHALLENGES, REGIONS, makePuzzleScene, Particles, AudioSys, BOSSES, makeEnemy, unlocked, MapArt,
   cfg: { CFG_FEST_BOOT, CFG_PUERTO_ROUTE, CFG_PUERTO_CHAIN, CFG_PUERTO_CARRERA, CFG_VALLE_RUTA, CFG_VALLE_SACOS, CFG_VALLE_MOLINO, CFG_SOL_FLOW, CFG_SOL_FLORES, CFG_SOL_SENSOR, CFG_SOL_MATRIZ, CFG_SOL_NUBE, CFG_AERIS_MOLINO, CFG_AERIS_VIENTO, CFG_AERIS_BUCLE, CFG_HYD_FORJA, CFG_HYD_RIO, CFG_HYD_DUP, cfgBioSorter, CFG_BIO_LISTA, CFG_BIO_MERCADO, CFG_GEA_FSM, CFG_GEA_AISLADA, CFG_GEA_CRISTAL, CFG_H2_PIPE, CFG_H2_BARCO, CFG_BAT_SORT, CFG_BAT_SEARCH, CFG_BAT_BETA, CFG_BAT_BUG, CFG_PRISMA_MG, CFG_PRISMA_FEST, CFG_PRISMA_SINSOL, pzPhaseCfg },
   A,
   S: { TitleScene, PauseScene, SettingsScene, RemapScene, CodexScene, TeacherScene, TallerScene, QuestLogScene, MasteryScene, MapScene, LabScene, ControlsScene, BlueprintScene, ConfirmScene, SparkEditorScene, ShieldRuleScene, Shot, RegionBoss, LumenWave, BossFX }

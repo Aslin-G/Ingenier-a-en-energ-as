@@ -20,13 +20,14 @@ class PuzzleBase {
   }
   failed(msg) { this.fails++; G.save.stats.fails++; this.state = 'error'; this.say('✗ ' + msg, PAL.coral); AudioSys.sfx('fail'); addMastery(this.cfg.concepts || [], -1); if (this.fails === 2 && this.hintLevel === 0) this.msg += ' (Prueba una PISTA.)'; }
   succeeded(msg, extra) {
-    this.state = 'success'; this.say('✓ ' + msg, PAL.lime); AudioSys.sfx('win');
+    this.state = 'success'; this.resultT = this.t; this.say('✓ ' + msg, PAL.lime); AudioSys.sfx('win');
     const stars = puzzleStars(this.fails, this.hintLevel);
     this.starRec = recordStars(this.cfg, stars);
     this.result = { success: true, firstTry: this.fails === 0 && this.hintLevel === 0, hints: this.hintLevel, fails: this.fails, attempts: this.runs, stars, extra };
     for (let i = 0; i < 30; i++) Particles.spawn({ x: rand(40, W - 40), y: rand(30, 180), vx: rand(-40, 40), vy: rand(-60, -10), grav: 60, life: rand(0.8, 1.6), type: 'star', color: choice([PAL.sun, PAL.lime, PAL.teal, PAL.pink]), screen: true });
   }
   exit(r) {
+    if (this.exited) return; this.exited = true;
     UI.nav = false; UI.scope = null; UI.cancelHeld(); Scenes.pop();
     r = r || { success: false, hints: this.hintLevel, fails: this.fails };
     if (r.success) {
@@ -42,6 +43,8 @@ class PuzzleBase {
   update(dt) {
     this.t += dt;
     if (G.autoWin && !this.result) { this.exit({ success: true, firstTry: true, hints: 0, fails: 0, extra: { tries: 3 } }); return; }
+    // reto superado: E, Enter o Espacio continúan (también en los simuladores, que usan las flechas para sus mandos)
+    if (this.result && this.t - (this.resultT || 0) > 0.4 && !this.popup && (Input.hit('interact') || Input.hit('confirm'))) { Input.consume(); this.exit(this.result); return; }
     if (Input.hit('hint') && !this.popup) this.hint();
     if (Input.hit('pause') && UI.held == null && !this.popup) { Input.consume(); if (this.result) this.exit(this.result); else this.exit(null); }
     if (this.tick) this.tick(dt);
@@ -64,7 +67,7 @@ class PuzzleBase {
     if (!this.result && goal && UI.btn(g, 'goal', x, y + 2, 36, 15, 'META', { color: PAL.lime, tip: 'Recordar el objetivo' })) { this.say('META: ' + goal, PAL.lime); AudioSys.sfx('click'); }
     if (!this.result && goal) x += 39;
     if (UI.btn(g, 'atlas', x, y + 2, 40, 15, 'ATLAS', { color: PAL.teal })) Scenes.push(new CodexScene(this.cfg.codex)); x += 43;
-    if (this.result) { drawStarRow(g, W - 196, y + 5, this.starRec); if (UI.btn(g, 'cont', W - 124, y + 2, 120, 15, 'CONTINUAR ▶', { primary: true, color: PAL.lime })) this.exit(this.result); }
+    if (this.result) { drawStarRow(g, W - 196, y + 5, this.starRec); if (UI.btn(g, 'cont', W - 124, y + 2, 120, 15, 'CONTINUAR (E) ▶', { primary: true, color: PAL.lime })) this.exit(this.result); }
     else if (UI.btn(g, 'exit', W - 40, y + 2, 36, 15, 'SALIR', {})) this.exit(null);
     const my = y + 20;
     g.drawImage(Portraits.get(this.msgWho, this.state === 'error' ? 'pensando' : this.state === 'success' ? 'feliz' : 'n'), 0, 0, 32, 32, 4, my, 16, 16);
@@ -138,7 +141,7 @@ class SeqScene extends PuzzleBase {
     panel(g, 6, 22, W - 12, 92, { border: '#2A3570', bg: '#0B1020' });
     if (cfg.visual) cfg.visual(g, 8, 24, W - 16, 88, this);
     // casillas
-    const sw = Math.min(106, Math.floor((W - 20) / n) - 6), sx0 = Math.round((W - n * (sw + 6)) / 2);
+    const sw = Math.min(106, Math.floor((W - 12) / n) - 6), sx0 = Math.round((W - n * (sw + 6) + 6) / 2);
     drawText(g, cfg.slotLabel || 'ALGORITMO (ordena los pasos):', 8, 120, PAL.sun);
     for (let i = 0; i < n; i++) {
       const x = sx0 + i * (sw + 6), y = 132;
@@ -183,11 +186,13 @@ class SeqScene extends PuzzleBase {
   }
   drawCard(g, c, x, y, w, held, hover) {
     rect(g, x, y, w, 18, held ? '#5A4A1A' : hover ? '#2A4A6A' : '#1C3350'); rect(g, x, y, 3, 18, c.color || PAL.teal);
-    if (c.icon) icon(g, c.icon, x + 5, y + 5);
-    const tx = x + (c.icon ? 15 : 6);
-    const lines = wrapPlain(c.label, w - (tx - x) - 2);
+    // tarjeta estrecha (casillas de pipelines largos): sin icono, para que quepan las palabras
+    const narrow = w < 64, showIcon = c.icon && !narrow;
+    if (showIcon) icon(g, c.icon, x + 5, y + 5);
+    const tx = x + (showIcon ? 15 : 5), tw = w - (tx - x) - 2;
+    const lines = wrapPlain(c.label, tw);
     if (lines.length > 2) { lines.length = 2; lines[1] = lines[1].replace(/.$/, '…'); }
-    lines.forEach((l, i) => drawText(g, l, tx, y + (lines.length > 1 ? 2 : 6) + i * 8, held ? PAL.sun : PAL.cream));
+    lines.forEach((l, i) => drawText(g, fitText(l, tw), tx, y + (lines.length > 1 ? 2 : 6) + i * 8, held ? PAL.sun : PAL.cream));
   }
 }
 
@@ -247,12 +252,13 @@ class FlowScene extends PuzzleBase {
     this.nextId = 100; this.conn = null; this.world = cfg.world; this.st = this.world.init();
     this.threshold = cfg.threshold0 || 800;
     this.running = false; this.tokenAt = null; this.errNode = null;
-    this.COLS = 4; this.ROWS = 6; this.CW = 62; this.CH = 30; this.OX = 100; this.OY = 22;
+    // 3 columnas anchas: los nombres de las acciones caben enteros
+    this.COLS = cfg.cols || 3; this.ROWS = 6; this.CW = Math.floor(248 / this.COLS); this.CH = 33; this.OX = 104; this.OY = 24;
     this.say(cfg.intro || 'Arrastra nodos a la cuadrícula y conéctalos: toca un puerto (●) y luego el nodo destino.');
   }
   nodeAt(c, r) { return this.nodes.find(n => n.c === c && n.r === r); }
   byId(id) { return this.nodes.find(n => n.id === id); }
-  nodeRect(n) { return { x: this.OX + n.c * this.CW + 3, y: this.OY + n.r * this.CH + 3, w: this.CW - 6, h: 16 }; }
+  nodeRect(n) { return { x: this.OX + n.c * this.CW + 4, y: this.OY + n.r * this.CH + 3, w: this.CW - 8, h: 18 }; }
   validate() {
     const starts = this.nodes.filter(n => n.type === 'start'), ends = this.nodes.filter(n => n.type === 'end');
     if (starts.length !== 1) return { msg: starts.length ? 'Solo puede haber un INICIO.' : 'Falta el nodo INICIO.', node: starts[1] };
@@ -320,31 +326,49 @@ class FlowScene extends PuzzleBase {
   }
   draw(g) {
     this.drawHeader(g, 'FLOWCHART');
-    // panel izquierdo: instrucciones y umbral (el diagrama ya viene armado: nada que arrastrar)
-    panel(g, 4, 20, 92, 204, { border: '#2A3570' });
+    // panel izquierdo: cómo se edita y el umbral (el diagrama ya viene armado: nada que arrastrar)
+    panel(g, 4, 20, 94, 204, { border: '#2A3570' });
     drawText(g, 'CÓMO SE EDITA', 10, 25, PAL.sun);
-    drawPara(g, 'Toca un nodo de {c}acción{/} para cambiarlo.\n\nToca {y}⇄{/} junto al rombo para intercambiar SÍ y NO.\n\nAbajo: umbral con − +.', 10, 38, 80, '#C9D2F0');
-    drawText(g, 'UMBRAL U', 10, 150, PAL.orange);
-    drawText(g, this.threshold + ' W/m²', 50, 162, PAL.sun, { align: 'center' });
+    let ly = 38 + drawPara(g, 'Toca una {c}acción{/} para cambiarla.', 10, 38, 84, '#C9D2F0');
+    ly += 6 + drawPara(g, 'Toca {y}⇄{/} junto a la decisión para cambiar SÍ por NO.', 10, ly + 6, 84, '#C9D2F0');
+    // leyenda de formas
+    ly += 12;
+    rect(g, 12, ly, 18, 9, '#1A2248'); strokeRect(g, 12, ly, 18, 9, PAL.teal); drawText(g, 'acción', 34, ly + 1, '#8C93B8');
+    for (let k = 0; k < 9; k++) { const ins = Math.round(Math.abs(k - 4) * 0.7); rect(g, 12 + ins, ly + 13 + k, 18 - ins * 2, 1, PAL.orange); if (k > 0 && k < 8) rect(g, 14 + ins, ly + 13 + k, 14 - ins * 2, 1, '#1A2248'); }
+    drawText(g, 'decisión (SI)', 34, ly + 14, '#8C93B8');
+    // umbral
+    const uy = 166;
+    rect(g, 8, uy - 4, 86, 46, '#0B1020'); strokeRect(g, 8, uy - 4, 86, 46, '#3A2A1A');
+    drawText(g, 'UMBRAL U', 51, uy, PAL.orange, { align: 'center' });
+    drawText(g, this.threshold + ' W/m²', 51, uy + 15, PAL.sun, { align: 'center' });
     const edit = () => { if (this.state !== 'edit') this.state = 'edit'; };
-    if (UI.btn(g, 'thDn', 8, 158, 14, 13, '−', { color: PAL.orange, disabled: this.running })) { edit(); this.threshold = Math.max(0, this.threshold - 100); AudioSys.sfx('click'); }
-    if (UI.btn(g, 'thUp', 78, 158, 14, 13, '+', { color: PAL.orange, disabled: this.running })) { edit(); this.threshold = Math.min(1000, this.threshold + 100); AudioSys.sfx('click'); }
+    if (UI.btn(g, 'thDn', 12, uy + 26, 34, 12, '− 100', { color: PAL.orange, disabled: this.running })) { edit(); this.threshold = Math.max(0, this.threshold - 100); AudioSys.sfx('click'); }
+    if (UI.btn(g, 'thUp', 56, uy + 26, 34, 12, '+ 100', { color: PAL.orange, disabled: this.running })) { edit(); this.threshold = Math.min(1000, this.threshold + 100); AudioSys.sfx('click'); }
     // cuadrícula
-    panel(g, this.OX - 4, 20, this.COLS * this.CW + 8, 204, { border: '#2A3570', bg: '#0B1020' });
+    const GX = this.OX - 4, GW = this.COLS * this.CW + 8;
+    panel(g, GX, 20, GW, 204, { border: '#2A3570', bg: '#0B1020' });
     for (let r = 0; r < this.ROWS; r++) for (let c = 0; c < this.COLS; c++) {
       const x = this.OX + c * this.CW, y = this.OY + r * this.CH;
-      if (!this.nodeAt(c, r)) { g.globalAlpha = 0.25; px(g, x + this.CW / 2, y + this.CH / 2, '#5A6090'); g.globalAlpha = 1; }
+      if (!this.nodeAt(c, r)) { g.globalAlpha = 0.3; px(g, x + this.CW / 2, y + this.CH / 2, '#5A6090'); g.globalAlpha = 1; }
     }
-    // conexiones
+    // conexiones con flecha; las salidas del rombo llevan su etiqueta SÍ / NO sobre el tramo horizontal
+    const labels = [];
     for (const n of this.nodes) for (const o of FLOW_TYPES[n.type].outs) {
       const t = n[o] && this.byId(n[o]); if (!t) continue;
       const a = this.portPos(n, o), R = this.nodeRect(t);
       const b = { x: R.x + R.w / 2, y: R.y - 1 };
+      const live = this.running && this.tokenAt === n.id;
       const col = o === 'yes' ? PAL.lime : o === 'no' ? PAL.coral : '#8C93B8';
-      if (b.y > a.y) { const my = a.y + 4; pline(g, a.x, a.y, a.x, my, col); pline(g, a.x, my, b.x, my, col); pline(g, b.x, my, b.x, b.y, col); }
-      else { const rx = this.OX + this.COLS * this.CW + (o === 'no' ? 0 : -2); pline(g, a.x, a.y, a.x, a.y + 3, col); pline(g, a.x, a.y + 3, rx, a.y + 3, col); pline(g, rx, a.y + 3, rx, b.y - 3, col); pline(g, rx, b.y - 3, b.x, b.y - 3, col); pline(g, b.x, b.y - 3, b.x, b.y, col); }
-      px(g, b.x - 1, b.y - 1, col); px(g, b.x + 1, b.y - 1, col);
+      if (b.y > a.y) {
+        const my = a.y + 5;
+        pline(g, a.x, a.y, a.x, my, col); pline(g, a.x, my, b.x, my, col); pline(g, b.x, my, b.x, b.y, col);
+        if (o !== 'next') labels.push({ t: o === 'yes' ? 'SÍ' : 'NO', x: (a.x + b.x) / 2, y: my - 9, col });
+      } else { const rx = this.OX + this.COLS * this.CW + (o === 'no' ? 0 : -2); pline(g, a.x, a.y, a.x, a.y + 3, col); pline(g, a.x, a.y + 3, rx, a.y + 3, col); pline(g, rx, a.y + 3, rx, b.y - 3, col); pline(g, rx, b.y - 3, b.x, b.y - 3, col); pline(g, b.x, b.y - 3, b.x, b.y, col); }
+      // punta de flecha
+      rect(g, b.x - 2, b.y - 3, 5, 1, col); rect(g, b.x - 1, b.y - 2, 3, 1, col); px(g, b.x, b.y - 1, col);
+      if (live) { const k = (this.t * 3) % 1; pcircle(g, lerp(a.x, b.x, k), lerp(a.y, b.y, k), 2, PAL.sun); }
     }
+    for (const L of labels) { const w = textW(L.t) + 4; rect(g, L.x - w / 2, L.y - 1, w, 9, '#0B1020'); drawText(g, L.t, L.x, L.y, L.col, { align: 'center' }); }
     // nodos
     for (const n of this.nodes) {
       const R = this.nodeRect(n), T = FLOW_TYPES[n.type];
@@ -354,17 +378,26 @@ class FlowScene extends PuzzleBase {
       if (UI.clicked('node:' + n.id) && isAct && !this.running) { this.state = 'edit'; n.type = acts[(acts.indexOf(n.type) + 1) % acts.length]; AudioSys.sfx('place'); }
       if (isAct && st.hover && !this.running) UI.tooltip = 'Toca para cambiar la acción';
       const active = this.tokenAt === n.id && this.running, err = this.errNode === n.id;
-      const bg = active ? '#5A4A1A' : err ? '#5A1A2A' : '#1A2248';
-      if (n.type === 'dec' || n.type === 'dec2') { for (let k = 0; k < R.h; k++) { const ww = Math.round((R.w / 2) * (1 - Math.abs(k - R.h / 2) / (R.h / 2 + 2))); rect(g, R.x + R.w / 2 - ww, R.y + k, ww * 2, 1, bg); } }
-      else if (n.type === 'start' || n.type === 'end') { rect(g, R.x + 3, R.y, R.w - 6, R.h, bg); rect(g, R.x, R.y + 3, R.w, R.h - 6, bg); }
-      else { rect(g, R.x, R.y, R.w, R.h, bg); if (n.type === 'read') { rect(g, R.x, R.y, 2, R.h, T.color); } }
-      strokeRect(g, R.x, R.y, R.w, R.h, active ? PAL.sun : err ? PAL.coral : st.hover || st.focus ? PAL.white : T.color);
-      const lbl = n.type === 'dec' ? 'rad > ' + this.threshold + '?' : T.label;
-      drawText(g, lbl.length > 11 ? lbl.slice(0, 10) + '…' : lbl, R.x + R.w / 2, R.y + 5, active ? PAL.sun : PAL.cream, { align: 'center' });
-      if (this.lastDec && this.lastDec.id === n.id && this.running) drawText(g, this.lastDec.v ? 'SÍ' : 'NO', R.x + R.w + 1, R.y + 5, this.lastDec.v ? PAL.lime : PAL.coral);
-      if ((n.type === 'dec' || n.type === 'dec2') && !this.running && UI.btn(g, 'swap:' + n.id, R.x + R.w + 2, R.y + 3, 12, 11, '⇄', { color: PAL.orange, tip: 'Intercambiar las salidas SÍ y NO' })) { this.state = 'edit'; [n.yes, n.no] = [n.no, n.yes]; AudioSys.sfx('swap'); }
-      // etiquetas de las salidas del rombo (sin puertos que conectar)
-      if (n.type === 'dec' || n.type === 'dec2') { const py = R.y + R.h + 3; drawText(g, 'SÍ', R.x + 2, py - 3, PAL.lime); drawText(g, 'NO', R.x + R.w - 12, py - 3, PAL.coral); }
+      const bg = active ? '#5A4A1A' : err ? '#5A1A2A' : '#1A2248', edge = active ? PAL.sun : err ? PAL.coral : st.hover || st.focus ? PAL.white : T.color;
+      const dec = n.type === 'dec' || n.type === 'dec2';
+      // sombra
+      g.globalAlpha = 0.45; rect(g, R.x + 2, R.y + 2, R.w, R.h, '#000000'); g.globalAlpha = 1;
+      if (dec) {
+        // decisión: hexágono (puntas a los lados) para que el texto quepa entero
+        for (let k = 0; k < R.h; k++) { const ins = Math.round(Math.abs(k - (R.h - 1) / 2) * 0.7); rect(g, R.x + ins, R.y + k, R.w - ins * 2, 1, edge); if (k > 0 && k < R.h - 1) rect(g, R.x + ins + 2, R.y + k, R.w - ins * 2 - 4, 1, bg); }
+      } else if (n.type === 'start' || n.type === 'end') {
+        rect(g, R.x + 3, R.y, R.w - 6, R.h, edge); rect(g, R.x, R.y + 3, R.w, R.h - 6, edge);
+        rect(g, R.x + 4, R.y + 1, R.w - 8, R.h - 2, bg); rect(g, R.x + 1, R.y + 4, R.w - 2, R.h - 8, bg);
+      } else {
+        rect(g, R.x, R.y, R.w, R.h, bg); strokeRect(g, R.x, R.y, R.w, R.h, edge);
+        if (n.type === 'read') { rect(g, R.x + 1, R.y + 1, 3, R.h - 2, T.color); }
+        if (isAct && !this.running) { rect(g, R.x + R.w - 7, R.y + 2, 5, 1, '#565E8C'); px(g, R.x + R.w - 5, R.y + 3, '#565E8C'); }
+      }
+      rect(g, R.x + 4, R.y + 1, R.w - 8, 1, 'rgba(255,255,255,0.12)');
+      const lbl = n.type === 'dec' ? '¿rad > ' + this.threshold + '?' : T.label;
+      drawText(g, fitText(lbl, R.w - (dec ? 14 : 8)), R.x + R.w / 2, R.y + 6, active ? PAL.sun : PAL.cream, { align: 'center' });
+      if (this.lastDec && this.lastDec.id === n.id && this.running) drawText(g, this.lastDec.v ? 'SÍ' : 'NO', R.x + R.w + 3, R.y + 6, this.lastDec.v ? PAL.lime : PAL.coral);
+      if (dec && !this.running && UI.btn(g, 'swap:' + n.id, R.x + R.w + 2, R.y + 3, 12, 12, '⇄', { color: PAL.orange, tip: 'Intercambiar las salidas SÍ y NO' })) { this.state = 'edit'; [n.yes, n.no] = [n.no, n.yes]; AudioSys.sfx('swap'); }
       if (this.cfg.editPorts) for (const o of T.outs) {
         const p = this.portPos(n, o);
         const pid = 'port:' + n.id + ':' + o;
@@ -372,7 +405,6 @@ class FlowScene extends PuzzleBase {
         const on = this.conn && this.conn.id === n.id && this.conn.o === o;
         pcircle(g, p.x, p.y, 3, on ? PAL.sun : o === 'yes' ? PAL.lime : o === 'no' ? PAL.coral : '#8C93B8');
         if (pst.hover || pst.focus) pring(g, p.x, p.y, 5, PAL.white);
-        if (o !== 'next') drawText(g, o === 'yes' ? 'SÍ' : 'NO', p.x + (o === 'yes' ? -14 : 5), p.y - 3, o === 'yes' ? PAL.lime : PAL.coral);
         if (UI.clicked(pid)) { this.conn = on ? null : { id: n.id, o }; AudioSys.sfx('select'); if (this.conn) this.say('Ahora toca el nodo al que debe ir esta salida.', PAL.sun); }
       }
       if (st.focus && Input.lastDevice === 'keyboard') UI.focusRing(g, R.x, R.y, R.w, R.h);

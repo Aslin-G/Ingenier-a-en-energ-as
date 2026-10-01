@@ -181,6 +181,7 @@ function W_solar(o) {
       return { ok: true, msg: o.okMsg || '¡La ciudad estuvo iluminada todo el día!' };
     },
     extraVars(st) { return []; },
+    drawsTime: true, // la hora ya se ve en la ilustración
     draw(g, x, y, w, h, st, t, scene) {
       const hi = Math.min(st.hi, hours.length - 1), hr = hours[hi], wth = wx[hi];
       const dayK = Math.max(0, Math.sin((hr - 6) / 14 * Math.PI));

@@ -172,7 +172,8 @@ const CFG_HYD_RIO = {
           const wl = st.open[i] ? 4 : 12;
           rect(g, gx - 16, gy + 16 - wl, 44, wl, st.flood && !st.open[i] ? '#FF6B6B' : '#59C7FF');
           PROP_DRAW.sluice(g, gx + 26, gy - 12, { t, cfg: { open: () => st.open[i] ? 1 : 0 } });
-          drawText(g, String(i + 1), gx + 34, gy - 22, PAL.deep, { align: 'center' });
+          // número de compuerta en una placa a su izquierda (el % de apertura va encima)
+          pcircle(g, gx + 17, gy + 2, 5, PAL.deep); drawText(g, String(i + 1), gx + 17, gy - 1, PAL.white, { align: 'center' });
         }
         rect(g, x + w2 - 40, y + h - 26, 36, 20, '#FF9D8A'); drawText(g, 'pueblo', x + w2 - 22, y + h - 20, PAL.ink, { align: 'center' });
         if (st.flood) drawText(g, '¡INUNDACIÓN!', x + w2 / 2, y + 6, PAL.coral, { align: 'center', outline: PAL.ink });
