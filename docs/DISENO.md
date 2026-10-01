@@ -98,7 +98,30 @@ Final: **reescribir la función objetivo**. Solo un equilibrio de criterios que 
 | Prisma | **Sobrecarga** | `SEGÚN modo`: sol, viento, agua, magma (integración) | Reconocer cada modo; golpear al equilibrarse | ¿Qué fuente usar de noche con déficit? (la batería) |
 | Faro | **Perfect Zero** | Las 7 fases y la función objetivo (ver arriba) | Reescribir, no destruir | — |
 
-Reglas de diseño de todos los jefes: **cada ataque se anuncia** (signo «!», marcas en el suelo, líneas discontinuas) antes de hacer daño; siempre hay un **momento de descanso** para contraatacar; al caer, el jefe vuelve a empezar pero el parche se conserva; tras dos derrotas PÍX ofrece la **ayuda de combate** (+2 células y jefes más lentos). Al vencerlo, el jefe se depura, se vuelve amistoso, entra en el **Bestiario** del Atlas y deja un **fragmento de célula** (3 fragmentos = +1 célula máxima). La isla siguiente se desbloquea al vencer al jefe (las partidas guardadas antes de esta versión no quedan bloqueadas).
+Reglas de diseño de todos los jefes: **cada ataque se anuncia** (signo «!», marcas en el suelo, líneas discontinuas) antes de hacer daño; siempre hay un **momento de descanso** para contraatacar; al caer, el jefe vuelve a empezar pero el parche perfecto se conserva (uno fallido se puede volver a intentar); tras dos derrotas PÍX ofrece la **ayuda de combate** (+2 células, jefes más lentos y con el doble de vida en vez del triple). Al vencerlo, el jefe se depura, se vuelve amistoso, entra en el **Bestiario** del Atlas, deja un **fragmento de célula** (3 fragmentos = +1 célula máxima) y **enseña un poder del Lumisable**. La isla siguiente se desbloquea al vencer al jefe (las partidas guardadas antes de esta versión no quedan bloqueadas).
+
+**Tres fases y vida triple**: los jefes tienen el triple de vida. A **2/3** reescriben su código (parche de la tabla); a **1/3** entran en **FURIA** (aura roja que late, un poco más rápidos) y piden un **PARCHE FINAL**: predecir el resultado de un programa del concepto de la isla, generado con el mismo motor que las cerraduras (así cada intento trae una pregunta distinta y con errores típicos como distractores).
+
+**ERROR CRÍTICO (el error tiene consecuencias, pero se puede leer)**: cuando un parche falla (o sale a medias), el jefe lanza su ataque especial. Hay cuatro patrones, cada uno con su lectura: **columnas** en dos tandas (moverse al hueco), **lluvia** de bloques de error que caen donde marcan los avisos (uno de cada tres apunta a Lía), **chorros** horizontales (al suelo → SALTA; a media altura → quédate abajo, como un SI/SINO con el cuerpo) y **ondas** por el suelo. Un golpe cuesta una célula; al terminar, el jefe queda **sobrecalentado** unos segundos. En FURIA lo repite cada dos ciclos de su programa (cada tres si el parche final salió perfecto). Así fallar el parche no bloquea, pero se nota.
+
+**Arte**: cada jefe se dibuja en un lienzo propio a resolución de pantalla y recibe detalle de medio píxel (remaches, galones, reflejos de cristal, venas de hojas, texturas de roca, grietas de lava que laten), una línea de luz bajo el contorno superior, sombra en el inferior, volumen por bandas, aura por fase y sombra en el suelo. El coste se mide en cada fotograma: si el equipo va lento, el acabado se simplifica solo. Magmatón se rediseñó con rocas redondeadas y cráter humeante.
+
+### Poderes: el concepto de cada isla como forma de jugar
+
+| Jefe | Poder | Concepto |
+|---|---|---|
+| Capitán Cortocircuito | Doble salto | Secuencia (`saltar() → saltar()`) |
+| Gran Bugglin Rey | Punto de interrupción: con 1 célula, cámara lenta 4 s | Depuración |
+| Don Nubarrón | Rayo solar: pulso cargado doble y más grande | Condicional |
+| Tornado Loopling | Tajo torbellino (en el aire, SALTO + ataque) | Bucle |
+| Hidra de Compuertas | Pulso doble (delante y detrás) | Función llamada dos veces |
+| Compostor Glotón | +1 célula máxima | Lista que crece |
+| Magmatón | Estado SOBRECARGA (+1 de daño con la energía llena) | Estados |
+| Kraken de Fugas | Embestida de luz (corriendo + ataque, invulnerable) | Pipeline |
+| Drenadora Suprema | Rayo buscador (persigue al enemigo más cercano) | Búsqueda |
+| Sobrecarga | Recarga solar (energía hasta 100) | Microred |
+
+La progresión del personaje acompaña a la del conocimiento: Lía se vuelve más ágil y poderosa justo con los conceptos que acaba de demostrar.
 
 ## 5. Combate: el Lumisable
 
@@ -116,6 +139,9 @@ Reglas de diseño de todos los jefes: **cada ataque se anuncia** (signo «!», m
 **Enemigos carismáticos**: además de los enemigos conceptuales (Bugglin, Loopling, Shadow If, Drainer, Chaos Packet, Overflow), cada isla tiene enemigos nuevos con la paleta de su región y su propia personalidad: **Bit Saltarín** («¡Bip! ¡BIP BIP!», se agacha antes de saltar), **Zumbyte** (tiembla antes del picado), **Toro-Ohm** (resopla y embiste hasta chocar) y **Torretín** (gruñón, apunta y dispara lo que se puede devolver). Todos muestran «!» al descubrir a Lía, expresiones (enfado, mareo) y, con la Lente, su algoritmo en pseudocódigo. Se reparten solos por el mapa sin tapar NPCs, terminales, salidas ni puntos de control. Al depurarse sueltan orbes de energía o células.
 
 ## 6. Progresión pedagógica
+
+- **Simuladores**: en cada isla de energía hay un quiosco **SIM** con un experimento (panel solar, aerogenerador, presa, biodigestor, pozo geotérmico, cadena del hidrógeno). Diseño común: **misiones visibles** que nunca se cumplen solas, **mandos** con teclado, ratón o dedo, **variables** con barras, **gráfica** con la meta marcada y una explicación al cumplir cada misión. Cada uno junta energía y programación: la condición que protege el aerogenerador, la función `potencia(caudal, altura)`, la cola de residuos del biodigestor, la máquina de estados del pozo y el pipeline del hidrógeno. Los errores típicos tienen consecuencias visibles (freno de emergencia, pueblo inundado, digestor empachado, yacimiento frío, apagón) y una prueba automática verifica que no completan la misión.
+- **Estrellas y récord**: todos los retos dan de 1 a 3 estrellas (3 = a la primera y sin pistas) y guardan el mejor resultado: un motivo para volver a intentarlo sin castigar el primer intento.
 
 - **Ordenar y ajustar, no construir desde cero**: cada reto de código trae las instrucciones necesarias ya colocadas (en desorden, con números por ajustar o con valores equivocados). El estudiante razona sobre el algoritmo, no sobre la interfaz: toca una línea y la mueve con ▲ ▼ (entra y sale de los bucles fila a fila), ajusta números con − +, toca un valor o el nombre de una instrucción para elegir otro en una lista, y toca un hueco ▢ para elegir qué va ahí. No hay que arrastrar nada. Una prueba automática (`tools/tests/presets.js`) garantiza que ningún programa inicial resuelve ya el reto y que la solución se alcanza.
 
@@ -139,7 +165,7 @@ Reglas de diseño de todos los jefes: **cada ataque se anuncia** (signo «!», m
 
 ## 8. Arquitectura técnica
 
-- **Un único HTML autocontenido** generado a partir de 36 módulos (`src/NN_*.js`) concatenados dentro de una función autoejecutable. Sin dependencias, sin red y sin recursos externos.
+- **Un único HTML autocontenido** generado a partir de 40 módulos (`src/NN_*.js`) concatenados dentro de una función autoejecutable. Sin dependencias, sin red y sin recursos externos.
 - **Pila de escenas** (`push`/`pop` con `onEnter`/`onExit`); las escenas transparentes dibujan encima de la anterior.
 - **Bucle de paso fijo** (1/60 s) con dibujo por frame e **interpolación**: el dibujo mezcla el estado anterior y el actual según el tiempo sobrante, así el movimiento es fluido también en pantallas de 120/144 Hz.
 - **Cámara anclada al píxel de Lía**: el escenario y la protagonista avanzan en el mismo fotograma, sin el vaivén de 1 px que aparece al redondear por separado cámara y sprite. El contacto con el suelo usa bordes exclusivos, de modo que Lía no alterna entre «caer» y «reposo» cuando está quieta.
@@ -151,7 +177,8 @@ Reglas de diseño de todos los jefes: **cada ataque se anuncia** (signo «!», m
 - **Intérprete del CodeLab con generadores**: cada instrucción cede el control para animar la ejecución, permitir paso a paso y puntos de interrupción, y cortar bucles infinitos.
 - **Constructor de niveles** (`MapB`) con mapas ASCII, entidades declarativas, *tiles* dinámicos y zonas de restauración.
 - **Guardado** en `localStorage` (`luminaLoopSave`), con los ajustes guardados aparte para que sobrevivan a un reinicio del progreso.
-- **Jefes como generadores** (`12_combat.js`, `27_bosses.js`): el programa de cada jefe es un `function*` que cede un fotograma en cada `yield` y marca la línea de pseudocódigo que ejecuta; la Lente dibuja ese mismo código. Ataques, avisos, aturdimientos y peligros son utilidades reutilizables (`bTele`, `bJumpTo`, `bDrop`, `bBeam`, `bColumn`, `bLob`...). Las partes golpeables (cabezas, tentáculos, pilas) son entidades propias que delegan en el jefe.
+- **Jefes como generadores** (`12_combat.js`, `27_bosses.js`): el programa de cada jefe es un `function*` que cede un fotograma en cada `yield` y marca la línea de pseudocódigo que ejecuta; la Lente dibuja ese mismo código. Ataques, avisos, aturdimientos y peligros son utilidades reutilizables (`bTele`, `bJumpTo`, `bDrop`, `bBeam`, `bColumn`, `bLob`...). Las partes golpeables (cabezas, tentáculos, pilas) son entidades propias que delegan en el jefe. Entre ciclo y ciclo, el jefe elige su programa normal o su ERROR CRÍTICO (`bossSpecial`). El acabado HD (`BossFX`) dibuja al jefe en un lienzo aparte a 2× y compone siluetas desplazadas (operaciones de composición, sin leer píxeles) para los brillos de borde y el aura; mide su propio coste y se simplifica si hace falta.
+- **Simuladores** (`16_sims.js`, `16_sims_b.js`): cada uno es un objeto de datos (`init`, `controls`, `step`, `vars`, `chart`, `missions`, `view`) sobre un marco común; añadir uno nuevo no requiere tocar el motor.
 
 ## 9. Control de calidad
 
@@ -166,4 +193,6 @@ Las pruebas de `tools/tests/` se ejecutan con Playwright y Chromium sin interfaz
 - **locks**: 3000 preguntas de cerradura generadas son válidas (una sola correcta, tres opciones distintas, traza coherente y solo caracteres de la fuente); cada isla tiene cofres sobre suelo firme; fallar abre la traza y trae otra variante; acertar abre el cofre, da núcleos y se guarda.
 - **cards**: preguntas de las 19 cartas, calendario de Leitner con reloj simulado, racha de días, repaso completo desde el mapa con teclado, reto del día (determinista y con recompensa una vez) y forja (fallar no gasta núcleos; acertar cambia el combate).
 - **Publicación**: el flujo `.github/workflows/publicar.yml` compila y publica en GitHub Pages en cada envío.
-- **bosses**: el Lumisable depura enemigos con tajos, pulso, parada y rebote, y la recarga funciona; los 10 jefes ejecutan su programa, son alcanzables con un tajo normal en su ventana vulnerable, cambian de fase con el parche, se depuran, dan su recompensa y devuelven al mapa; la salida de una isla lleva a su jefe.
+- **bosses**: el Lumisable depura enemigos con tajos, pulso, parada y rebote, y la recarga funciona; los 10 jefes tienen vida triple, ejecutan su programa, son alcanzables con un tajo normal en su ventana vulnerable, pasan por las tres fases con sus parches, lanzan su ERROR CRÍTICO (con peligros y fin sobrecalentado), se depuran, dan su recompensa y devuelven al mapa; un parche fallido provoca el ataque especial y un golpe resta una célula; la salida de una isla lleva a su jefe.
+- **sims**: los 6 simuladores se completan solo con sus mandos, ninguna misión se cumple al empezar y los errores típicos (no poner bandera, inundar el pueblo, empachar el digestor, reinyectar el 100 %, encender el electrolizador de noche) no completan la misión; hay un quiosco en cada isla sobre suelo firme y el primer intento completado da un núcleo.
+- **powers**: los 10 poderes funcionan (doble salto una sola vez, cámara lenta una vez por punto de control, ondas dobles y grandes, onda que se curva, torbellino, embestida invulnerable, recarga solar, sobrecarga con +1 de daño, célula extra) y las partidas antiguas los reciben.

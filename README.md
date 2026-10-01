@@ -32,7 +32,8 @@ Videojuego educativo de plataformas, combate y puzzles en **pixel art animado**,
 | Atlas Aurora | C | Select / Back |
 | Cartas del Atlas (en el mapa) | R | — |
 | Pista de PÍX | H | RB |
-| Pausa | Esc / P | Start |
+| Pausa (y **PODERES**: los poderes conseguidos) | Esc / P | Start |
+| Doble salto · torbellino · embestida (poderes) | Salto en el aire · Salto + ataque en el aire · Correr + ataque | A · A + X · gatillo + X |
 
 - **Táctil**: en móvil o tableta aparece una cruceta virtual y botones de acción (⚔ ataca); en los puzzles basta con tocar.
 - Todas las teclas se pueden **remapear** en *Ajustes → Remapear teclas*.
@@ -67,7 +68,9 @@ Lumi concentra su luz en una hoja: el **Lumisable**. Los enemigos son programas 
 - **Combo de 3 tajos**, tajo hacia arriba, **rebote (pogo)** hacia abajo sobre enemigos, proyectiles y pinchos, **pulso cargado** (mantener el ataque) y **parada**: golpear un proyectil justo a tiempo lo devuelve a quien lo lanzó.
 - **Energía**: se gana golpeando y con orbes. Quieta, manteniendo ↓, Lumi convierte 50 de energía en una **célula**. Con la **Lente Debug** activa cada golpe es **crítico**.
 - **Enemigos con personalidad** en todas las islas, con los colores de su región: Bit Saltarín, Zumbyte, Toro-Ohm, Torretín, más los enemigos conceptuales (Bugglin, Loopling, Shadow If, Drainer...). Con la Lente muestran su algoritmo.
-- **Un jefe al final de cada isla**, que *ejecuta un algoritmo* del concepto de esa isla: con la Lente se lee su programa con la línea actual resaltada. A mitad del combate reescribe su código y hay que aplicarle un **parche** (una pregunta rápida) para ralentizarlo.
+- **Un jefe al final de cada isla**, que *ejecuta un algoritmo* del concepto de esa isla: con la Lente se lee su programa con la línea actual resaltada. Tienen el **triple de vida** y **tres fases**: a 2/3 de vida reescribe su código y hay que aplicarle un **parche** (una pregunta rápida) para ralentizarlo; a 1/3 entra en **FURIA** y pide un **PARCHE FINAL** (predecir el resultado de un programa nuevo, generado como en las cerraduras).
+- **ERROR CRÍTICO**: si un parche falla, el jefe lanza su **ataque especial** (Lluvia de chatarra, Tormenta de rayos, Triple chorro, Erupción total...): columnas de rayos, lluvia de bloques de error, chorros que obligan a saltar o a quedarse abajo, u ondas por el suelo. Siempre hay aviso («!» y marcas en el suelo) y un hueco seguro; un golpe cuesta una célula y, al terminar, el jefe queda **sobrecalentado** (momento para golpearlo). En FURIA lo repite cada dos ciclos de su programa (cada tres si el parche final salió perfecto). El parche se puede volver a intentar en cada combate.
+- **Arte HD de los jefes**: cada jefe se dibuja a resolución de pantalla con detalle de medio píxel (remaches, brillos de metal, reflejos de cristal, texturas de roca, grietas de lava), brillos y sombras en los bordes, volumen, **aura por fase** (roja y palpitante en FURIA) y sombra en el suelo. Si el equipo va lento, el acabado se simplifica solo.
 
 | Isla | Jefe | Concepto que ejecuta |
 |---|---|---|
@@ -83,7 +86,39 @@ Lumi concentra su luz en una hoja: el **Lumisable**. Los enemigos son programas 
 | Microred Prisma | Sobrecarga | Integración |
 | Faro Aurora | Perfect Zero | La función objetivo |
 
-Al vencerlos se vuelven amistosos, entran en el **Bestiario** del Atlas y dejan un **fragmento de célula** (3 fragmentos = +1 célula máxima). Tras dos derrotas, PÍX ofrece la **ayuda de combate**.
+Al vencerlos se vuelven amistosos, entran en el **Bestiario** del Atlas, dejan un **fragmento de célula** (3 fragmentos = +1 célula máxima) y **enseñan un poder nuevo del Lumisable**. Tras dos derrotas, PÍX ofrece la **ayuda de combate** (+2 células, jefes más lentos y con el doble de vida en vez del triple).
+
+### Poderes del Lumisable: uno por cada jefe depurado
+
+Cada poder es el concepto de la isla convertido en una forma de jugar. Se presentan con una tarjeta al vencer al jefe y se consultan en **Pausa → PODERES** (las partidas anteriores reciben los poderes de los jefes que ya vencieron).
+
+| Jefe | Poder | Concepto | Cómo se usa |
+|---|---|---|---|
+| Capitán Cortocircuito | **Doble salto** | Secuencia: `saltar() → saltar()` | Salto otra vez en el aire |
+| Gran Bugglin Rey | **Punto de interrupción** | Depuración | Con 1 célula el mundo va a cámara lenta 4 s (una vez por punto de control) |
+| Don Nubarrón | **Rayo solar** | `SI pulso_cargado → daño × 2` | El pulso cargado es más grande y hace el doble de daño |
+| Tornado Loopling | **Tajo torbellino** | `REPETIR 3 VECES: girar + tajo` | En el aire, mantener SALTO y atacar |
+| Hidra de Compuertas | **Pulso doble** | Funciones: `pulso(delante) · pulso(detrás)` | El pulso cargado sale hacia los dos lados |
+| Compostor Glotón | **Célula extra** | Listas: `células.agregar(1)` | +1 célula máxima |
+| Magmatón | **Estado sobrecarga** | Estados | Con la energía llena el sable hace +1 de daño hasta bajar de 70 |
+| Kraken de Fugas | **Embestida de luz** | Pipeline: `correr → impulso → tajo` | Corriendo, atacar: embiste sin recibir daño |
+| Drenadora Suprema | **Rayo buscador** | Búsqueda: `enemigo_más_cercano()` | El pulso cargado persigue al enemigo más cercano |
+| Sobrecarga | **Recarga solar** | Microred: `MIENTRAS energía < 100: +4/s` | La energía se recarga sola hasta llenarse |
+
+### Simuladores de energía
+
+Un quiosco **SIM** cerca del inicio de cada isla de energía abre un simulador con **mandos**, **misiones visibles** (✓ al cumplirlas, con la explicación de por qué), **variables** y una **gráfica en vivo**. Cada uno une una energía renovable con un concepto de programación, con física simplificada pero real:
+
+| Isla | Simulador | Energía | Programación |
+|---|---|---|---|
+| Solaria | Panel de pruebas | Solar: mejor inclinación ≈ 90° − altura del sol | Variables |
+| Aeris | Aerogenerador | Eólica: P crece con v³, orientación, paso de pala, tormenta | `SI viento > 25 ENTONCES bandera` en un bucle |
+| Hydria | Presa | Hidro: `potencia(caudal, altura) = 9,8 × Q × H × 0,9` | Función con dos parámetros |
+| BioLoop | Biodigestor | Biomasa: bacterias a 37 °C, acidez por sobrecarga | La cola (lista) de residuos |
+| Gea | Pozo geotérmico | Geotermia: extracción, reinyección, presión y temperatura | Máquina de estados |
+| Bahía H2 | Cadena del hidrógeno | Hidrógeno verde: de 100 kWh de sol vuelven ≈ 35 | Pipeline de etapas |
+
+Ninguna misión se cumple sola y los errores típicos (no poner las palas en bandera, inundar el pueblo, empachar el digestor...) tienen consecuencias visibles. El primero de cada simulador da un **núcleo de forja**, y todos se pueden repetir en el **Laboratorio de simuladores** del Taller.
 
 ### Aprender jugando: cerraduras, cartas y forja
 
@@ -102,6 +137,9 @@ Al vencerlos se vuelven amistosos, entran en el **Bestiario** del Atlas y dejan 
 - **Microred**: reglas priorizadas que se simulan hora a hora en varios escenarios (día típico, festival nocturno, día sin sol, tormenta).
 - **Objetivo multicriterio**: el combate final consiste en *reescribir la función objetivo* de Perfect Zero.
 - **Preguntas de razonamiento** con explicación de cada opción.
+- **Simuladores**: experimentos con mandos y misiones (ver arriba).
+
+Cada reto da de **1 a 3 estrellas** (3 = a la primera y sin pistas) y guarda el **récord**, para que valga la pena repetirlo. La búsqueda binaria muestra el rango que queda y su medio, y la microred enseña la previsión de demanda y sol antes de simular.
 
 Cada reto pasa por **DEMO → LO HACEMOS JUNTOS → TÚ SOLO**, ofrece **pistas en 3 niveles** (idea, concepto, solución parcial) y, si se activa, pregunta **«¿qué tan seguro estás?»** antes de ejecutar. Los errores explican *por qué* falló el programa y qué pasó en el mundo simulado.
 
@@ -111,9 +149,9 @@ Cada reto pasa por **DEMO → LO HACEMOS JUNTOS → TÚ SOLO**, ofrece **pistas 
 - **Lente Debug** (F): muestra variables, estados y secretos ocultos en el escenario.
 - **Blueprint** (B): tu último algoritmo como un plano.
 - **Mapa del archipiélago ilustrado** (a doble resolución): cada isla tiene su propia ilustración animada que representa su tema y su energía (el faro y los muelles del Puerto, el molino y los cultivos del Valle, los paneles y la torre solar de Solaria, las islas flotantes con turbinas de Aeris, las cascadas de Hydria, la selva y los biodigestores de BioLoop, el volcán y la planta geotérmica de Gea, los tanques de hidrógeno de la Bahía H2, los rascacielos-batería de neón, la torre-prisma de la microred y el gran Faro Aurora). Las islas aparecen **apagadas** hasta restaurarlas y **cubiertas de niebla** hasta descubrirlas; los viajes siguen rutas marítimas animadas.
-- **Misiones**: 12 principales y 20 secundarias. **22 Chispas de Aurora** escondidas y **25 pegatinas** (logros).
+- **Misiones**: 12 principales y 20 secundarias. **22 Chispas de Aurora** escondidas y **27 pegatinas** (logros).
 - **Mapa de dominio estimado**: progreso por concepto y por energía (presentado como una estimación, nunca como una nota).
-- **Taller de Lía**: recuerdos de cada isla, pegatinas, cosméticos y la **Forja del Lumisable**.
+- **Taller de Lía**: recuerdos de cada isla, pegatinas, cosméticos, el **Laboratorio de simuladores** y la **Forja del Lumisable**.
 - **Aurora Lab** (tras el final): sandbox de microred para experimentar sin penalización y comparar experimentos.
 
 ### Modo docente
@@ -164,17 +202,22 @@ src/
   10_world.js           niveles, física de plataformas, Lía, PÍX y Lumi
   11_entities.js        entidades interactivas (plataformas, puertas, enemigos...)
   12_combat.js          Lumisable, proyectiles, botín y enemigos nuevos
+  12_powers.js          poderes del Lumisable (uno por jefe), tarjeta y pantalla PODERES
   12_props.js           decorado animado (molinos, paneles, turbinas, faro...)
   13_codelab.js         editor de bloques, intérprete, traza y diagrama de flujo
   14_worlds.js          simulaciones de cada reto (rejilla, solar, eólica, hidro...)
   15_puzzles_a.js       secuencias, diagramas de flujo, máquinas de estados
   16_puzzles_b.js       ordenar/buscar, microred, objetivo, preguntas, habilidades
+  16_sims.js            simuladores: marco común (mandos, misiones, gráfica) y panel solar
+  16_sims_b.js          aerogenerador, presa, biodigestor, pozo geotérmico, cadena del H2,
+                        quioscos SIM en las islas y Laboratorio de simuladores
   17_scenes.js          escenas: título, mapa, pausa, Atlas, ajustes, docente, Lab...
   18_islandmap.js       ilustraciones de las islas y océano del mapa (doble resolución)
   18_codex.js           Atlas Aurora, Chispas y misiones
   19_story_common.js    utilidades de historia y constructor de niveles
   20_… 26_lv_*.js       las islas (niveles, diálogos y puzzles)
-  27_bosses.js          los 10 jefes regionales, sus arenas y el Bestiario
+  27_bosses.js          los 10 jefes: fases, parches, ERROR CRÍTICO, acabado HD y Bestiario
+  27_bosses_hd.js       detalle a medio píxel de cada jefe
   28_locks.js           cerraduras de código: preguntas de traza generadas y traza paso a paso
   29_cards.js           cartas del Atlas, repaso espaciado (Leitner) y reto del día
   29_challenges.js      banco de 115 retos del modo docente
@@ -206,11 +249,13 @@ node tools/tests/glyphs.js    # comprueba que las flechas de la fuente apuntan b
 node tools/tests/levels.js    # carga los 14 niveles y las 10 arenas de jefe y guarda capturas
 node tools/tests/puzzles.js   # resuelve los puzzles principales y construye los 115 retos
 node tools/tests/presets.js   # cada reto de código empieza armado pero sin resolver, y su solución funciona
-node tools/tests/bosses.js    # sable (tajos, pulso, parada, rebote, recarga) y los 10 jefes de principio a fin
+node tools/tests/bosses.js    # sable y los 10 jefes: vida triple, 3 fases, ERROR CRÍTICO, parche fallido que cuesta célula
 node tools/tests/map.js       # mapa ilustrado, viaje entre islas e index.html idéntico a lumina_loop.html
 node tools/tests/hd.js        # modo HD: el filtro WebGL compila, cubre el lienzo y se puede apagar
 node tools/tests/locks.js     # cerraduras de código: 3000 preguntas válidas, cofres en cada isla, fallo → traza → variante
 node tools/tests/cards.js     # cartas: calendario de Leitner, racha, repaso desde el mapa, reto del día y forja
+node tools/tests/sims.js      # los 6 simuladores se completan con sus mandos, no se cumplen solos y los errores no cuentan
+node tools/tests/powers.js    # los 10 poderes funcionan, tarjeta y pantalla PODERES
 node tools/tests/walk.js      # recorre la campaña completa hasta el epílogo
 node tools/tests/menus.js     # abre todas las pantallas de menú
 ```
