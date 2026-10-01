@@ -40,58 +40,122 @@ function liaHead(expr) {
   return spriteFromRows(rows.map(r => r.join('')), LIA_PAL);
 }
 
-// pose: {bob, legA, legB (desplazamientos x del pie), liftA, liftB, arm (-2..2), hair (desplazamiento coleta), expr, squash, armUp}
+// pose: {bob, legA, legB (desplazamientos x del pie), liftA, liftB, arm (-2..2), hair (desplazamiento coleta), expr, squash, armUp,
+//        crouch (cuánto baja el cuerpo al agacharse), lean (inclinación del torso), slide (barrida), tuck (rodillas recogidas)}
 function paintLia(pose, cos) {
   const c = makeCanvas(20, 27), g = c.g;
   const L = LIA_PAL;
-  const by = 1 + (pose.bob || 0);
+  const drop = pose.crouch || 0, ux = pose.lean || 0;
+  const by = 1 + (pose.bob || 0) + drop;
   const sq = pose.squash || 0; // aplastamiento al aterrizar
   const R = (x, y, w, h, col) => { g.fillStyle = col; g.fillRect(x, y, w, h); };
   const hipY = 19 + sq, feetY = 24;
+  const bootCol = cos && cos.boots ? '#30A8E1' : L.o, bootS = cos && cos.boots ? '#1B6FA0' : L.O;
   // mochila solar (cosmético)
-  if (cos && cos.pack) { R(3, 13 + by + sq, 4, 6, '#2A4A9A'); R(3, 13 + by + sq, 4, 1, PAL.sun); R(4, 14 + by + sq, 2, 1, PAL.aqua); R(4, 16 + by + sq, 2, 1, PAL.aqua); }
+  if (cos && cos.pack) { R(3 + ux, 13 + by + sq, 4, 6, '#2A4A9A'); R(3 + ux, 13 + by + sq, 4, 1, PAL.sun); R(4 + ux, 14 + by + sq, 2, 1, PAL.aqua); R(4 + ux, 16 + by + sq, 2, 1, PAL.aqua); }
   // capa eólica (cosmético)
-  if (cos && cos.cape) { const sw = pose.hair || 0; R(4 - Math.max(0, sw), 13 + by + sq, 3, 8, '#7FE7FF'); R(3 - Math.max(0, sw), 18 + by + sq, 3, 3, '#59C7FF'); }
-  // pierna trasera
+  if (cos && cos.cape) { const sw = pose.hair || 0; R(4 - Math.max(0, sw) + ux, 13 + by + sq, 3, 8 - Math.min(4, drop), '#7FE7FF'); R(3 - Math.max(0, sw) + ux, 18 + by + sq - Math.min(4, drop), 3, 3, '#59C7FF'); }
   const leg = (fx, lift, col, colS, boot) => {
-    const x0 = 8, top = hipY + by * 0;
+    const x0 = 8, top = hipY;
     R(x0 + Math.round(fx / 2), top, 2, 3, col);
-    R(x0 + fx, top + 3 - lift, 2, 2 + (lift ? 0 : 0), colS);
+    R(x0 + fx, top + 3 - lift, 2, 2, colS);
     R(x0 + fx - (fx < 0 ? 1 : 0), feetY - lift, 3, 2, boot);
   };
-  const bootCol = cos && cos.boots ? '#30A8E1' : L.o, bootS = cos && cos.boots ? '#1B6FA0' : L.O;
-  leg(pose.legB || 0, pose.liftB || 0, L.P, L.P, bootS);
+  if (pose.slide) {
+    // barrida: la pierna de atrás arrodillada y la de delante estirada a ras de suelo
+    R(6, 22, 3, 2, L.P); R(5, 24, 3, 2, bootS);
+    R(10, 23, 6, 2, L.p); R(15, 22, 3, 3, bootCol); R(16, 22, 2, 1, shade(bootCol, 0.3));
+  } else if (drop >= 3) {
+    // agachada: muslos hacia delante y rodillas dobladas
+    R(6, 21, 3, 3, L.P); R(5, 24, 4, 2, bootS);
+    R(10, 21, 3, 2, L.p); R(12, 22, 2, 2, L.p); R(11, 24, 4, 2, bootCol);
+  } else if (pose.tuck) {
+    // gancho: rodillas recogidas al subir
+    R(7, hipY, 3, 2, L.P); R(6, hipY + 2, 3, 2, bootS);
+    R(10, hipY - 1, 3, 2, L.p); R(11, hipY + 1, 3, 2, bootCol);
+  } else leg(pose.legB || 0, pose.liftB || 0, L.P, L.P, bootS);
   // brazo trasero
-  R(6, 14 + by + sq, 2, 4, L.T);
-  R(6, 18 + by + sq, 2, 1, L.S);
-  // torso (chaqueta)
-  R(7, 13 + by + sq, 6, 6 - sq, L.t);
-  R(7, 13 + by + sq, 1, 6 - sq, L.T);
-  R(11, 13 + by + sq, 1, 6 - sq, L.u); // cremallera amarilla
-  R(7, 18 + by, 6, 1, L.T);
+  R(6 + ux, 14 + by + sq, 2, 4, L.T);
+  R(6 + ux, 18 + by + sq, 2, 1, L.S);
+  // torso (chaqueta): más corto agachada
+  const th = Math.max(4, 6 - sq - Math.min(2, drop));
+  R(7 + ux, 13 + by + sq, 6, th, L.t);
+  R(7 + ux, 13 + by + sq, 1, th, L.T);
+  R(11 + ux, 13 + by + sq, 1, th, L.u); // cremallera amarilla
+  R(7 + ux, 13 + by + sq + th - 1, 6, 1, L.T);
   // pierna delantera
-  leg(pose.legA || 0, pose.liftA || 0, L.p, L.p, bootCol);
+  if (!pose.slide && drop < 3 && !pose.tuck) leg(pose.legA || 0, pose.liftA || 0, L.p, L.p, bootCol);
   // coleta
   const hs = pose.hair || 0;
-  R(2 - hs, 5 + by + sq, 3, 2, L.h); R(1 - hs, 7 + by + sq, 3, 2, L.h); R(1 - hs, 9 + by + sq, 2, 2, L.H); R(4, 4 + by + sq, 2, 2, L.y);
+  // la coleta siempre queda unida a la cabeza aunque ondee
+  if (hs > 0) R(4 - hs + ux, 5 + by + sq, hs + 2, 2, L.h);
+  R(2 - hs + ux, 5 + by + sq, 3, 2, L.h); R(1 - hs + ux, 7 + by + sq, 3, 2, L.h); R(1 - hs + ux, 9 + by + sq, 2, 2, L.H); R(4 + ux, 4 + by + sq, 2, 2, L.y);
   // cabeza
-  g.drawImage(liaHead(pose.expr), 5, 2 + by + sq);
+  g.drawImage(liaHead(pose.expr), 5 + ux, 2 + by + sq);
   // gafas debug (cosmético): lentes en los ojos
-  if (cos && cos.goggles) { R(10, 9 + by + sq, 5, 2, 'rgba(48,225,197,0.65)'); R(10, 9 + by + sq, 5, 1, PAL.sun); }
+  if (cos && cos.goggles) { R(10 + ux, 9 + by + sq, 5, 2, 'rgba(48,225,197,0.65)'); R(10 + ux, 9 + by + sq, 5, 1, PAL.sun); }
   // brazo delantero
   const ay = pose.armUp ? -4 : 0;
-  const ax = 10 + (pose.arm || 0);
+  const ax = 10 + (pose.arm || 0) + ux;
   R(ax, 14 + by + sq + ay, 2, 4, L.t);
   R(ax, 18 + by + sq + ay, 2, 1, L.s);
   if (pose.tool) { R(ax + 2, 16 + by + sq, 3, 1, PAL.stone); R(ax + 4, 15 + by + sq, 1, 3, PAL.sun); }
   return outlined(c, OUTLINE);
 }
 
+// ---------- Lía a doble resolución ----------
+// Scale2x (EPX): cada píxel se convierte en 4 y los bordes en escalera se redondean;
+// después se añaden detalles de medio píxel (brillo en los ojos y las gafas, mechones,
+// costuras de la chaqueta, tirador de la cremallera y botas con brillo).
+function scale2x(src) {
+  const w = src.width, h = src.height, sd = src.g.getImageData(0, 0, w, h), d = new Uint32Array(sd.data.buffer);
+  const c = makeCanvas(w * 2, h * 2), od = c.g.createImageData(w * 2, h * 2), o = new Uint32Array(od.data.buffer);
+  const P = (x, y) => (x < 0 || y < 0 || x >= w || y >= h) ? 0 : d[y * w + x];
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    const p = d[y * w + x], A = P(x, y - 1), B = P(x + 1, y), C = P(x - 1, y), D = P(x, y + 1);
+    const i = (y * 2) * (w * 2) + x * 2;
+    o[i] = (C === A && C !== D && A !== B) ? A : p;
+    o[i + 1] = (A === B && A !== C && B !== D) ? B : p;
+    o[i + w * 2] = (D === C && D !== B && C !== A) ? C : p;
+    o[i + w * 2 + 1] = (B === D && B !== A && D !== C) ? D : p;
+  }
+  c.g.putImageData(od, 0, 0);
+  return c;
+}
+function liaHD(r, pose) {
+  const c = scale2x(r), g = c.g;
+  g.setTransform(2, 0, 0, 2, 0, 0);
+  const P = (x, y, col, w = 0.5, h = 0.5) => { g.fillStyle = col; g.fillRect(x, y, w, h); };
+  const drop = pose.crouch || 0, ux = pose.lean || 0, by = 1 + (pose.bob || 0) + drop, sq = pose.squash || 0;
+  const hx = 6 + ux, hy = 3 + by + sq; // origen de la cabeza (con el contorno de 1 px)
+  const e = pose.expr || 'n';
+  // brillo en los ojos (no si están cerrados o sonriendo)
+  if (e === 'n' || e === 'focus' || e === 'surprise') { P(hx + 6, hy + 7, '#FFFFFF'); P(hx + 9, hy + 7, '#FFFFFF'); }
+  // gafas de la frente: reflejo en cada lente
+  P(hx + 5.5, hy + 4, '#FFFFFF'); P(hx + 8.5, hy + 4, '#FFFFFF');
+  // mechones con luz y la coleta con un brillo
+  P(hx + 3, hy + 1.5, '#FFA0A0', 2, 0.5); P(hx + 5.5, hy + 0.5, '#FFB8B0', 1.5, 0.5); P(hx + 2, hy + 3, '#FFA0A0', 0.5, 1);
+  const hs = pose.hair || 0; P(2.5 - hs + ux, 6 + by + sq, '#FFA0A0', 1, 0.5);
+  // chaqueta: luz en el hombro, cuello y tirador de la cremallera
+  const ty = 14 + by + sq;
+  P(8.5 + ux, ty, '#8FFFEA', 1.5, 0.5); P(8 + ux, ty + 0.5, '#8FFFEA', 0.5, 1.5);
+  P(12 + ux, ty + 1, '#FFFFFF'); P(10.5 + ux, ty, '#1FA89A', 1, 0.5);
+  // pliegue de la chaqueta y bolsillo
+  const th = Math.max(4, 6 - sq - Math.min(2, drop));
+  P(9 + ux, ty + th - 2, '#1FA89A', 1.5, 0.5); P(9.5 + ux, ty + th - 2.5, '#5FF0D8', 0.5, 0.5);
+  // botas: brillo en la puntera
+  if (!pose.slide && drop < 3 && !pose.tuck) {
+    const fa = pose.legA || 0, la = pose.liftA || 0;
+    P(9 + fa - (fa < 0 ? 1 : 0) + 1.5, 25 - la, '#FFD2A8');
+  }
+  g.setTransform(1, 0, 0, 1, 0, 0);
+  return c;
+}
 // fotograma de reposo para escenas sin física (taller, créditos): respiración lenta y parpadeo ocasional
 function liaIdleFrame(t) { return ((t % 3.7) < 0.13 ? 2 : 0) + ((t % 2.4) > 1.3 ? 1 : 0); }
 function buildLia(cos = {}) {
   const A = {};
-  const mk = (arr) => arr.map(p => { const r = paintLia(p, cos); return { r, l: flipCanvas(r) }; });
+  const mk = (arr) => arr.map(p => { const r = paintLia(p, cos), rh = liaHD(r, p); return { r, l: flipCanvas(r), rh, lh: flipCanvas(rh) }; });
   // idle: [normal, normal respirando, parpadeo, parpadeo respirando]
   A.idle = mk([{ expr: 'n' }, { expr: 'n', bob: 1 }, { expr: 'blink' }, { expr: 'blink', bob: 1 }]);
   // ciclo de paso de 6 fotogramas: contacto, recogida, paso (x2), con balanceo de brazos opuesto a las piernas
@@ -103,14 +167,22 @@ function buildLia(cos = {}) {
     { legA: -1, legB: 1, liftA: 1, arm: 0, hair: 1, bob: -1 },
     { legA: 1, legB: -1, liftA: 1, arm: -1, hair: 1, bob: -1 }
   ]);
+  // carrera: torso inclinado hacia delante, zancada más larga y coleta al viento
   A.run = mk([
-    { legA: 3, legB: -3, arm: -2, hair: 1, expr: 'focus' },
-    { legA: 1, legB: -2, liftB: 2, bob: -1, arm: -1, hair: 2, expr: 'focus' },
-    { legA: -1, legB: 1, liftB: 1, bob: -1, arm: 1, hair: 2, expr: 'focus' },
-    { legA: -3, legB: 3, arm: 2, hair: 1, expr: 'focus' },
-    { legA: -2, legB: 1, liftA: 2, bob: -1, arm: 1, hair: 2, expr: 'focus' },
-    { legA: 1, legB: -1, liftA: 1, bob: -1, arm: -1, hair: 2, expr: 'focus' }
+    { legA: 3, legB: -3, arm: -2, hair: 2, expr: 'focus', lean: 1 },
+    { legA: 1, legB: -2, liftB: 2, bob: -1, arm: -1, hair: 3, expr: 'focus', lean: 1 },
+    { legA: -1, legB: 1, liftB: 1, bob: -1, arm: 1, hair: 3, expr: 'focus', lean: 1 },
+    { legA: -3, legB: 3, arm: 2, hair: 2, expr: 'focus', lean: 1 },
+    { legA: -2, legB: 1, liftA: 2, bob: -1, arm: 1, hair: 3, expr: 'focus', lean: 1 },
+    { legA: 1, legB: -1, liftA: 1, bob: -1, arm: -1, hair: 3, expr: 'focus', lean: 1 }
   ]);
+  // agachada (respira) y gateando
+  A.crouch = mk([{ crouch: 5, expr: 'n', hair: 1 }, { crouch: 5, expr: 'n', hair: 1, bob: 1 }]);
+  A.crawl = mk([{ crouch: 5, expr: 'focus', hair: 1, arm: 1, lean: 1 }, { crouch: 5, expr: 'focus', hair: 2, arm: -1, lean: 1, bob: 1 }]);
+  // barrida: tumbada hacia atrás con la pierna delantera estirada
+  A.slide = mk([{ crouch: 7, slide: true, lean: -1, expr: 'focus', hair: 2, arm: 2 }, { crouch: 7, slide: true, lean: -1, expr: 'focus', hair: 3, arm: 2 }]);
+  // gancho: impulso agachada → sube con el brazo arriba y las rodillas recogidas
+  A.hook = mk([{ crouch: 3, expr: 'focus', arm: 1 }, { armUp: true, arm: 2, tuck: true, expr: 'focus', hair: -2, bob: -1 }, { armUp: true, arm: 1, tuck: true, expr: 'focus', hair: -1 }]);
   A.jump = mk([{ legA: 1, legB: -1, liftA: 2, liftB: 1, armUp: true, hair: -1, expr: 'focus' }]);
   A.fall = mk([{ legA: -1, legB: 1, liftA: 0, liftB: 1, arm: 1, hair: -2, bob: -1, expr: 'surprise' }]);
   A.land = mk([{ squash: 2, expr: 'blink' }]);

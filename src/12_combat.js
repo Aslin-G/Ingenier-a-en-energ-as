@@ -15,7 +15,11 @@ const SABER = {
   down: { dur: 0.27, act: [0.01, 0.16], a0: 10, a1: 170, box: [-12, 14, 24, 24], dmg: 1, kb: 50, len: 15 },
   // poderes: torbellino (bucle de tajos alrededor) y embestida (pipeline correr → impulso → tajo)
   spin: { dur: 0.42, act: [0.02, 0.36], a0: -90, a1: 630, box: [-22, -12, 44, 40], dmg: 2, kb: 160, len: 16 },
-  rush: { dur: 0.3, act: [0.0, 0.26], a0: -20, a1: 20, box: [-4, -4, 34, 26], dmg: 2, kb: 220, len: 18 }
+  rush: { dur: 0.3, act: [0.0, 0.26], a0: -20, a1: 20, box: [-4, -4, 34, 26], dmg: 2, kb: 220, len: 18 },
+  // BARRIDA (↓ + ataque en el suelo): se desliza agachada con el sable a ras de suelo
+  slide: { dur: 0.42, act: [0.02, 0.34], a0: 12, a1: -4, box: [-2, 0, 30, 14], dmg: 1, kb: 170, len: 16 },
+  // GANCHO (↑ + ataque en el suelo): salta hacia arriba con un arco de luz en forma de gancho
+  hook: { dur: 0.38, act: [0.03, 0.28], a0: 60, a1: -215, box: [-8, -28, 30, 44], dmg: 2, kb: 120, len: 18 }
 };
 const CHARGE_TIME = 0.65, PASSIVE_ENERGY_CAP = 60;
 // mejoras de la Forja del Lumisable (cada una es un concepto: ver 29_forge.js)
@@ -41,6 +45,8 @@ Player.prototype.initCombat = function () {
 };
 Player.prototype.saberPivot = function (kind) {
   const f = this.atk ? this.atk.face : this.face;
+  if (kind === 'slide') return { x: this.cx + f * 4, y: this.y + 8 };
+  if (kind === 'hook') return { x: this.cx + f * 3, y: this.y + 6 };
   if (kind === 'up') return { x: this.cx + f * 2, y: this.y + 7 };
   if (kind === 'down') return { x: this.cx + f * 2, y: this.y + 12 };
   return { x: this.cx + f * 3, y: this.y + 10 };
@@ -81,6 +87,10 @@ Player.prototype.updateCombat = function (dt, control) {
     const up = Input.down('up'), down = Input.down('down');
     let kind;
     if (down && !this.onGround && !this.inWater) kind = 'down';
+    // BARRIDA: ↓ + ataque en el suelo
+    else if (down && this.onGround && !this.inWater) kind = 'slide';
+    // GANCHO: ↑ + ataque en el suelo (una vez por salto); en el aire, tajo hacia arriba
+    else if (up && this.onGround && !this.inWater) kind = 'hook';
     else if (up && !this.inWater) kind = 'up';
     // TAJO TORBELLINO: en el aire con SALTO mantenido
     else if (hasPower('spin') && !this.onGround && !this.inWater && Input.down('jump')) kind = 'spin';
@@ -90,6 +100,8 @@ Player.prototype.updateCombat = function (dt, control) {
     this.startAttack(kind);
     if (kind === 'spin') { this.vy = Math.min(this.vy, -40); AudioSys.sfx('wind'); }
     if (kind === 'rush') { this.dashT = 0.24; this.dashDir = this.face; this.inv = Math.max(this.inv, 0.35); AudioSys.sfx('dash'); }
+    if (kind === 'slide') { this.setCrouch(true); this.vx = this.face * 230; AudioSys.sfx('dash'); Particles.burst(this.cx - this.face * 4, this.y + this.h, 8, { color: '#FFF3D7', min: 20, max: 60, angle: Math.PI + (this.face > 0 ? 0.3 : -0.3), spread: 0.8, lmax: 0.35 }); }
+    if (kind === 'hook') { this.setCrouch(false); this.vy = -PHYS.jumpV * 1.02; this.onGround = false; this.coyote = 0; this.vx = this.face * 70; AudioSys.sfx('jump'); }
     this.chargeT = 0; this.chargeReady = false; this.healT = 0;
   }
   // pulso cargado: mantener el ataque tras el tajo
@@ -199,6 +211,14 @@ Player.prototype.drawSaber = function (g, cx, cy) {
       g.globalAlpha = (0.15 + 0.75 * t * t) * fade;
       for (let r = d.len - 6; r <= d.len + 2; r++) px(g, X + c * r, Y + s * r, r === d.len + 2 ? edge : r >= d.len ? '#FFFFFF' : col);
     }
+    // gancho: media luna ancha y brillante que sube con Lía
+    if (a.kind === 'hook') for (let i = 0; i <= steps; i++) {
+      const t = i / steps, aa = (d.a0 + span * t) * Math.PI / 180, c = Math.cos(aa) * a.face, s = Math.sin(aa), wv = Math.sin(t * Math.PI);
+      g.globalAlpha = (0.25 + 0.6 * t) * fade;
+      for (let r = d.len + 3; r <= d.len + 3 + Math.round(wv * 4); r++) px(g, X + c * r, Y + s * r, r === d.len + 3 ? '#FFFFFF' : col);
+    }
+    // barrida: estela de polvo y luz a ras de suelo
+    if (a.kind === 'slide' && Math.random() < 0.7) Particles.spawn({ x: this.cx - a.face * 6, y: this.y + this.h - 1, vx: -a.face * rand(20, 60), vy: rand(-30, -5), life: 0.35, type: 'fade', size: 2, color: Math.random() < 0.5 ? '#FFF3D7' : col });
     g.globalAlpha = fade;
     this.drawBlade(g, X, Y, ang * Math.PI / 180, a.face, d.len + (forged('reach') ? 3 : 0), col, 1);
     g.globalAlpha = 1;

@@ -862,6 +862,7 @@ class Player {
     const onLadder = ladderAt(this.cx, this.y + this.h - 2) || ladderAt(this.cx, this.y + 4);
     if (!this.climbing && onLadder && (up || (down && !this.onGround) || (down && ladderAt(this.cx, this.y + this.h + 2)))) { this.climbing = true; this.x = Math.floor(this.cx / TILE) * TILE + 3; }
     if (this.climbing) {
+      this.setCrouch(false);
       if (!onLadder && !ladderAt(this.cx, this.y + this.h + 2)) this.climbing = false;
       this.vx = ax * 40; this.vy = (up ? -PHYS.climb : 0) + (down ? PHYS.climb : 0);
       if (jumpHit) { this.climbing = false; this.vy = -PHYS.jumpV * 0.8; AudioSys.sfx('jump'); }
@@ -875,6 +876,9 @@ class Player {
     }
     // habilidad
     if (control) this.updateAbility(dt);
+    // AGACHARSE con ↓ en el suelo (la barrida también va agachada); al soltar, se levanta si cabe
+    const wantCrouch = (down && this.onGround && !this.inWater && this.dashT <= 0) || (this.atk && this.atk.kind === 'slide');
+    this.setCrouch(wantCrouch);
     if (this.dashT > 0) {
       this.dashT -= dt; this.vy = 0;
       this.moveX(this.dashDir * 330 * dt);
@@ -883,13 +887,14 @@ class Player {
     }
     // horizontal
     // al atacar en el suelo se planta un poco (el golpe «pesa»); en el aire se mantiene el impulso
-    const slow = this.atk && this.onGround ? 0.55 : this.healT > 0 ? 0 : 1;
+    const slow = this.atk && this.atk.kind === 'slide' ? 0 : this.atk && this.onGround ? 0.55 : this.healT > 0 ? 0 : this.crouching ? 0.35 : 1;
     const maxS = (running ? PHYS.run : PHYS.walk) * (this.inWater ? 0.6 : 1) * slow;
     const target = ax * maxS;
     const acc = this.onGround ? (ax !== 0 ? PHYS.accG : PHYS.decG) : PHYS.accA;
     // retroceso breve tras un golpe: el impulso aleja a Lía de lo que la dañó
     this.hurtT = Math.max(0, (this.hurtT || 0) - dt);
     if (this.hurtT > 0) this.vx = approach(this.vx, 0, 220 * dt);
+    else if (this.atk && this.atk.kind === 'slide') this.vx = approach(this.vx, this.atk.face * 70, 420 * dt); // la barrida se frena poco a poco
     else this.vx = approach(this.vx, target, acc * dt);
     if (ax !== 0 && !this.atk && this.hurtT <= 0) this.face = ax > 0 ? 1 : -1;
     // viento
@@ -935,6 +940,14 @@ class Player {
     // caer del mapa
     if (this.y > lv.ph + 40) lv.fellOut();
     return this.post(dt);
+  }
+  // cambia la altura de la caja sin mover los pies; no se levanta si hay techo encima
+  setCrouch(on) {
+    if (on && !this.crouching) { this.crouching = true; this.y += 7; this.h = 13; }
+    else if (!on && this.crouching) {
+      if (this.tileRectSolid(this.x, this.y - 7, this.w, 20)) return; // techo bajo: sigue agachada
+      this.crouching = false; this.y -= 7; this.h = 20;
+    }
   }
   standingOnOneWay() {
     const ty = Math.floor((this.y + this.h + 1) / TILE);
@@ -1014,7 +1027,7 @@ class Player {
   post(dt) {
     // animación
     if (this.animT > 0 && ['interact', 'hurt', 'ability', 'program', 'celebrate', 'surprise'].includes(this.anim)) { }
-    else if (this.atk && !this.climbing) this.anim = this.atk.kind === 'up' ? 'slashUp' : this.atk.kind === 'down' ? 'slashDown' : 'slash';
+    else if (this.atk && !this.climbing) this.anim = this.atk.kind === 'up' ? 'slashUp' : this.atk.kind === 'down' ? 'slashDown' : this.atk.kind === 'slide' ? 'slide' : this.atk.kind === 'hook' ? 'hook' : 'slash';
     else if (this.chargeT > 0.15 && !this.climbing && !this.inWater && this.onGround) this.anim = 'charge';
     else if (this.healT > 0.05) this.anim = 'ability';
     else if (this.celebrateT > 0) { this.celebrateT -= dt; this.anim = 'celebrate'; }
@@ -1022,6 +1035,7 @@ class Player {
     else if (this.inWater) this.anim = 'swim';
     else if (this.gliding) this.anim = 'glide';
     else if (!this.onGround) this.anim = this.vy < 0 ? 'jump' : 'fall';
+    else if (this.crouching) this.anim = Math.abs(this.vx) > 8 ? 'crawl' : 'crouch';
     else if (this.landT > 0) this.anim = 'land';
     else if (Math.abs(this.vx) > 100) this.anim = 'run';
     else if (Math.abs(this.vx) > 8) this.anim = 'walk';
@@ -1041,10 +1055,11 @@ class Player {
   draw(g, cx, cy) {
     if (this.inv > 0 && Math.floor(this.inv * 15) % 2 === 0) return;
     const A = Spr.lia[this.anim] || Spr.lia.idle;
-    const fps = { walk: 11, run: 14, climb: 6, swim: 4, interact: 8, program: 5, celebrate: 4 }[this.anim] || 8;
+    const fps = { walk: 11, run: 14, climb: 6, swim: 4, interact: 8, program: 5, celebrate: 4, crouch: 1.5, crawl: 6, slide: 12 }[this.anim] || 8;
     const t = this.animClock || 0;
     let f;
-    if (this.atk && Spr.lia[this.anim] && this.anim.startsWith('slash')) {
+    if (this.atk && this.anim === 'hook') f = this.atk.t < 0.05 ? 0 : this.atk.t < 0.2 ? 1 : 2;
+    else if (this.atk && Spr.lia[this.anim] && this.anim.startsWith('slash')) {
       // fotograma según el avance del tajo: preparación, golpe, seguimiento
       const k = this.atk.t / this.atk.def.dur;
       f = Math.min(A.length - 1, k < 0.12 ? 0 : k < 0.55 ? 1 : 2);
@@ -1054,10 +1069,13 @@ class Player {
       f = (this.blinkT < 0 ? 2 : 0) + breath;
     } else f = Math.floor(t * fps) % A.length;
     // en el torbellino Lía gira (alterna de lado muy rápido)
-    const spinFlip = this.atk && this.atk.kind === 'spin' && Math.floor(this.atk.t / 0.07) % 2 === 1;
-    const fr = (this.face > 0) !== spinFlip ? A[f].r : A[f].l;
+    const spinFlip = !!(this.atk && this.atk.kind === 'spin' && Math.floor(this.atk.t / 0.07) % 2 === 1); // !! : sin ataque no debe valer null
+    const right = (this.face > 0) !== spinFlip, F = A[f] || A[0];
+    const fr = right ? F.r : F.l, hd = right ? F.rh : F.lh;
     const dx = Math.round(this.x + this.w / 2 - fr.width / 2 - cx), dy = Math.round(this.y + this.h - fr.height + 1 - cy);
-    g.drawImage(fr, dx, dy);
+    // versión a doble resolución (detalle de medio píxel), del mismo tamaño en pantalla
+    if (hd) g.drawImage(hd, dx, dy, fr.width, fr.height); else g.drawImage(fr, dx, dy);
+    this.lastFrame = fr;
     this.drawSaber(g, cx, cy);
     if (this.shieldOn || this.shieldArmed) {
       const r = 15, sx = this.cx - cx, sy = this.y + 10 - cy;
