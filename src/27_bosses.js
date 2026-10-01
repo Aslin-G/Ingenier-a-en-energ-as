@@ -3,22 +3,28 @@
 //  Cada isla termina con un guardián corrompido por el apagón. Cada uno
 //  EJECUTA UN ALGORITMO del concepto de su isla: con la Lente Debug se lee
 //  su programa (línea actual resaltada) y se pueden predecir sus ataques.
-//  A mitad de combate reescribe su código: un «parche» (pregunta rápida)
-//  lo ralentiza. Al vencerlo se depura, se vuelve amistoso y deja un
-//  fragmento de célula (3 fragmentos = +1 célula máxima).
+//  Tienen el TRIPLE de vida y tres fases: a 2/3 reescribe su código (un
+//  «parche», pregunta rápida, lo ralentiza) y a 1/3 entra en FURIA (un
+//  segundo parche: predecir el resultado de un programa). Si un parche
+//  falla, el jefe lanza su ERROR CRÍTICO: un ataque especial con aviso
+//  que puede costar una célula (y después queda sobrecalentado).
+//  Al vencerlo se depura, se vuelve amistoso, deja un fragmento de
+//  célula (3 fragmentos = +1 célula máxima) y enseña un poder nuevo.
 // =====================================================================
 const ARENA_FLOOR = 15 * TILE;           // parte superior del suelo de la arena
 const ARENA_L = TILE, ARENA_R = 29 * TILE; // paredes interiores
 const BOSSES = {};
+// vida: el triple de la base (el doble con la ayuda de combate)
+const bossHpMul = () => G.save.settings.assist ? 2 : 3;
 
 class RegionBoss extends Entity {
   constructor(lv, x, y, cfg) {
     const D = BOSSES[cfg.key];
     super(lv, x, y, D.w, D.h);
     this.D = D; this.key = cfg.key; this.id = 'rboss'; lv.rboss = this;
-    this.maxHp = this.hp = D.hp; this.shownHp = this.hp;
+    this.maxHp = this.hp = D.hp * bossHpMul(); this.shownHp = this.hp;
     this.home = { x, y: D.fly ? D.homeY : ARENA_FLOOR - D.h };
-    this.patched = false; this.parts = [];
+    this.patched = false; this.patched2 = false; this.parts = [];
     this.resetState();
     this.state = 'wait'; this.hostile = false;
   }
@@ -26,16 +32,21 @@ class RegionBoss extends Entity {
     this.x = this.home.x; this.y = this.home.y; this.vx = 0; this.vy = 0; this.face = -1;
     this.phase = 1; this.line = -1; this.gen = null; this.vars = {}; this.expr = 'n';
     this.flashT = 0; this.hurtCD = 0; this.stunned = false; this.tele = null; this.glitchT = 0;
-    this.hp = this.maxHp; this.showBar = false;
+    // fase 1 → 2 (a 2/3 de vida) → 3 FURIA (a 1/3); ataque especial pendiente tras un parche fallido
+    this.stage = 1; this.cycles = 0; this.special = null; this.pendingSpecial = false; this.justSpecial = false;
+    this.maxHp = this.D.hp * bossHpMul(); this.hp = this.maxHp; this.shownHp = this.hp; this.showBar = false;
     if (this.D.init) this.D.init(this);
   }
   get cx() { return this.x + this.w / 2; }
   get cy() { return this.y + this.h / 2; }
   get p() { return this.lv.player; }
   begin() { this.state = 'fight'; this.hostile = true; this.showBar = true; this.gen = null; }
-  // ritmo: la fase 2 acelera (menos si se aplicó el parche); la ayuda de combate ralentiza
+  // ritmo: la fase 2 acelera (menos si se aplicó el parche), la FURIA un poco más
+  // (nada si el parche final salió perfecto); la ayuda de combate ralentiza
   tempo() {
     let k = this.phase === 2 ? (this.patched === true ? 1.0 : this.patched === 'partial' ? 1.1 : 1.2) : 1;
+    if (this.stage === 3) k *= this.patched2 === true ? 1.0 : this.patched2 === 'partial' ? 1.06 : 1.12;
+    if (this.special) k = 1; // el ERROR CRÍTICO tiene su propio ritmo, siempre con aviso
     if (G.save.settings.assist) k *= 0.8;
     if (G.save.settings.noTimer) k *= 0.9;
     return k;
@@ -44,11 +55,17 @@ class RegionBoss extends Entity {
     super.update(dt);
     this.flashT = Math.max(0, this.flashT - dt); this.hurtCD = Math.max(0, this.hurtCD - dt); this.glitchT = Math.max(0, this.glitchT - dt);
     this.shownHp = approach(this.shownHp, this.hp, dt * 6);
+    if (this.special) this.special.t += dt;
     if (this.D.idle) this.D.idle(this, dt);
     const lv = this.lv;
     if (this.state !== 'fight' || (Cut.active && !Cut.free) || lv.frozen) return;
     const sdt = dt * this.tempo();
-    if (!this.gen) this.gen = this.D.ai(this);
+    if (!this.gen) {
+      // en FURIA lanza su ERROR CRÍTICO cada 2 ciclos de su programa (cada 3 con el parche final)
+      const rage = this.stage === 3 && this.cycles > 0 && this.cycles % (this.patched2 === true ? 3 : 2) === 0 && !this.justSpecial;
+      if (this.pendingSpecial || rage) { this.pendingSpecial = false; this.justSpecial = true; this.gen = bossSpecial(this); }
+      else { this.justSpecial = false; this.cycles++; this.gen = this.D.ai(this); }
+    }
     const r = this.gen.next(sdt);
     if (r.done) this.gen = null;
     if (this.D.tick) this.D.tick(this, sdt);
@@ -89,21 +106,22 @@ class RegionBoss extends Entity {
     hitstop(this.lv, 0.06);
     if (this.D.onHurt) this.D.onHurt(this, h);
     this.taunt('hurt');
-    if (this.phase === 1 && this.hp <= this.maxHp / 2) { this.hp = Math.max(1, this.hp); this.phaseShift(); }
+    if (this.stage === 1 && this.hp <= this.maxHp * 2 / 3) { this.hp = Math.max(this.hp, Math.floor(this.maxHp / 3) + 1); this.phaseShift(2); }
+    else if (this.stage === 2 && this.hp <= this.maxHp / 3) { this.hp = Math.max(1, this.hp); this.phaseShift(3); }
     else if (this.hp <= 0) this.defeat();
     return true;
   }
   clearSpawns() {
     for (const e of this.lv.entities) if (e.bossSpawn && !e.dead) { e.dead = true; if (e.x != null) Particles.burst(e.x + (e.w || 4) / 2, e.y + (e.h || 4) / 2, 4, { color: PAL.white, min: 10, max: 40, lmax: 0.3 }); }
   }
-  phaseShift() {
-    this.state = 'shift'; this.hostile = false; this.gen = null; this.stunned = false; this.tele = null;
+  phaseShift(stage = 2) {
+    this.state = 'shift'; this.hostile = false; this.gen = null; this.stunned = false; this.tele = null; this.special = null;
     this.clearSpawns();
     if (this.D.onShift) this.D.onShift(this);
-    const b = this; Cut.run(() => bossPhaseScene(b));
+    const b = this; Cut.run(() => stage === 3 ? bossRageScene(b) : bossPhaseScene(b));
   }
   defeat() {
-    this.state = 'dying'; this.hostile = false; this.gen = null; this.stunned = false; this.tele = null; this.showBar = false;
+    this.state = 'dying'; this.hostile = false; this.gen = null; this.stunned = false; this.tele = null; this.showBar = false; this.special = null;
     this.clearSpawns(); this.dieT = 0;
     const b = this; Cut.run(() => bossDefeatScene(b));
   }
@@ -119,7 +137,7 @@ class RegionBoss extends Entity {
       x += randi(-2, 2); if (Math.random() < 0.4) return;
     }
     if (this.glitchT > 0) x += Math.random() < 0.5 ? randi(-3, 3) : 0;
-    this.D.draw(this, g, x, y);
+    BossFX.draw(this, g, x, y, cx, cy);
     if (this.glitchT > 0 && Math.random() < 0.5) rect(g, x, y + randi(0, this.h), this.w, 1, PAL.pink);
     if (this.stunned) for (let i = 0; i < 4; i++) { const a = this.t * 6 + i * 1.57; px(g, x + this.w / 2 + Math.cos(a) * 12, y - 4 + Math.sin(a) * 3, PAL.sun); }
     if (this.tele) {
@@ -131,6 +149,103 @@ class RegionBoss extends Entity {
   light() { return { x: this.cx, y: this.cy, r: 80, c: this.D.color, a: 0.8 }; }
   lensInfo() { return null; }
 }
+
+// ---------- Acabado HD de los jefes ----------
+// El jefe se dibuja en un lienzo propio a resolución de pantalla (2×) y se le
+// añade detalle de medio píxel: una línea de brillo justo bajo el contorno
+// superior e izquierdo, sombra en el borde inferior y derecho, sombreado por
+// bandas (volumen), un aura de color según la fase y una sombra en el suelo.
+const BossFX = {
+  c: null, s: null, d: null, e: null, off: false, lite: false, cost: 0, n: 0,
+  canvases(w, h) {
+    if (this.c && this.c.width >= w && this.c.height >= h) return;
+    const cw = Math.max(w, this.c ? this.c.width : 0), ch = Math.max(h, this.c ? this.c.height : 0);
+    this.c = makeCanvas(cw, ch); this.s = makeCanvas(cw, ch); this.d = makeCanvas(cw, ch); this.e = makeCanvas(cw, ch);
+  },
+  // zona que ocupa el dibujo del jefe (cuerpo + partes activas + lo que declare el jefe)
+  area(b) {
+    const r = [b.x, b.y, b.x + b.w, b.y + b.h];
+    const add = q => { r[0] = Math.min(r[0], q.x); r[1] = Math.min(r[1], q.y); r[2] = Math.max(r[2], q.x + q.w); r[3] = Math.max(r[3], q.y + q.h); };
+    if (b.D.fxArea) b.D.fxArea(b, add); else for (const q of b.parts || []) if (!q.gone) add(q);
+    return r;
+  },
+  // línea de 1 píxel de pantalla a «profundidad» 3 del borde (justo dentro del contorno):
+  // silueta desplazada 2 menos silueta desplazada 3; 'source-atop' la recorta al jefe
+  edge(src, w, h, dx, dy, a, B) {
+    const E = this.e.g;
+    E.globalCompositeOperation = 'copy'; E.drawImage(src, 0, 0, w, h, dx * 2, dy * 2, w, h);
+    E.globalCompositeOperation = 'destination-out'; E.drawImage(src, 0, 0, w, h, dx * 3, dy * 3, w, h);
+    E.globalCompositeOperation = 'source-over';
+    B.globalAlpha = a; B.globalCompositeOperation = 'source-atop'; B.drawImage(this.e, 0, 0, w, h, 0, 0, w, h);
+    B.globalAlpha = 1; B.globalCompositeOperation = 'source-over';
+  },
+  draw(b, g, x, y, cx, cy) {
+    const D = b.D;
+    // sombra en el suelo (más pequeña cuanto más alto vuela)
+    if (b.state !== 'dying') {
+      const hgt = ARENA_FLOOR - (b.y + b.h), k = clamp(1 - hgt / 200, 0.3, 1);
+      groundShadow(g, x + b.w / 2, ARENA_FLOOR - cy - 1, b.w * 0.9 * k, 0.32 * k);
+    }
+    if (this.off) { D.draw(b, g, x, y); if (D.drawHD) D.drawHD(b, g, x, y); return; }
+    const t0 = performance.now();
+    const A = this.area(b), m = 10;
+    const x0 = Math.floor(Math.max(A[0] - cx - m, -4)), y0 = Math.floor(Math.max(A[1] - cy - m, -4));
+    const x1 = Math.ceil(Math.min(A[2] - cx + m, W + 4)), y1 = Math.ceil(Math.min(A[3] - cy + m, H + 4));
+    if (x1 <= x0 || y1 <= y0) return;
+    const w = (x1 - x0) * RES, h = (y1 - y0) * RES;
+    this.canvases(w, h);
+    const B = this.c.g;
+    B.setTransform(1, 0, 0, 1, 0, 0); B.globalAlpha = 1; B.globalCompositeOperation = 'source-over'; B.clearRect(0, 0, w, h);
+    B.setTransform(RES, 0, 0, RES, -x0 * RES, -y0 * RES);
+    D.draw(b, B, x, y);
+    B.globalAlpha = 1;
+    if (D.drawHD) D.drawHD(b, B, x, y, true); // detalle a medio píxel (27_bosses_hd.js)
+    B.setTransform(1, 0, 0, 1, 0, 0); B.globalAlpha = 1; B.globalCompositeOperation = 'source-over';
+    const st = b.stage || 1, rage = st === 3 || !!b.special, aura = (st > 1 || b.special) && b.state !== 'dying' && !b.friendly;
+    const full = !this.lite && b.flashT <= 0;
+    if (full || aura) {
+      // siluetas clara y oscura
+      const S = this.s.g;
+      S.globalCompositeOperation = 'copy'; S.drawImage(this.c, 0, 0, w, h, 0, 0, w, h);
+      S.globalCompositeOperation = 'source-in'; S.fillStyle = '#FFFFFF'; S.fillRect(0, 0, w, h); S.globalCompositeOperation = 'source-over';
+    }
+    if (full) {
+      const Dk = this.d.g;
+      Dk.globalCompositeOperation = 'copy'; Dk.drawImage(this.s, 0, 0, w, h, 0, 0, w, h);
+      Dk.globalCompositeOperation = 'source-in'; Dk.fillStyle = '#0A0E1C'; Dk.fillRect(0, 0, w, h); Dk.globalCompositeOperation = 'source-over';
+      // volumen: bandas de luz arriba y de sombra abajo (solo sobre el cuerpo)
+      const bx = (x - x0) * RES, by = (y - y0) * RES, bw = b.w * RES, bh = b.h * RES;
+      B.globalCompositeOperation = 'source-atop';
+      B.fillStyle = 'rgba(255,255,255,0.07)'; B.fillRect(bx - 8, by - 8, bw + 16, Math.round(bh * 0.3) + 8);
+      B.fillStyle = 'rgba(8,10,30,0.10)'; B.fillRect(bx - 8, by + Math.round(bh * 0.62), bw + 16, bh);
+      B.fillRect(bx - 8, by + Math.round(bh * 0.8), bw + 16, bh);
+      B.globalCompositeOperation = 'source-over';
+      // brillo bajo el contorno superior e izquierdo, sombra en el inferior y derecho
+      this.edge(this.s, w, h, 0, 1, 0.5, B);
+      this.edge(this.s, w, h, 1, 0, 0.22, B);
+      this.edge(this.d, w, h, 0, -1, 0.4, B);
+      this.edge(this.d, w, h, -1, 0, 0.25, B);
+    }
+    // aura: fase 2 en su color, FURIA y ERROR CRÍTICO en rojo que late
+    if (aura) {
+      const E = this.e.g, col = rage ? (Math.floor(Time.t * 8) % 2 ? PAL.coral : '#FF2A5A') : D.color, r = rage ? 4 : 2;
+      E.globalCompositeOperation = 'copy'; E.drawImage(this.s, 0, 0, w, h, r, 0, w, h);
+      E.globalCompositeOperation = 'source-over';
+      for (const [dx, dy] of [[-r, 0], [0, r], [0, -r]]) E.drawImage(this.s, 0, 0, w, h, dx, dy, w, h);
+      E.globalCompositeOperation = 'destination-out'; E.drawImage(this.s, 0, 0, w, h, 0, 0, w, h);
+      E.globalCompositeOperation = 'source-in'; E.fillStyle = col; E.fillRect(0, 0, w, h); E.globalCompositeOperation = 'source-over';
+      g.globalAlpha = rage ? 0.55 + 0.3 * Math.sin(Time.t * 14) : 0.35 + 0.15 * Math.sin(Time.t * 5);
+      g.drawImage(this.e, 0, 0, w, h, x0, y0, x1 - x0, y1 - y0);
+      g.globalAlpha = 1;
+    }
+    g.drawImage(this.c, 0, 0, w, h, x0, y0, x1 - x0, y1 - y0);
+    // en FURIA: chispas rojas de código corrupto
+    if (rage && !b.friendly && b.state === 'fight' && Math.random() < 0.12) Particles.spawn({ x: b.x + rand(4, b.w - 4), y: b.y + rand(0, b.h * 0.5), vx: rand(-15, 15), vy: rand(-50, -20), life: 0.45, type: 'bit', color: choice([PAL.coral, '#FF2A5A']) });
+    // calidad adaptable: si el acabado cuesta demasiado en este equipo, se simplifica
+    this.cost = this.cost * 0.95 + (performance.now() - t0) * 0.05;
+    if (++this.n > 90 && this.cost > 3.5) { if (!this.lite) this.lite = true; else if (this.cost > 6) this.off = true; this.n = 0; this.cost = 0; }
+  }
+};
 
 // Partes golpeables de un jefe (cabezas, tentáculos, pilas del escudo)
 class BossPart extends Entity {
@@ -272,14 +387,20 @@ function drawBossHUD(g, lv, b) {
   const D = b.D, w = 200, x = Math.round(W / 2 - w / 2), y = 3;
   rect(g, x - 3, y - 2, w + 6, 22, 'rgba(10,14,32,0.72)');
   drawText(g, D.name, W / 2, y, D.color, { align: 'center', shadow: PAL.ink });
-  if (b.phase === 2) drawText(g, 'FASE 2', x + w, y, PAL.coral, { align: 'right', shadow: PAL.ink });
+  // fase actual: 1 → 2 (a 2/3) → FURIA (a 1/3)
+  const st = b.stage || 1, rage = st === 3, pulse = Math.floor(Time.t * 6) % 2 === 0;
+  drawText(g, 'FASE ' + st, x, y, st === 1 ? '#8C93B8' : PAL.coral, { shadow: PAL.ink });
+  if (rage) drawText(g, 'FURIA', x + w, y, pulse ? PAL.coral : PAL.sun, { align: 'right', shadow: PAL.ink });
   rect(g, x, y + 11, w, 6, '#10162B');
   const fw = Math.round((w - 2) * b.hp / b.maxHp), sw = Math.round((w - 2) * b.shownHp / b.maxHp);
   rect(g, x + 1, y + 12, sw, 4, '#FFFFFF');
-  rect(g, x + 1, y + 12, fw, 4, b.phase === 2 ? PAL.coral : D.color);
+  rect(g, x + 1, y + 12, fw, 4, rage ? (pulse ? PAL.coral : '#FF4A6A') : st === 2 ? PAL.orange : D.color);
   rect(g, x + 1, y + 12, fw, 1, 'rgba(255,255,255,0.5)');
-  rect(g, x + w / 2, y + 10, 1, 8, PAL.cream);
-  if (hasAbility('lens') && lv.lensT < 0.05 && b.state === 'fight') drawText(g, bindName('lens') + ': ver su código', W / 2, y + 20, '#8C93B8', { align: 'center', shadow: PAL.ink });
+  // marcas de 2/3 y 1/3: ahí cambia de fase
+  for (const k of [1 / 3, 2 / 3]) rect(g, x + Math.round(w * k), y + 10, 1, 8, PAL.cream);
+  if (b.special) {
+    if (pulse || b.special.t < 0.1) drawText(g, '¡ERROR CRÍTICO: ' + b.special.name + '!', W / 2, y + 22, PAL.coral, { align: 'center', outline: PAL.ink });
+  } else if (hasAbility('lens') && lv.lensT < 0.05 && b.state === 'fight') drawText(g, bindName('lens') + ': ver su código', W / 2, y + 20, '#8C93B8', { align: 'center', shadow: PAL.ink });
   // programa del jefe con la línea actual resaltada
   b.codeRect = null;
   if (lv.lensT > 0.05 && D.code) {
@@ -289,7 +410,7 @@ function drawBossHUD(g, lv, b) {
     // el panel se coloca en el lado contrario al jefe para no taparlo
     if (b.panelSide == null) b.panelSide = -1;
     if (b.cx < W * 0.42) b.panelSide = 1; else if (b.cx > W * 0.58) b.panelSide = -1;
-    const px0 = b.panelSide < 0 ? 4 : W - lw - 4, py0 = TouchPad.visible && b.panelSide < 0 ? 40 : 26;
+    const px0 = b.panelSide < 0 ? 4 : W - lw - 4, py0 = (TouchPad.visible && b.panelSide < 0 ? 40 : 26) + (b.special ? 10 : 0);
     b.codeRect = { x: px0, y: py0, w: lw, h: ph };
     g.globalAlpha = lv.lensT;
     panel(g, px0, py0, lw, ph, { border: PAL.teal, bg: 'rgba(5,30,40,0.9)' });
@@ -342,18 +463,105 @@ function* bossPhaseScene(b) {
   AudioSys.sfx('roar'); FX.shake(3, 0.6); FX.flash(D.color, 0.35); b.glitchT = 1.2; b.expr = 'angry';
   yield C.wait(0.9);
   yield* talk(D.phase2());
-  if (b.patched === false) {
-    yield C.say('pix', '¡Aprovecha mientras se reinicia! Si arreglamos su nuevo código, irá más lento. ¡Rápido, el PARCHE!', 'decidida');
+  // el parche se puede volver a intentar en cada combate hasta que salga perfecto
+  if (b.patched !== true) {
+    yield C.say('pix', '¡Aprovecha mientras se reinicia! Si arreglamos su nuevo código, irá más lento. Pero si el parche FALLA... lanzará un ERROR CRÍTICO. ¡Piensa bien!', 'decidida');
     const r = yield puzzle(Object.assign({ kind: 'quiz', label: 'PARCHE', music: 'boss', title: D.name, tags: D.tags, concepts: D.concepts, codex: D.codex }, D.patch));
     b.patched = r && r.success ? (r.fails ? 'partial' : true) : 'none';
     AudioSys.playSong('boss');
     if (b.patched === true) yield C.say('pix', '¡PARCHE APLICADO! Su nuevo programa corre más despacio.', 'feliz');
-    else if (b.patched === 'partial') yield C.say('pix', 'Parche aplicado... a medias. Irá un poco más rápido. ¡Tú puedes!', 'n');
-    else yield C.say('pix', 'Sin parche: su código va a toda velocidad. ¡Esquiva y espera su descanso!', 'sorpresa');
+    else {
+      b.pendingSpecial = true;
+      yield C.say('pix', (b.patched === 'partial' ? 'Parche aplicado a medias' : 'Sin parche') + '... ¡y el fallo lo enfureció! Va a lanzar su ERROR CRÍTICO: mira los avisos «!» y esquiva. Luego queda SOBRECALENTADO: ¡golpéalo!', 'sorpresa');
+    }
   }
-  b.phase = 2; b.state = 'fight'; b.hostile = true; b.gen = null; b.line = -1; b.expr = 'n';
+  b.stage = 2; b.phase = 2; b.state = 'fight'; b.hostile = true; b.gen = null; b.line = -1; b.expr = 'n';
   if (D.onPhase2) D.onPhase2(b);
 }
+// convierte una pregunta de cerradura (predecir el resultado) en un parche de opción múltiple
+function lockToQuiz(q) {
+  const strip = l => l.replace(/\{[a-z]?\}|\{\/\}/g, '');
+  const tr = q.trace.map(t => t[1]);
+  return {
+    question: q.title + ': ' + q.ask, code: q.code.map(strip),
+    options: q.options.map(o => ({ text: o.v, why: o.why })), answer: q.options.findIndex(o => o.ok),
+    hints: ['Ve línea a línea y anota cómo cambia cada valor.', 'Ayuda: ' + q.hint + '.'],
+    explain: '¡Exacto! Traza: ' + (tr.length > 4 ? '... ' : '') + tr.slice(-4).join(' · ')
+  };
+}
+// fase 3: FURIA. Último parche (una predicción nueva cada vez) y ataques críticos periódicos
+function* bossRageScene(b) {
+  const D = b.D;
+  AudioSys.sfx('roar'); FX.shake(4, 0.9); FX.flash(PAL.coral, 0.45); b.glitchT = 1.6; b.expr = 'angry';
+  yield C.wait(0.9);
+  yield C.say(D.speaker, choice(D.rage || ['¡¡SUFICIENTE!! ¡MODO FURIA: ACTIVADO!', '¡Error tras error... ahora SOY el error!', '¡Mi programa se reescribe solo! ¡NADIE ME DEPURA!']), 'enojo');
+  if (b.patched2 !== true) {
+    yield C.say('pix', '¡Entró en FURIA y corrompe su código! Último PARCHE: traza el programa y predice el resultado. Si aciertas, su furia no lo acelera.', 'decidida');
+    b.rageN = (b.rageN || 0) + 1;
+    const q = makeLockQuestion(b.key, hashStr('furia_' + b.key) + (G.save.bossTries[b.key] || 0) * 977 + b.rageN * 131);
+    const r = yield puzzle(Object.assign({ kind: 'quiz', label: 'PARCHE FINAL', music: 'boss', title: D.name, tags: D.tags, concepts: D.concepts, codex: D.codex, intro: 'Ejecuta el programa línea a línea (como con las cerraduras).' }, lockToQuiz(q)));
+    b.patched2 = r && r.success ? (r.fails ? 'partial' : true) : 'none';
+    AudioSys.playSong('boss');
+    if (b.patched2 === true) yield C.say('pix', '¡PARCHE FINAL! Su furia ya no lo acelera y sus errores críticos serán menos frecuentes.', 'feliz');
+    else { b.pendingSpecial = true; yield C.say('pix', '¡El parche falló! ¡ERROR CRÍTICO en camino! Esquiva los avisos y golpéalo cuando quede sobrecalentado.', 'sorpresa'); }
+  }
+  b.stage = 3; b.cycles = 0; b.justSpecial = false; b.phase = 2; b.state = 'fight'; b.hostile = true; b.gen = null; b.line = -1; b.expr = 'angry';
+}
+
+// ---------- ERROR CRÍTICO: el ataque especial de cada jefe ----------
+// Siempre avisa («!» y marcas en el suelo), siempre deja un hueco seguro y
+// termina con el jefe SOBRECALENTADO (un momento para golpearlo).
+//  columnas: rayos verticales en dos tandas (muévete al hueco)
+//  lluvia:   bloques de error que caen donde marcan los avisos
+//  rayos:    chorros horizontales: al suelo → SALTA; a media altura → QUÉDATE abajo
+//  ondas:    ondas por el suelo que hay que saltar
+function* bossSpecial(b) {
+  const D = b.D, p = b.lv.player, [name, kind] = D.special || ['ERROR CRÍTICO', 'rain'];
+  const easy = G.save.settings.assist ? 1.35 : 1, col = D.color;
+  // limpia lo que dejó a medias su programa (rodar, morder, saltar...) y se planta
+  if (D.init) D.init(b);
+  if (!D.fly) b.y = ARENA_FLOOR - b.h;
+  b.air = false; b.tele = null;
+  b.special = { name, t: 0 }; b.line = -1; b.expr = 'angry'; b.glitchT = 0.8; b.stunned = false;
+  AudioSys.sfx('roar'); FX.shake(3, 0.5); FX.flash(PAL.coral, 0.25);
+  yield* bTele(b, 1.0 * easy, PAL.coral);
+  const warn = 0.8 * easy;
+  const columns = function* () {
+    const off = clamp(p.cx, ARENA_L + 30, ARENA_R - 30);
+    for (let pass = 0; pass < 2; pass++) {
+      // columnas cada 96 px, una justo sobre Lía; la segunda tanda cubre los huecos de la primera
+      for (let x = off + pass * 48 - 96 * 5; x < ARENA_R; x += 96) if (x > ARENA_L + 8 && x < ARENA_R - 8) bColumn(b, x, { w: 26, warn, dur: 0.5, color: col });
+      yield* bWait(b, warn + 0.6);
+    }
+  };
+  const rain = function* (n) {
+    for (let i = 0; i < n; i++) {
+      const x = i % 3 === 0 ? clamp(p.cx, ARENA_L + 10, ARENA_R - 10) : rand(ARENA_L + 16, ARENA_R - 16);
+      bDrop(b, x, 'error', { r: 5, warn: 0.7 * easy, reflect: false, color: PAL.coral });
+      yield* bWait(b, 0.22 * easy);
+    }
+    yield* bWait(b, 1.1);
+  };
+  const beams = function* () {
+    // suelo (salta) → media altura (quédate abajo) → suelo
+    for (const [y, h] of [[ARENA_FLOOR - 6, 10], [ARENA_FLOOR - 42, 14], [ARENA_FLOOR - 6, 10]]) {
+      bBeam(b, y, ARENA_L, ARENA_R, { h, warn, dur: 0.4, color: col });
+      Particles.text(p.cx, p.y - 14, y > ARENA_FLOOR - 20 ? '¡SALTA!' : '¡ABAJO!', PAL.sun);
+      yield* bWait(b, warn + 0.55);
+    }
+  };
+  const waves = function* () {
+    for (let i = 0; i < 3; i++) { FX.shake(2, 0.2); AudioSys.sfx('boom'); bWave(b, b.cx - 6, -1, 150); bWave(b, b.cx + 6, 1, 150); yield* bWait(b, 1.0 * easy); }
+  };
+  if (kind === 'columns') yield* columns();
+  else if (kind === 'beams') yield* beams();
+  else if (kind === 'waves') { yield* waves(); yield* rain(4); }
+  else if (kind === 'mix') { yield* columns(); yield* rain(5); }
+  else yield* rain(8);
+  b.special = null;
+  yield* bStun(b, 1.5 * easy, '¡sobrecalentado!');
+}
+
 function* bossDefeatScene(b) {
   const D = b.D, lv = b.lv, key = b.key, rematch = G.bossRematch === key;
   AudioSys.stopSong(); AudioSys.sfx('bossDown'); FX.shake(4, 1.2); FX.flash('#FFFFFF', 0.6);
@@ -432,6 +640,7 @@ BOSSES.puerto = {
   key: 'puerto', name: 'CAPITÁN CORTOCIRCUITO', short: 'al Capitán Cortocircuito', title: 'Guardián del muelle · Secuencias', speaker: 'boss_puerto',
   color: '#FF9D42', waveColor: '#9FE8FF', w: 26, h: 30, hp: 20, bx: 22, face: [13, 12],
   tags: ['SECUENCIA'], concepts: ['sequence', 'debugging'], codex: 'secuencia',
+  special: ['LLUVIA DE CHATARRA', 'rain'], rage: ['¡TODOS A CUBIERTA! ¡Secuencia de emergencia: TODO A LA VEZ!'],
   hint: 'Siempre la misma secuencia: salta el ancla, esquiva su salto, devuelve las chispas del cañón con el sable... y golpéalo mientras RECARGA.',
   lines: { hurt: ['¡Mi casco!', '¡Arr! ¡Eso no estaba en la secuencia!', '¡Motín! ¡MOTÍN!'], hitLia: ['¡Paso completado!'], retry: ['¡ARR! ¡La secuencia vuelve a empezar, grumete!'] },
   gate: () => [['pix', '¡Lía! La vieja grúa del muelle... ¡se está moviendo sola!', 'sorpresa'], ['lia', 'Y lleva un sombrero de capitán. Eso no puede ser bueno.', 'pensando']],
@@ -529,6 +738,7 @@ BOSSES.valle = {
   key: 'valle', name: 'GRAN BUGGLIN REY', short: 'al Gran Bugglin Rey', title: 'Soberano del desorden · Depuración', speaker: 'boss_valle',
   color: '#9B76FF', waveColor: '#B6F35B', w: 32, h: 20, hp: 22, bx: 21, face: [29, 10], inset: 2,
   tags: ['DEPURACIÓN', 'SECUENCIA'], concepts: ['debugging', 'sequence'], codex: 'depuracion',
+  special: ['DECRETO DEL CAOS', 'waves'], rage: ['¡Por decreto real... EL CAOS ABSOLUTO!'],
   hint: 'Cuando rueda es un caparazón: salta por encima o súbete a una plataforma. Al chocar contra la pared queda PANZA ARRIBA: ¡golpéalo!',
   armorHint: '¡Mientras rueda es puro caparazón! Espera a que choque y quede panza arriba.',
   lines: { hurt: ['¡Lesa majestad!', '¡Mi corona!', '¡Guardias! ¡GUARDIAS!'], summon: ['¡Súbditos, a mí!', '¡Bugglins reales!'], retry: ['¡El rey nunca pierde! ...casi nunca.'] },
@@ -641,6 +851,7 @@ BOSSES.solaria = {
   key: 'solaria', name: 'DON NUBARRÓN', short: 'a Don Nubarrón', title: 'La nube más dramática · Condiciones', speaker: 'boss_solaria',
   color: '#FFD84A', w: 44, h: 26, hp: 20, fly: true, homeY: 44, bx: 12, face: [22, 13], inset: 5,
   tags: ['SI / SINO', 'SOLAR'], concepts: ['conditions', 'solar'], codex: 'condicional',
+  special: ['TORMENTA DE RAYOS', 'columns'], rage: ['¡SI estoy furioso ENTONCES tormenta! ¡Y SI NO... también!'],
   plats: [[3, 7, 12], [22, 26, 12], [12, 17, 9]],
   hint: 'SI estás debajo, rayo; SINO, granizo. Devuelve el granizo con el sable (vuelve hacia la nube) y golpéala cuando baje a recargar. Desde la plataforma alta también llegas.',
   lines: { hurt: ['¡Mi peinado!', '¡Nadie toca a una nube!', '¡Uy, eso fue un trueno interno!'], retry: ['¡Pronóstico: otra tormenta!'] },
@@ -736,6 +947,7 @@ BOSSES.aeris = {
   key: 'aeris', name: 'TORNADO LOOPLING', short: 'al Tornado Loopling', title: 'El bucle que no quería parar · Bucles', speaker: 'boss_aeris',
   color: '#7FE7FF', w: 28, h: 46, hp: 22, bx: 22, face: [14, 20], inset: 4,
   tags: ['BUCLES', 'EÓLICA'], concepts: ['loops', 'wind'], codex: 'mientras',
+  special: ['HURACÁN INFINITO', 'columns'], rage: ['¡MIENTRAS VERDADERO: girar! ¡Nunca... me... detendré!'],
   hint: 'Súbete a las plataformas cuando barre el suelo, devuelve las hojas y espera: cuando viento llegue a 0, el bucle termina y su núcleo queda al descubierto.',
   armorHint: '¡Mientras gira dentro del bucle no le haces nada! Mira la variable viento: cuando llegue a 0, el bucle termina.',
   lines: { hurt: ['¡Uy, me mareé!', '¡Eso me sacó del bucle!', '¡Otra vuelta... no, espera!'], tired: ['Uf... mareado... ¿ya terminó el bucle?'], retry: ['¡Otra vuelta! ¡OTRA VUELTA!'] },
@@ -827,6 +1039,8 @@ BOSSES.hydria = {
   key: 'hydria', name: 'HIDRA DE COMPUERTAS', short: 'a la Hidra de Compuertas', title: 'Tres cabezas, una función · Funciones', speaker: 'boss_hydria',
   color: '#59C7FF', w: 80, h: 46, hp: 20, bx: 24, face: [-10, -28], inset: 4,
   tags: ['FUNCIONES', 'HIDRO'], concepts: ['functions', 'hydro'], codex: 'funcion',
+  special: ['TRIPLE CHORRO', 'beams'], rage: ['UNO, DOS y TRES: ¡llamamos a TODAS las funciones a la vez!'],
+  fxArea: (b, add) => { for (const q of b.parts) add({ x: q.x - 4, y: q.y - 14, w: q.w + 8, h: q.h + 18 }); },
   plats: [[3, 7, 12], [11, 15, 12], [6, 10, 9]],
   hint: 'chorro(1) barre el suelo (salta o súbete), chorro(2) las plataformas bajas (quédate abajo) y chorro(3) lo alto. Cuando una cabeza muerde y se atasca, ¡golpéala!',
   armorHint: 'El cuerpo está blindado por las compuertas. ¡Golpea la cabeza que muerde y se queda atascada!',
@@ -963,6 +1177,7 @@ BOSSES.bioloop = {
   key: 'bioloop', name: 'COMPOSTOR GLOTÓN', short: 'al Compostor Glotón', title: 'Menú degustación · Listas', speaker: 'boss_bioloop',
   color: '#B6F35B', w: 36, h: 34, hp: 22, bx: 23, face: [18, 8], inset: 3,
   tags: ['LISTAS', 'BIOMASA'], concepts: ['arrays', 'biomass'], codex: 'lista',
+  special: ['INDIGESTIÓN', 'rain'], rage: ['¡Mi lista no tiene fin! ¡RECORRIDO INFINITO!'],
   hint: 'Recorre su lista en orden: hoja (lenta), piedra (salta), semilla (rebota) y lata (¡devuélvesela!). Cuando abre la boca para tragar, es vulnerable.',
   armorHint: 'Su tapa es durísima. Golpéalo cuando abra la boca para tragar... ¡o devuélvele la lata!',
   lines: { hurt: ['¡Puaj! ¡Eso no es compost!', '¡Mi tapa!', '¡Indigestión!'], eat: ['¡A COMEEER!', '¡Ñam ñam ñam!'], retry: ['¡Segundo plato!'] },
@@ -1051,6 +1266,7 @@ BOSSES.gea = {
   key: 'gea', name: 'MAGMATÓN', short: 'a Magmatón', title: 'La tierra caliente · Estados', speaker: 'boss_gea',
   color: '#FF7B4A', waveColor: '#FFD84A', w: 32, h: 38, hp: 24, bx: 22, face: [16, 7], inset: 3, dark: 0.2,
   tags: ['ESTADOS', 'GEOTERMIA'], concepts: ['states', 'geothermal'], codex: 'estados',
+  special: ['ERUPCIÓN TOTAL', 'mix'], rage: ['¡ESTADO: ERUPCIÓN! ¡Y esta vez no hay transición de salida!'],
   hint: 'Solo es vulnerable en ENFRIANDO. Si lo golpeas mientras CALIENTA, entra en FAULT y la erupción es peor. Salta las ondas y evita las rocas de lava.',
   armorHint: 'Su roca está al rojo: solo se puede golpear en el estado ENFRIANDO. ¡Mira su estado con la Lente!',
   lines: { hurt: ['¡AUCH... DE... ROCA!', '¡AÚN... NO... ME... TOCA!'], retry: ['CALENTANDO... OTRA... VEZ.'] },
@@ -1121,28 +1337,38 @@ BOSSES.gea = {
     const fr = b.friendly, t = b.t, st = b.st || 'REPOSO';
     let glow = fr ? '#FFB060' : MAGMA_COL[st] || '#8A3A2A';
     if (!fr && (st === 'CALENTANDO' || st === 'FAULT') && Math.floor(t * 12) % 2) glow = '#FFFFFF';
-    const rock = fr ? '#7A5A4A' : st === 'ENFRIANDO' ? '#5A5A6A' : '#4A3030', rockL = shade(rock, 0.25);
+    const rock = fr ? '#7A5A4A' : st === 'ENFRIANDO' ? '#5A5A6A' : '#4A3030', rockL = shade(rock, 0.25), rockD = shade(rock, -0.3);
+    // roca redondeada con tres tonos (sombra, medio y luz arriba a la izquierda)
+    const boulder = (cx, cy, rx, ry) => {
+      pellipse(g, cx, cy, rx + 1, ry + 1, OUTLINE); pellipse(g, cx, cy, rx, ry, rockD);
+      pellipse(g, cx - 1, cy - 1, rx - 1, ry - 1, rock);
+      pellipse(g, cx - Math.round(rx * 0.35), cy - Math.round(ry * 0.4), Math.max(1, Math.round(rx * 0.4)), Math.max(1, Math.round(ry * 0.35)), rockL);
+    };
     // piernas
-    rect(g, x + 5, y + 30, 8, 8, OUTLINE); rect(g, x + 19, y + 30, 8, 8, OUTLINE); rect(g, x + 6, y + 30, 6, 7, rock); rect(g, x + 20, y + 30, 6, 7, rock);
-    // torso
-    rect(g, x + 2, y + 10, 28, 22, OUTLINE); rect(g, x + 3, y + 11, 26, 20, rock); rect(g, x + 3, y + 11, 26, 2, rockL);
+    boulder(x + 9, y + 33, 4, 4); boulder(x + 23, y + 33, 4, 4);
+    // torso y hombros
+    boulder(x + 16, y + 21, 13, 11);
+    boulder(x + 5, y + 13, 4, 3); boulder(x + 27, y + 13, 4, 3);
     // grietas de lava
-    pline(g, x + 8, y + 12, x + 12, y + 20, glow); pline(g, x + 12, y + 20, x + 9, y + 28, glow); pline(g, x + 22, y + 13, x + 19, y + 22, glow); pline(g, x + 19, y + 22, x + 24, y + 29, glow);
+    pline(g, x + 8, y + 13, x + 12, y + 20, glow); pline(g, x + 12, y + 20, x + 9, y + 28, glow); pline(g, x + 22, y + 13, x + 19, y + 22, glow); pline(g, x + 19, y + 22, x + 24, y + 29, glow);
     // pantalla de estado en el pecho
     rect(g, x + 12, y + 22, 8, 6, OUTLINE); rect(g, x + 13, y + 23, 6, 4, glow);
     // puños
     const pf = st === 'ERUPCIÓN' ? -3 : 0;
-    rect(g, x - 4, y + 16 + pf, 8, 9, OUTLINE); rect(g, x - 3, y + 17 + pf, 6, 7, rock); px(g, x - 1, y + 19 + pf, glow);
-    rect(g, x + 28, y + 16 + pf, 8, 9, OUTLINE); rect(g, x + 29, y + 17 + pf, 6, 7, rock); px(g, x + 31, y + 19 + pf, glow);
-    // cabeza
-    rect(g, x + 8, y, 16, 12, OUTLINE); rect(g, x + 9, y + 1, 14, 10, rock); rect(g, x + 9, y + 1, 14, 1, rockL);
+    boulder(x, y + 20 + pf, 4, 4); boulder(x + 32, y + 20 + pf, 4, 4);
+    px(g, x + 1, y + 21 + pf, glow); px(g, x + 31, y + 21 + pf, glow);
+    // cabeza con cráter humeante
+    boulder(x + 16, y + 7, 8, 6);
+    pellipse(g, x + 16, y + 1, 3, 1, OUTLINE); rect(g, x + 14, y + 1, 5, 1, glow);
     const ex = fr ? 'happy' : b.expr;
-    if (ex === 'happy' || ex === 'dizzy') bossEyes(g, x + 11, y + 4, ex, 3, 7);
-    else { rect(g, x + 11, y + 4, 3, 3, glow); rect(g, x + 18, y + 4, 3, 3, glow); if (ex === 'angry') { rect(g, x + 10, y + 3, 4, 1, OUTLINE); rect(g, x + 18, y + 3, 4, 1, OUTLINE); } }
-    rect(g, x + 13, y + 9, 6, 1, OUTLINE);
-    if (fr) { px(g, x + 12, y - 1, '#66D66A'); px(g, x + 13, y - 2, '#66D66A'); px(g, x + 19, y - 1, PAL.pink); } // musgo y una flor
+    if (ex === 'happy' || ex === 'dizzy') bossEyes(g, x + 11, y + 5, ex, 3, 7);
+    else { rect(g, x + 11, y + 5, 3, 3, glow); rect(g, x + 18, y + 5, 3, 3, glow); if (ex === 'angry') { rect(g, x + 10, y + 4, 4, 1, OUTLINE); rect(g, x + 18, y + 4, 4, 1, OUTLINE); } }
+    rect(g, x + 13, y + 10, 6, 1, OUTLINE);
+    if (fr) { px(g, x + 12, y + 1, '#66D66A'); px(g, x + 13, y, '#66D66A'); px(g, x + 20, y + 1, PAL.pink); } // musgo y una flor
     if (!b.portrait && (st === 'ENFRIANDO' || fr) && Math.random() < 0.25) Particles.spawn({ x: (b.x || 0) + rand(4, 28), y: (b.y || 0) + 8, vy: -25, vx: rand(-6, 6), life: 0.8, type: 'fade', size: 2, color: 'rgba(255,255,255,0.6)' });
+    if (!b.portrait && !fr && Math.random() < 0.12) Particles.spawn({ x: (b.x || 0) + 16 + rand(-2, 2), y: (b.y || 0), vy: -20, vx: rand(-5, 5), life: 0.9, type: 'fade', size: 2, color: 'rgba(90,80,90,0.6)' });
   }
+
 };
 
 // =====================================================================
@@ -1156,6 +1382,8 @@ BOSSES.h2 = {
   key: 'h2', name: 'KRAKEN DE FUGAS', short: 'al Kraken de Fugas', title: 'Tuberías con opinión · Pipelines', speaker: 'boss_h2',
   color: '#9CF5D8', w: 70, h: 62, hp: 20, bx: 25, face: [36, 22], inset: 6,
   tags: ['PIPELINES', 'HIDRÓGENO'], concepts: ['sequence', 'hydrogen'], codex: 'pipeline',
+  special: ['FUGA MASIVA', 'beams'], rage: ['¡Válvulas al máximo! ¡Que fluya TODO sin control!'],
+  fxArea: (b, add) => { for (const q of b.parts) if (q.mode !== 'idle' && !(q.mode === 'up' && q.y <= -70)) add({ x: q.x - 2, y: Math.min(q.y, b.y) - 64, w: 20, h: Math.max(q.h, ARENA_FLOOR - Math.min(q.y, b.y) + 64) }); add({ x: b.x - 6, y: b.y, w: b.w + 8, h: b.h }); },
   plats: [[3, 7, 12], [10, 14, 9]],
   hint: 'Golpea los tentáculos plantados en el orden del pipeline: AGUA → ELECTRÓLISIS → TANQUE → PILA. Con el pipeline completo, su núcleo queda expuesto. Devuelve las burbujas.',
   armorHint: 'Su cabeza está protegida por la presión. ¡Completa el pipeline golpeando los tentáculos en orden!',
@@ -1284,6 +1512,8 @@ BOSSES.bateria = {
   key: 'bateria', name: 'DRENADORA SUPREMA', short: 'a la Drenadora Suprema', title: 'Reina de las pilas · Búsqueda y orden', speaker: 'boss_bateria',
   color: '#FF4FB8', w: 30, h: 28, hp: 20, fly: true, homeY: 100, bx: 14, face: [15, 12], inset: 4,
   tags: ['BÚSQUEDA', 'ORDENAMIENTO', 'ALMACENAMIENTO'], concepts: ['search', 'sorting', 'storage'], codex: 'busqueda',
+  special: ['DRENAJE TOTAL', 'columns'], rage: ['¡Drenaré hasta el último electrón!'],
+  fxArea: (b, add) => { for (const q of b.parts) if (!q.gone) add({ x: q.x - 2, y: q.y - 4, w: q.w + 4, h: q.h + 6 }); if (b.drainFx > 0 && b.lv) add(b.lv.player); },
   hint: 'Su escudo son pilas numeradas: rómpelas de MENOR a MAYOR (busca siempre el mínimo). Sin escudo baja y es vulnerable. No te quedes cerca: drena energía.',
   armorHint: 'Su escudo de pilas la protege. ¡Rompe las pilas de MENOR a MAYOR!',
   lines: { hurt: ['¡Mi corona de pilas!', '¡Qué falta de voltaje!', '¡Descarga no autorizada!'], wrong: ['¡Ese no es el mínimo, querida!', '¡Desordenado! ¡Se regenera!'], drain: ['¡Mmm, energía fresquita!', '¡Toda la carga es MÍA!'], retry: ['¡Recargada y fabulosa!'] },
@@ -1420,6 +1650,7 @@ BOSSES.prisma = {
   key: 'prisma', name: 'SOBRECARGA', short: 'a Sobrecarga', title: 'Demasiada energía · Integración', speaker: 'boss_prisma',
   color: '#C9B2FF', w: 32, h: 32, hp: 26, fly: true, homeY: 56, bx: 14, face: [16, 16], inset: 5,
   tags: ['INTEGRACIÓN', 'MICRORED'], concepts: ['microgrid', 'optimization'], codex: 'microred',
+  special: ['SOBRECARGA TOTAL', 'mix'], rage: ['¡DEMASIADA ENERGÍA! ¡NO PUEDO... CONTENERLA!'],
   hint: 'Cada modo es un ataque de otra isla: columnas de sol, viento con hojas, chorros de agua y rocas de magma. Cuando baja a EQUILIBRARSE, ¡golpéala!',
   armorHint: 'Está desbordada de energía: espera a que se EQUILIBRE (baja cerca del suelo) para golpear. Las hojas devueltas sí la alcanzan.',
   lines: { hurt: ['¡AY! ¡Eso me descargó un poco!', '¡Menos energía... qué alivio... y qué dolor!'], retry: ['¡OTRA VEZ TODO A LA VEZ!'] },
@@ -1471,12 +1702,18 @@ BOSSES.prisma = {
     const col = fr ? hsl(t * 60, 80, 72) : PRISMA_MODE_COL[b.mode] || '#C9B2FF';
     // esquirlas girando
     for (let i = 0; i < 6; i++) {
-      const a = (b.rot || 0) + i * Math.PI / 3, r = 15, sx = c0 + Math.cos(a) * r, sy = c1 + Math.sin(a) * r * 0.8;
+      const a = (b.rot || 0) + i * Math.PI / 3, r = 15, sx = Math.round(c0 + Math.cos(a) * r), sy = Math.round(c1 + Math.sin(a) * r * 0.8);
       const sc = fr ? hsl(i * 60 + t * 40, 85, 70) : i % 2 ? col : '#FFFFFF';
-      pline(g, sx, sy - 3, sx + 2, sy, sc); pline(g, sx + 2, sy, sx, sy + 3, sc); pline(g, sx, sy + 3, sx - 2, sy, sc); pline(g, sx - 2, sy, sx, sy - 3, sc);
+      // esquirla: rombo relleno con contorno oscuro
+      for (let k = 0; k <= 4; k++) { const w = 4 - k; rect(g, sx - Math.ceil(w / 2), sy - k, w + 1, 1, OUTLINE); rect(g, sx - Math.ceil(w / 2), sy + k, w + 1, 1, OUTLINE); }
+      for (let k = 0; k <= 2; k++) { const w = 2 - k; rect(g, sx - Math.ceil(w / 2), sy - k, w + 1, 1, sc); rect(g, sx - Math.ceil(w / 2), sy + k, w + 1, 1, shade(sc, -0.2)); }
     }
-    // núcleo (rombo)
-    for (let k = 0; k <= 11; k++) { const w = 11 - k; rect(g, c0 - w, c1 - k, w * 2 + 1, 1, k === 11 ? OUTLINE : col); rect(g, c0 - w, c1 + k, w * 2 + 1, 1, k === 11 ? OUTLINE : shade(col, -0.25)); }
+    // núcleo (rombo) con contorno completo y mitad inferior en sombra
+    for (let k = 0; k <= 11; k++) {
+      const w = 11 - k;
+      rect(g, c0 - w, c1 - k, w * 2 + 1, 1, k === 11 ? OUTLINE : col); rect(g, c0 - w, c1 + k, w * 2 + 1, 1, k === 11 ? OUTLINE : shade(col, -0.42));
+      if (w > 0) for (const sy of [c1 - k, c1 + k]) { px(g, c0 - w, sy, OUTLINE); px(g, c0 + w, sy, OUTLINE); }
+    }
     rect(g, c0 - 9, c1 - 1, 18, 1, shade(col, 0.4));
     // cara ansiosa
     const ex = fr ? 'happy' : b.expr === 'n' ? 'wide' : b.expr;

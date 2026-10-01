@@ -443,6 +443,15 @@ class Shot extends Entity {
         rect(g, X - 1, Y - 6, 2, 10, '#C9D2F0'); rect(g, X - 4, Y + 2, 8, 2, '#C9D2F0'); px(g, X - 5, Y + 1, '#C9D2F0'); px(g, X + 4, Y + 1, '#C9D2F0'); pring(g, X, Y - 7, 2, '#C9D2F0'); break;
       }
       case 'wave': { const h = this.h; for (let i = 0; i < this.w; i++) { const hh = Math.round(h * (0.5 + 0.5 * Math.sin(i / this.w * Math.PI))); rect(g, x + i, y + h - hh, 1, hh, col); } rect(g, x, y + h - 1, this.w, 1, '#FFFFFF'); break; }
+      case 'error': {
+        // bloque de ERROR CRÍTICO: cubo rojo con una ✗ que parpadea con interferencias
+        const s = Math.max(4, Math.round(r)), j = Math.floor(this.t * 16) % 4 === 0 ? 1 : 0;
+        rect(g, X - s - 1 + j, Y - s - 1, s * 2 + 2, s * 2 + 2, '#2A0A1A');
+        rect(g, X - s + j, Y - s, s * 2, s * 2, '#FF3B6B'); rect(g, X - s + j, Y - s, s * 2, 1, '#FF9DB5'); rect(g, X - s + j, Y + s - 1, s * 2, 1, '#B0204A');
+        pline(g, X - 2 + j, Y - 2, X + 2 + j, Y + 2, '#FFFFFF'); pline(g, X - 2 + j, Y + 2, X + 2 + j, Y - 2, '#FFFFFF');
+        if (j) rect(g, X - s - 3, Y + randi(-s, s - 1), s * 2 + 6, 1, '#7FE7FF');
+        break;
+      }
       case 'spark': px(g, X, Y, '#FFFFFF'); if (Math.floor(this.t * 20) % 2) { px(g, X - 2, Y, col); px(g, X + 2, Y, col); px(g, X, Y - 2, col); px(g, X, Y + 2, col); } pring(g, X, Y, r - 1, col); break;
       default: pcircle(g, X, Y, r, col); pcircle(g, X, Y, Math.max(0, r - 2), '#FFFFFF');
     }

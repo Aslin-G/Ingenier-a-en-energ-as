@@ -108,28 +108,84 @@ const { chromium, gameFile, outDir } = require('./_pw');
         L.push('  alcance: ' + (bo.hp < hp0 ? 'OK (' + hp0 + '→' + bo.hp + ')' : 'SIN DAÑO en ' + JSON.stringify({ x: Math.round(r.x), y: Math.round(r.y), w: r.w, h: r.h })));
       }
       await sleep(10);
-      // cambio de fase (el parche se resuelve solo en la prueba)
+      // vida triple (doble con la ayuda de combate)
+      L.push('  vida: ' + (bo.maxHp === bo.D.hp * (LL.G.save.settings.assist ? 2 : 3) ? 'TRIPLE OK' : 'MAL ' + bo.maxHp + ' vs base ' + bo.D.hp));
+      // fase 2 a 2/3 de vida (el parche se resuelve solo en la prueba)
       LL.G.autoDialog = true;
-      bo.damage({ dmg: Math.ceil(bo.hp - bo.maxHp / 2) + 1, dir: 1 });
+      bo.hurtCD = 0; bo.damage({ dmg: Math.ceil(bo.hp - bo.maxHp * 2 / 3) + 1, dir: 1 });
       t0 = performance.now();
-      while (performance.now() - t0 < 8000 && !(bo.phase === 2 && bo.state === 'fight')) await sleep(50);
-      L.push('  fase 2: ' + (bo.phase === 2 && bo.state === 'fight' ? 'OK' : 'NO') + ' · parche ' + bo.patched);
+      while (performance.now() - t0 < 8000 && !(bo.stage === 2 && bo.state === 'fight')) await sleep(50);
+      L.push('  fase 2: ' + (bo.phase === 2 && bo.stage === 2 && bo.state === 'fight' && bo.hp > bo.maxHp / 3 ? 'OK' : 'NO') + ' · parche ' + bo.patched);
       LL.G.autoDialog = false;
       lines.clear(); t0 = performance.now();
       while (performance.now() - t0 < 9000) { lines.add(bo.line); await sleep(60); }
       L.push('  fase 2: líneas ejecutadas ' + [...lines].filter(x => x >= 0).sort().join(','));
+      // fase 3 (FURIA) a 1/3 de vida, con el parche final
+      LL.G.autoDialog = true;
+      bo.hurtCD = 0; bo.damage({ dmg: Math.ceil(bo.hp - bo.maxHp / 3) + 1, dir: 1 });
+      t0 = performance.now();
+      while (performance.now() - t0 < 8000 && !(bo.stage === 3 && bo.state === 'fight')) await sleep(50);
+      L.push('  fase 3: ' + (bo.stage === 3 && bo.state === 'fight' && bo.hp > 0 ? 'OK' : 'NO') + ' · parche final ' + bo.patched2);
+      LL.G.autoDialog = false;
+      // ERROR CRÍTICO: avisa, lanza peligros y termina sobrecalentado
+      const before = new Set(lv.entities);
+      bo.pendingSpecial = true; bo.gen = null; bo.stunned = false;
+      t0 = performance.now(); let name = null, spawned = 0, stunned = false;
+      while (performance.now() - t0 < 14000) {
+        if (bo.special) name = bo.special.name;
+        spawned = Math.max(spawned, lv.entities.filter(e => e.bossSpawn && !before.has(e)).length);
+        if (name && !bo.special && bo.stunned) { stunned = true; break; }
+        await sleep(40);
+      }
+      L.push('  especial: ' + (name && spawned > 0 && stunned ? 'OK' : 'NO') + ' · «' + name + '» · ' + spawned + ' peligros · sobrecalentado=' + stunned);
       // derrota
       LL.G.autoDialog = true;
       const shards = LL.G.save.cellShards || 0;
-      while (bo.hp > 0 && bo.state === 'fight') { bo.hurtCD = 0; bo.damage({ dmg: 3, dir: 1 }); await sleep(20); }
+      t0 = performance.now();
+      while (performance.now() - t0 < 15000 && (bo.state === 'fight' || bo.state === 'shift')) { if (bo.state === 'fight') { bo.hurtCD = 0; bo.damage({ dmg: 3, dir: 1 }); } await sleep(20); }
       t0 = performance.now();
       while (performance.now() - t0 < 12000 && !(LL.Scenes.top() && LL.Scenes.top().constructor.name === 'MapScene')) await sleep(80);
       L.push('  derrota: flag=' + LL.flag('boss_' + k) + ' · fragmentos ' + shards + '→' + (LL.G.save.cellShards || 0) + ' · atlas=' + !!LL.G.save.codex['b_' + k] + ' · escena ' + (LL.Scenes.top() ? LL.Scenes.top().constructor.name : '-'));
       return L;
     }, k);
     console.log(r.join('\n'));
-    const ok = r.some(l => l.includes('fase 2: OK')) && r.some(l => l.includes('alcance: OK')) && r.some(l => l.includes('flag=true') && l.includes('MapScene'));
+    const ok = ['vida: TRIPLE OK', 'fase 2: OK', 'fase 3: OK', 'especial: OK', 'alcance: OK'].every(w => r.some(l => l.includes(w))) && r.some(l => l.includes('flag=true') && l.includes('MapScene'));
     console.log('  ' + (ok ? 'OK' : 'FALLO') + (errs.length ? '\n   ' + errs.join('\n   ') : ''));
+    if (!ok || errs.length) fails++;
+    await p.close();
+  }
+
+  // ---------- 2b. Parche fallido → ERROR CRÍTICO (puede costar una célula) ----------
+  {
+    const { p, errs } = await newPage('');
+    const r = await p.evaluate(async () => {
+      const sleep = ms => new Promise(r => setTimeout(r, ms));
+      const L = [];
+      LL.G.autoDialog = true; LL.G.noDamage = true; LL.G.save.started = true; LL.setFlag('prologueDone'); LL.setFlag('saberIntro');
+      LL.Game.startLevel('jefe_puerto');
+      let t0 = performance.now();
+      while (performance.now() - t0 < 8000 && !(LL.G.run.level && LL.G.run.level.rboss && LL.G.run.level.rboss.state === 'fight')) await sleep(50);
+      const lv = LL.G.run.level, bo = lv.rboss, pl = lv.player;
+      bo.hurtCD = 0; bo.damage({ dmg: Math.ceil(bo.hp - bo.maxHp * 2 / 3) + 1, dir: 1 });
+      // el parche: primero una respuesta equivocada y luego la buena (= parche a medias)
+      t0 = performance.now(); let quiz = null;
+      while (performance.now() - t0 < 8000 && !(quiz = LL.Scenes.stack.find(s => s.constructor.name === 'QuizScene'))) await sleep(50);
+      if (!quiz) { L.push('parche: NO apareció'); return L; }
+      const wrong = quiz.cfg.options.findIndex((o, i) => i !== quiz.cfg.answer);
+      quiz.pick(wrong); await sleep(100); quiz.pick(quiz.cfg.answer); await sleep(100); quiz.exit(quiz.result);
+      t0 = performance.now();
+      while (performance.now() - t0 < 8000 && !(bo.stage === 2 && bo.state === 'fight')) await sleep(50);
+      L.push('parche: ' + bo.patched + ' · ataque pendiente=' + bo.pendingSpecial);
+      // Lía se queda quieta: la lluvia de errores apunta a ella
+      LL.G.autoDialog = false; LL.G.noDamage = false; pl.inv = 0; pl.cells = pl.maxCells; const c0 = pl.cells;
+      t0 = performance.now(); let saw = false;
+      while (performance.now() - t0 < 12000) { if (bo.special) saw = true; if (saw && !bo.special) break; pl.vx = 0; await sleep(40); }
+      L.push('especial tras parche fallido: ' + (saw ? 'SÍ' : 'NO') + ' · células ' + c0 + '→' + pl.cells);
+      return L;
+    });
+    console.log(r.join('\n'));
+    const ok = r.some(l => l.includes('parche: partial') && l.includes('pendiente=')) && r.some(l => /especial tras parche fallido: SÍ · células (\d)→(\d)/.test(l) && +RegExp.$2 < +RegExp.$1);
+    console.log('parche fallido:', ok ? 'OK' : 'FALLO', errs.length ? '\n   ' + errs.join('\n   ') : '');
     if (!ok || errs.length) fails++;
     await p.close();
   }
