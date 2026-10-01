@@ -40,7 +40,7 @@ const THEMES = {
       { p: 0.62, fn: 'trees', o: { base: 240, color: '#3A9A55', color2: '#66D66A', type: 'round', count: 6 } }
     ],
     live: ['clouds', 'birds', 'butterflies'],
-    ground: { fill: '#A0643C', fill2: '#8B5A3C', top: 'grass', topC: '#66D66A', topHi: '#B6F35B', edge: '#4A2A18', deco: ['flower', 'flower', 'grass', 'rock', 'mushroom'] },
+    ground: { fill: '#A0643C', fill2: '#8B5A3C', top: 'grass', topC: '#66D66A', topHi: '#B6F35B', edge: '#4A2A18', deco: ['flower', 'flower', 'grass', 'rock', 'mushroom', 'bush', 'fence', 'haybale'] },
     plat: 'wood', water: ['#2A8AD8', '#9FE8FF'], hazard: 'thorn', ambient: 'wind', music: 'valle', particles: 'pollen', dark: 0.35, tint: '#1B2A50'
   },
   solaria: {
@@ -53,7 +53,7 @@ const THEMES = {
       { p: 0.6, fn: 'trees', o: { base: 242, color: '#30B090', color2: '#66D66A', type: 'palm', count: 6 } }
     ],
     live: ['sunrays', 'birds', 'clouds'],
-    ground: { fill: '#F0D090', fill2: '#E0B870', top: 'tiles', topC: '#30E1C5', topHi: '#9CF5D8', edge: '#8A5A2A', deco: ['flower', 'sunflower', 'panel', 'lamp'] },
+    ground: { fill: '#F0D090', fill2: '#E0B870', top: 'tiles', topC: '#30E1C5', topHi: '#9CF5D8', edge: '#8A5A2A', deco: ['flower', 'sunflower', 'panel', 'lamp', 'cactus'] },
     plat: 'glass', water: ['#30B8D8', '#BFF8FF'], hazard: 'heat', ambient: 'wind', music: 'solaria', particles: 'glints', dark: 0.3, tint: '#3A2A10'
   },
   aeris: {
@@ -66,7 +66,7 @@ const THEMES = {
       { p: 0.4, fn: 'clouds', o: { y: 240, color: '#FFF3FF', shadow: '#E0D8FF', count: 8 } }
     ],
     live: ['kites', 'windlines', 'birds', 'clouds'],
-    ground: { fill: '#9A7AC8', fill2: '#8A6AB8', top: 'grass', topC: '#9CF5D8', topHi: '#D6FFF0', edge: '#3A2A6A', deco: ['flower', 'grass', 'kite'], roots: true },
+    ground: { fill: '#9A7AC8', fill2: '#8A6AB8', top: 'grass', topC: '#9CF5D8', topHi: '#D6FFF0', edge: '#3A2A6A', deco: ['flower', 'grass', 'pinwheel', 'bush'], roots: true },
     plat: 'cloud', water: ['#59C7FF', '#D6F6FF'], hazard: 'spark', ambient: 'wind', music: 'aeris', particles: 'wind', dark: 0.25, tint: '#20205A'
   },
   hydria: {
@@ -79,7 +79,7 @@ const THEMES = {
       { p: 0.6, fn: 'trees', o: { base: 244, color: '#2A9A8A', color2: '#66D6A0', type: 'round', count: 7 } }
     ],
     live: ['waterfall', 'bubbles', 'fish', 'clouds'],
-    ground: { fill: '#EDE6F5', fill2: '#D8CFE8', top: 'moss', topC: '#66D6A0', topHi: '#B6F3C8', edge: '#6A5A8A', deco: ['coral', 'shell', 'grass', 'lily'] },
+    ground: { fill: '#EDE6F5', fill2: '#D8CFE8', top: 'moss', topC: '#66D6A0', topHi: '#B6F3C8', edge: '#6A5A8A', deco: ['coral', 'shell', 'grass', 'lily', 'reed', 'rock'] },
     plat: 'stone', water: ['#1FA8C8', '#9CF5F0'], hazard: 'urchin', ambient: 'water', music: 'hydria', particles: 'mist', dark: 0.3, tint: '#0A2A40'
   },
   bioloop: {
@@ -92,7 +92,7 @@ const THEMES = {
       { p: 0.62, fn: 'ferns', o: { base: 250, color: '#1F6A40', color2: '#3FA85A' } }
     ],
     live: ['fireflies', 'leaves', 'butterflies'],
-    ground: { fill: '#5E3A26', fill2: '#4A2A1A', top: 'leafy', topC: '#3FA85A', topHi: '#B6F35B', edge: '#2A1810', deco: ['mushroom', 'fern', 'flower', 'grass'] },
+    ground: { fill: '#5E3A26', fill2: '#4A2A1A', top: 'leafy', topC: '#3FA85A', topHi: '#B6F35B', edge: '#2A1810', deco: ['mushroom', 'fern', 'flower', 'grass', 'log', 'bush'] },
     plat: 'leaf', water: ['#2A7A5A', '#9CF5D8'], hazard: 'thorn', ambient: 'forest', music: 'bioloop', particles: 'leaves', dark: 0.4, tint: '#0A2018'
   },
   gea: {
@@ -104,7 +104,7 @@ const THEMES = {
       { p: 0.45, fn: 'pipesBg', o: { color: '#5A3A5A', hi: '#8A5A6A', y: 180 } }
     ],
     live: ['embers', 'crystalGlow', 'steamBg'],
-    ground: { fill: '#3A2A48', fill2: '#2E2040', top: 'rock', topC: '#6A4A7A', topHi: '#9A7AB0', edge: '#140A20', deco: ['crystal', 'crystal', 'rock', 'glowmush'] },
+    ground: { fill: '#3A2A48', fill2: '#2E2040', top: 'rock', topC: '#6A4A7A', topHi: '#9A7AB0', edge: '#140A20', deco: ['crystal', 'crystal', 'rock', 'glowmush', 'stalagmite'] },
     plat: 'crystal', water: ['#FF6A2A', '#FFD84A'], hazard: 'magma', ambient: 'cave', music: 'gea', particles: 'embers', dark: 0.5, tint: '#140A24'
   },
   h2: {
@@ -117,7 +117,7 @@ const THEMES = {
       { p: 0.58, fn: 'cranes', o: { base: 240, color: '#FF9D42' } }
     ],
     live: ['boats', 'gulls', 'bubblesH2', 'clouds'],
-    ground: { fill: '#7A8AB8', fill2: '#6A7AA8', top: 'metal', topC: '#C9D2F0', topHi: '#FFFFFF', edge: '#2A3060', deco: ['pipe', 'valve', 'crate', 'lamp'] },
+    ground: { fill: '#7A8AB8', fill2: '#6A7AA8', top: 'metal', topC: '#C9D2F0', topHi: '#FFFFFF', edge: '#2A3060', deco: ['pipe', 'valve', 'crate', 'lamp', 'barrel'] },
     plat: 'metal', water: ['#1F6AB8', '#7FE7FF'], hazard: 'leak', ambient: 'sea', music: 'h2', particles: 'spray', dark: 0.35, tint: '#0A1838'
   },
   bateria: {
@@ -129,7 +129,7 @@ const THEMES = {
       { p: 0.4, fn: 'city', o: { base: 222, color: '#221A50', win: ['#30E1C5', '#FF4FB8', '#B6F35B'], min: 30, max: 90, lit: 0.7, neon: true } }
     ],
     live: ['tram', 'stars'],
-    ground: { fill: '#2A2458', fill2: '#221E4A', top: 'neon', topC: '#30E1C5', topHi: '#C9FFF4', edge: '#0A0820', deco: ['lamp', 'sign', 'battery', 'plant'] },
+    ground: { fill: '#2A2458', fill2: '#221E4A', top: 'neon', topC: '#30E1C5', topHi: '#C9FFF4', edge: '#0A0820', deco: ['lamp', 'sign', 'battery', 'plant', 'cone'] },
     plat: 'neon', water: ['#2A1A6A', '#FF7FCF'], hazard: 'spark', ambient: 'city', music: 'bateria', particles: 'neon', dark: 0.45, tint: '#08061A'
   },
   prisma: {
@@ -547,7 +547,17 @@ function drawDeco(g, type, x, y, rng, th) {
     case 'sign': { R(6, -14, 1, 14, '#565E8C'); R(1, -18, 12, 6, '#1A1440'); R(2, -17, 10, 1, choice(['#FF4FB8', '#30E1C5', '#B6F35B'])); R(2, -14, 7, 1, '#FFD84A'); break; }
     case 'battery': { R(4, -10, 7, 10, '#C9D2F0'); R(6, -11, 3, 1, '#8A8FB0'); R(5, -6, 5, 5, '#B6F35B'); break; }
     case 'plant': { R(5, -4, 6, 4, '#FF9D42'); R(7, -9, 1, 5, '#3FA85A'); R(5, -8, 2, 1, '#66D66A'); R(8, -7, 2, 1, '#66D66A'); break; }
-    case 'kite': break;
+    case 'kite': case 'pinwheel': { const kx = randi(4, 11); R(kx, -9, 1, 9, '#B07A4A'); const cols = ['#FF7FCF', '#FFD84A', '#30E1C5', '#9CF5D8']; for (let k = 0; k < 4; k++) { const a = k * Math.PI / 2 + 0.4; for (let r = 1; r <= 3; r++) px(g, x + kx + Math.round(Math.cos(a) * r), y - 10 + Math.round(Math.sin(a) * r), cols[k]); } px(g, x + kx, y - 10, '#FFFFFF'); break; }
+    case 'lamp': { const lx = randi(4, 10); R(lx, -12, 1, 12, '#3A3058'); R(lx - 1, -1, 3, 1, '#3A3058'); R(lx - 2, -15, 5, 3, '#22306B'); R(lx - 1, -14, 3, 2, '#FFD84A'); px(g, x + lx, y - 16, '#565E8C'); break; }
+    case 'bush': { const bx = randi(1, 6); pellipse(g, x + bx + 5, y - 3, 5, 3, shade(th.ground.topC, -0.25)); pellipse(g, x + bx + 4, y - 4, 4, 2, th.ground.topC); px(g, x + bx + 3, y - 5, th.ground.topHi); px(g, x + bx + 7, y - 4, '#FF7FCF'); break; }
+    case 'fence': { for (const fx of [1, 8, 15]) { R(fx, -9, 2, 9, '#C8A070'); px(g, x + fx, y - 10, '#E8C890'); } R(0, -7, 16, 1, '#B08A5A'); R(0, -4, 16, 1, '#B08A5A'); break; }
+    case 'haybale': { const hx = randi(0, 4); R(hx, -8, 11, 8, '#E8C060'); R(hx, -8, 11, 1, '#FFE090'); R(hx, -1, 11, 1, '#B08A3A'); R(hx + 3, -8, 1, 8, '#C89A40'); R(hx + 7, -8, 1, 8, '#C89A40'); px(g, x + hx + 1, y - 6, '#FFF0B0'); break; }
+    case 'cactus': { const cx = randi(4, 10); R(cx, -11, 3, 11, '#3FA85A'); R(cx, -11, 1, 11, '#66D66A'); R(cx - 3, -7, 3, 2, '#3FA85A'); R(cx - 3, -9, 2, 2, '#3FA85A'); R(cx + 3, -6, 2, 2, '#3FA85A'); R(cx + 4, -8, 1, 2, '#3FA85A'); px(g, x + cx + 1, y - 12, '#FF7FCF'); break; }
+    case 'reed': { for (let k = 0; k < 4; k++) { const rx = randi(2, 13), h = randi(6, 11); R(rx, -h, 1, h, k % 2 ? '#3FA85A' : '#66D6A0'); if (k < 2) R(rx, -h - 2, 1, 3, '#8B5A3C'); } break; }
+    case 'log': { const lx = randi(0, 3); R(lx, -5, 13, 5, '#6B4A2A'); R(lx, -5, 13, 1, '#8B5A3C'); pellipse(g, x + lx + 12, y - 3, 2, 2, '#C8A070'); px(g, x + lx + 12, y - 3, '#8B5A3C'); px(g, x + lx + 4, y - 6, '#66D66A'); px(g, x + lx + 5, y - 7, '#3FA85A'); break; }
+    case 'stalagmite': { const sx = randi(3, 10), h = randi(6, 12); for (let k = 0; k < h; k++) { const w = Math.max(1, Math.round((h - k) / h * 3)); R(sx - Math.floor(w / 2), -k - 1, w, 1, k > h - 3 ? th.ground.topHi : th.ground.topC); } break; }
+    case 'barrel': { const bx = randi(1, 6); R(bx, -10, 8, 10, '#3A7AA8'); R(bx, -10, 8, 1, '#9FE8FF'); R(bx, -7, 8, 1, '#22306B'); R(bx, -3, 8, 1, '#22306B'); R(bx + 1, -9, 1, 8, '#59C7FF'); R(bx + 3, -6, 2, 2, '#FFFFFF'); break; }
+    case 'cone': { const cx = randi(3, 11); R(cx - 3, -1, 7, 1, '#2A2A3A'); for (let k = 0; k < 7; k++) R(cx - Math.floor((7 - k) / 3), -k - 2, 1 + 2 * Math.floor((7 - k) / 3), 1, k === 2 || k === 4 ? '#FFFFFF' : '#FF9D42'); break; }
   }
 }
 

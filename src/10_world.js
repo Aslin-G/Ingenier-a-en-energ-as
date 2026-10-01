@@ -180,9 +180,13 @@ class Level {
       else if (t === 'H') paintLadder(g, x * TILE, y * TILE);
       else if (t === '|') paintRope(g, x * TILE, y * TILE);
     }
+    // subsuelo con detalle propio de cada isla y hierba colgando de los bordes
+    paintStrata(this, g, th);
+    paintEdgeOverhang(this, g, th, rng);
     // volumen: la roca se oscurece hacia el interior (antes de las decoraciones)
     shadeTerrain(this, c);
-    for (const [x, y] of decoSpots) if (rng() < 0.42 && th.ground.deco.length) drawDeco(g, choice(th.ground.deco), x * TILE, y * TILE, rng, th);
+    paintUnderground(this, g, th, rng);
+    for (const [x, y] of decoSpots) if (rng() < 0.55 && th.ground.deco.length) drawDeco(g, choice(th.ground.deco), x * TILE, y * TILE, rng, th);
     this.staticCv = c;
   }
   // Postes bajo las plataformas de madera, metal o piedra (o cuerdas desde arriba):
