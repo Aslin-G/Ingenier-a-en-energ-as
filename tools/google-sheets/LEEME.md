@@ -38,7 +38,7 @@ La hoja **Registro** guarda una fila por evento. La hoja **Estudiantes** guarda 
    - *Quién tiene acceso*: **Cualquier usuario** (los estudiantes no necesitan cuenta de Google).
    - Pulsa **Implementar** y autoriza el acceso cuando lo pida.
 4. Copia la **URL de la aplicación web** (termina en `/exec`).
-5. Pégala en `src/04_registro.js`, en la línea `const REGISTRO_URL = '';` (entre las comillas), compila con `node tools/build.js` y publica. También puedes enviarme la URL y lo hago yo.
+5. Pégala en `src/04_registro.js`, en la línea `const REGISTRO_URL = ...` (entre las comillas), compila con `node tools/build.js` y publica. **Ya está conectada** la aplicación web de esta clase (versión 1 del 1 oct 2026).
 
 Para comprobar que funciona, abre la URL en el navegador: debe decir «Lumina Loop: registro de actividad activo». Después juega una partida de prueba y mira la hoja **Registro** (los eventos llegan en lotes, cada 20 segundos o al cerrar la pestaña).
 
