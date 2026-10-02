@@ -167,11 +167,11 @@ Cada reto pasa por **DEMO → LO HACEMOS JUNTOS → TÚ SOLO**, ofrece **pistas 
 - Al empezar una partida (o al continuar una sin estudiante) aparece el **REGISTRO DEL ESTUDIANTE**: nombres y apellidos (con tildes y ñ; el teclado del móvil funciona) y **tres consentimientos** que hay que marcar: (1) que los datos de juego se envían a una hoja de cálculo de Google Drive del docente; (2) que el docente los usará para ver el rendimiento y calificar; (3) que, si es menor de edad, su madre, padre o acudiente lo conoce y autoriza.
 - El primer nombre sustituye a «Lía» en toda la historia y el nombre completo aparece en los créditos.
 - Con los consentimientos aceptados, el juego anota la actividad (sesiones, niveles, retos con estrellas, errores y pistas, programas finales, cerraduras, cartas, forja, logros, misiones, islas, jefes, derrotas) y la envía por lotes a la hoja del docente. En el **menú de pausa** se ve siempre «tu progreso se comparte con tu docente».
-- La conexión con la hoja de cálculo se configura una sola vez con Google Apps Script ([`tools/google-sheets/LEEME.md`](tools/google-sheets/LEEME.md)); la URL va en `REGISTRO_URL` (`src/04_registro.js`) y ya está configurada. En **MODO DOCENTE → HOJA DE CÁLCULO** se prueba la conexión, se ve cuántos eventos y estudiantes tiene la hoja y se envían los pendientes del dispositivo.
+- La conexión con la hoja de cálculo se configura una sola vez con Google Apps Script ([`tools/google-sheets/LEEME.md`](tools/google-sheets/LEEME.md)); la URL va en `REGISTRO_URL` (`src/04_registro.js`), codificada para que no se lea a simple vista, y ya está configurada. Ninguna pantalla muestra la dirección. En **MODO DOCENTE → HOJA DE CÁLCULO** se prueba la conexión, se ve cuántos eventos y estudiantes tiene la hoja y se envían los pendientes del dispositivo.
 
 ### Modo docente
 
-Desde el menú principal, sin necesidad de cuenta y sin que nada salga del navegador:
+Desde el menú principal, **solo con la contraseña del docente** (tras 5 intentos fallidos hay que esperar 30 s). La contraseña no está escrita en el código: se guarda su huella SHA-256 con sal; para cambiarla, `node tools/clave-docente.js "NuevaContraseña"` y pegar el resultado en `src/17_docente.js`. Mientras se usa este modo no se anota nada en la hoja de cálculo.
 
 - **Elegir isla**: abre cualquier región (marca como restauradas las anteriores y concede sus habilidades).
 - **Lanzar reto**: filtra el banco de **115 retos** por concepto y energía.
@@ -275,6 +275,7 @@ node tools/tests/moves.js     # Lía mira a donde camina, se agacha, barrida, ga
 node tools/tests/minibosses.js # los 10 mini jefes: barreras, avisos, descanso, núcleo y reinicio al caer
 node tools/tests/taller.js    # taller (datos de los recuerdos, lámpara) y patio: cada movimiento se marca con el teclado
 node tools/tests/registro.js  # registro (nombre, 3 consentimientos), nombre en los textos y envío de eventos a un receptor simulado
+node tools/tests/docente.js   # contraseña del modo docente y dirección de la hoja oculta en pantallas y código
 node tools/tests/overlap.js   # ninguna pantalla (menús, retos, simuladores, niveles) tiene textos encima de otros
 node tools/tests/walk.js      # recorre la campaña completa hasta el epílogo
 node tools/tests/menus.js     # abre todas las pantallas de menú
@@ -282,7 +283,7 @@ node tools/tests/menus.js     # abre todas las pantallas de menú
 
 Las capturas se guardan en la carpeta temporal del sistema (`lumina_loop_tests/`), o en la que indique `LUMINA_OUT`.
 
-Para depurar: `lumina_loop.html#level=solaria` abre directamente un nivel, y `window.LL` expone el estado del juego en la consola.
+Para las pruebas automáticas (solo con un navegador automatizado, como Playwright): `lumina_loop.html#level=solaria` abre directamente un nivel, y `window.LL` expone el estado del juego. En un navegador normal no existen, para que nadie se salte la contraseña del modo docente.
 
 ---
 

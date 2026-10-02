@@ -38,11 +38,11 @@ La hoja **Registro** guarda una fila por evento. La hoja **Estudiantes** guarda 
    - *Quién tiene acceso*: **Cualquier usuario** (los estudiantes no necesitan cuenta de Google).
    - Pulsa **Implementar** y autoriza el acceso cuando lo pida.
 4. Copia la **URL de la aplicación web** (termina en `/exec`).
-5. Pégala en `src/04_registro.js`, en la línea `const REGISTRO_URL = ...` (entre las comillas), compila con `node tools/build.js` y publica. **Ya está conectada** la aplicación web de esta clase (versión 1 del 1 oct 2026).
+5. Codifícala con `node tools/google-sheets/codificar-url.js "URL"` y pega la línea que imprime en `src/04_registro.js` (en lugar de `const REGISTRO_URL = ...`); compila con `node tools/build.js` y publica. Codificada, la dirección no se lee a simple vista en el código de la página (también funciona pegarla tal cual). **Ya está conectada** la aplicación web de esta clase (versión 1 del 1 oct 2026).
 
 ## Comprobar la conexión
 
-- En el juego: **MODO DOCENTE → HOJA DE CÁLCULO**. Prueba la conexión al abrirse y muestra:
+- En el juego: **MODO DOCENTE** (con la contraseña del docente) **→ HOJA DE CÁLCULO**. Indica si hay una aplicación web configurada (sin mostrar su dirección, solo sus últimos caracteres), prueba la conexión al abrirse y muestra:
   - «✓ Conectado. Hoja «…»: N eventos de M estudiantes» → todo funciona (script versión 2);
   - «✓ La aplicación web responde…» → funciona, pero tiene la versión 1 del script: actualízala (abajo) para ver la hoja y sus filas;
   - «✗ No responde» → revisa que la implementación sea **Aplicación web** con acceso **Cualquier usuario**.
@@ -61,6 +61,7 @@ La versión 2 de `Registro.gs` funciona aunque el proyecto no esté vinculado a 
 ## Notas
 
 - Si un estudiante juega sin conexión, sus eventos esperan en su dispositivo y se envían cuando vuelve a haber red.
-- Cualquiera que conozca la URL podría enviar filas: compártela solo dentro del juego publicado.
+- Cualquiera que conozca la URL podría enviar filas: compártela solo dentro del juego publicado. El juego no la muestra en ninguna pantalla y la guarda codificada, pero un navegador siempre deja ver, en sus herramientas de desarrollo, a qué dirección envía los datos una página: no es un secreto, solo está fuera de la vista.
+- Mientras se usa el **MODO DOCENTE** no se anota nada en la hoja, aunque en ese dispositivo haya una partida de un estudiante.
 - Si cambias el código de `Registro.gs`, vuelve a **Implementar → Gestionar implementaciones → Editar → Nueva versión** para que se aplique.
 - Al tratarse de datos de estudiantes (muchas veces menores de edad), conserva la hoja solo con acceso del docente y usa la información únicamente para acompañar y evaluar el aprendizaje, como dice el consentimiento.

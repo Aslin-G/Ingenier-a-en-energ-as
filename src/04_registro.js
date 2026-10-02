@@ -9,16 +9,24 @@
 //    Google Drive del docente (una aplicación web de Google Apps Script).
 //  · No cambia la mecánica del juego. Si no hay conexión, los eventos
 //    esperan en el dispositivo y se reenvían después.
-//  · Configuración: pega en REGISTRO_URL la dirección «/exec» de la
-//    aplicación web (instrucciones en tools/google-sheets/LEEME.md).
+//  · Configuración: REGISTRO_URL es la dirección «/exec» de la aplicación
+//    web, codificada para que no se lea a simple vista en la página
+//    (node tools/google-sheets/codificar-url.js URL). También vale la
+//    dirección tal cual. Instrucciones en tools/google-sheets/LEEME.md.
+//  · No se anota nada mientras se usa el MODO DOCENTE (G.docente).
 // =====================================================================
-const REGISTRO_URL = 'https://script.google.com/macros/s/AKfycbyfX1f6WWKcpxhAfnLiVV53iNbKzuJwrnwLBoAVrj3tet-mjZHerWokUWaS7fkXBm7D/exec';
+const REGISTRO_URL = 'Y2V4ZS9EN21CWGtmN1NhV1Vrb1dyZUhaam0tdGV0M2pyVkFvQkx3bnJ3SnV6S2JOaTM1VlZpTG5mQWh4cGNLV1c2ZjFYZnliY3lmS0Evcy9zb3JjYW0vbW9jLmVsZ29vZy50cGlyY3MvLzpzcHR0aA==';
 
 const Registro = {
   KEY: 'luminaLoopRegistro', MAX: 3000, LOTE: 40,
   cola: [], sesion: null, inicio: 0, enviando: false,
-  url() { try { return String(window.LUMINA_REGISTRO_URL || REGISTRO_URL || '').trim(); } catch (e) { return ''; } },
-  activo() { const p = G.save && G.save.player; return !!(p && p.consent && p.consent.ok); },
+  url() {
+    try {
+      const u = String(window.LUMINA_REGISTRO_URL || REGISTRO_URL || '').trim();
+      return !u || /^https?:\/\//.test(u) ? u : atob(u).split('').reverse().join('');
+    } catch (e) { return ''; }
+  },
+  activo() { const p = G.save && G.save.player; return !G.docente && !!(p && p.consent && p.consent.ok); },
   idSesion() {
     if (!this.sesion) { this.sesion = Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 7); this.inicio = Date.now(); }
     return this.sesion;
@@ -86,7 +94,7 @@ const Registro = {
   // comprueba la conexión (modo docente): GET ?estado=1 a la aplicación web
   probar() {
     const url = this.url();
-    if (!url) return Promise.resolve({ ok: false, msg: 'No hay dirección configurada (REGISTRO_URL).' });
+    if (!url) return Promise.resolve({ ok: false, msg: 'No hay ninguna aplicación web configurada (REGISTRO_URL).' });
     return fetch(url + (url.includes('?') ? '&' : '?') + 'estado=1', { method: 'GET', cache: 'no-store' })
       .then(r => r.text())
       .then(txt => {

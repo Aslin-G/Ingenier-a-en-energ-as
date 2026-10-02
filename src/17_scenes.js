@@ -392,7 +392,7 @@ function drawHUD(g, lv) {
 class TitleScene {
   constructor() {
     this.t = 0; this.opaque = true; this.bg = getBackground('festival'); this.pixX = -40; this.pixPhase = 0; this.rot = 0;
-    this.hasSave = Save.exists();
+    this.hasSave = Save.exists(); G.docente = false;
     AudioSys.playSong('title'); AudioSys.ambient('sea');
     UI.nav = true; UI.focus = this.hasSave ? 'm_cont' : 'm_new';
   }
@@ -452,7 +452,7 @@ class TitleScene {
     // continuar una partida guardada sin estudiante registrado: se registra antes de seguir
     if (id === 'cont') { Save.load(); if (G.save.player) Game.continueGame(); else Scenes.push(new RegisterScene(p => Game.continueGame(p), 'continue')); }
     if (id === 'lab') { Save.load(); Scenes.push(new LabScene()); }
-    if (id === 'teacher') Scenes.push(new TeacherScene());
+    if (id === 'teacher') Scenes.push(new TeacherLockScene());
     if (id === 'settings') Scenes.push(new SettingsScene());
   }
 }
@@ -923,8 +923,10 @@ class MapScene {
 //  MODO DOCENTE
 // ---------------------------------------------------------------------
 class TeacherScene {
-  constructor() { this.opaque = true; this.t = 0; this.page = 'main'; this.prog = 'loops'; this.energy = 'wind'; UI.nav = true; UI.focus = null; Save.loadSettingsOnly(); this.hasSave = Save.exists(); if (this.hasSave) Save.load(); }
-  update(dt) { this.t += dt; if (Input.hit('back')) { Input.consume(); if (this.page !== 'main') this.page = 'main'; else { UI.nav = true; Scenes.pop(); } } }
+  // G.docente: mientras el docente usa este modo (y lo que lanza desde aquí) no se anota nada en la hoja
+  constructor() { this.opaque = true; this.t = 0; this.page = 'main'; this.prog = 'loops'; this.energy = 'wind'; UI.nav = true; UI.focus = null; G.docente = true; Save.loadSettingsOnly(); this.hasSave = Save.exists(); if (this.hasSave) Save.load(); }
+  leave() { G.docente = false; UI.nav = true; Scenes.pop(); }
+  update(dt) { this.t += dt; if (Input.hit('back')) { Input.consume(); if (this.page !== 'main') this.page = 'main'; else this.leave(); } }
   draw(g) {
     vGradient(g, 0, 0, W, H, [[0, '#1B2A4A'], [1, '#0B1020']], false);
     drawText(g, 'MODO DOCENTE', 240, 8, PAL.sun, { align: 'center', scale: 2 });
@@ -946,7 +948,7 @@ class TeacherScene {
       });
       // el reto del día es el mismo para toda la clase: quien lo supera ve este código
       drawText(g, 'Reto del día: ' + dailyChallenge().title + ' · código ' + dailyCode(), 12, H - 16, PAL.pink);
-      if (UI.btn(g, 'tmback', W - 70, H - 20, 64, 14, 'VOLVER', {})) { Scenes.pop(); }
+      if (UI.btn(g, 'tmback', W - 70, H - 20, 64, 14, 'VOLVER', {})) { this.leave(); return; }
     } else if (this.page === 'isla') {
       REGIONS.forEach((r, i) => { if (UI.btn(g, 'ti' + r.key, 30 + (i % 3) * 144, 50 + Math.floor(i / 3) * 40, 136, 30, r.name, { color: r.col })) { G.save.started = true; G.save.teacherAll = true; G.save.teacherUnlocked = true; setFlag('prologueDone'); for (let k = 0; k < i; k++) { setFlag('restored_' + REGIONS[k].key); setFlag('boss_' + REGIONS[k].key); } grantAbilitiesUpTo(r.key); Save.write(); UI.nav = false; Game.startLevel(LEVEL_OF_REGION[r.key] || r.key); } });
       drawPara(g, 'Al elegir una isla se marcan como restauradas las anteriores (con sus jefes) y se otorgan sus habilidades, para poder trabajar un concepto concreto en clase.', 30, 214, 420, '#8C93B8');
@@ -954,7 +956,8 @@ class TeacherScene {
       // conexión con la hoja de cálculo de seguimiento (Google Apps Script)
       const url = Registro.url(), R = this.conn, p = G.save.player;
       drawText(g, 'HOJA DE CÁLCULO DE SEGUIMIENTO', 240, 42, PAL.lime, { align: 'center' });
-      drawText(g, 'Dirección: ' + (url ? fitText(url.replace('https://', ''), 360) : 'sin configurar'), 30, 58, '#C9D2F0');
+      // la dirección completa no se muestra: solo el final, para saber cuál está configurada
+      drawText(g, 'Aplicación web: ' + (url ? 'configurada (termina en …' + url.replace(/\/exec.*$/, '').slice(-6) + ')' : 'sin configurar'), 30, 58, '#C9D2F0');
       if (UI.btn(g, 'thprobar', 30, 72, 150, 18, R && R.wait ? 'PROBANDO...' : 'PROBAR CONEXIÓN', { color: PAL.lime, primary: true })) {
         this.conn = { wait: true }; Registro.probar().then(r => { this.conn = r; });
       }
