@@ -40,7 +40,23 @@ La hoja **Registro** guarda una fila por evento. La hoja **Estudiantes** guarda 
 4. Copia la **URL de la aplicación web** (termina en `/exec`).
 5. Pégala en `src/04_registro.js`, en la línea `const REGISTRO_URL = ...` (entre las comillas), compila con `node tools/build.js` y publica. **Ya está conectada** la aplicación web de esta clase (versión 1 del 1 oct 2026).
 
-Para comprobar que funciona, abre la URL en el navegador: debe decir «Lumina Loop: registro de actividad activo». Después juega una partida de prueba y mira la hoja **Registro** (los eventos llegan en lotes, cada 20 segundos o al cerrar la pestaña).
+## Comprobar la conexión
+
+- En el juego: **MODO DOCENTE → HOJA DE CÁLCULO**. Prueba la conexión al abrirse y muestra:
+  - «✓ Conectado. Hoja «…»: N eventos de M estudiantes» → todo funciona (script versión 2);
+  - «✓ La aplicación web responde…» → funciona, pero tiene la versión 1 del script: actualízala (abajo) para ver la hoja y sus filas;
+  - «✗ No responde» → revisa que la implementación sea **Aplicación web** con acceso **Cualquier usuario**.
+  También muestra cuántos eventos esperan en ese dispositivo y permite enviarlos.
+- En el navegador: abre la URL; debe decir «Lumina Loop: registro de actividad activo». Si pide iniciar sesión, el acceso no es «Cualquier usuario».
+- Juega una partida de prueba (NUEVA PARTIDA, nombre de prueba, tres casillas) y mira las hojas **Registro** y **Estudiantes**: los eventos llegan en lotes, cada 20 segundos, al ocultar la pestaña o al cerrarla.
+
+## Actualizar el script a la versión 2 (sin cambiar la URL)
+
+La versión 2 de `Registro.gs` funciona aunque el proyecto no esté vinculado a la hoja (en ese caso crea en tu Drive la hoja «Lumina Loop · Registro de la clase») y deja que el modo docente vea el estado de la hoja.
+
+1. En Apps Script, reemplaza todo el código por el de [`Registro.gs`](Registro.gs) y guarda.
+2. **Implementar → Gestionar implementaciones** → lápiz (**Editar**) → *Versión*: **Nueva versión** → **Implementar**. La URL `/exec` no cambia, así que el juego no necesita actualizarse.
+3. Si pide permisos nuevos, acéptalos (para crear la hoja si hace falta).
 
 ## Notas
 

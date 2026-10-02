@@ -928,7 +928,7 @@ class TeacherScene {
   draw(g) {
     vGradient(g, 0, 0, W, H, [[0, '#1B2A4A'], [1, '#0B1020']], false);
     drawText(g, 'MODO DOCENTE', 240, 8, PAL.sun, { align: 'center', scale: 2 });
-    drawText(g, 'Herramientas locales: nada sale de este navegador.', 240, 26, '#8C93B8', { align: 'center' });
+    drawText(g, 'Herramientas del docente (en este modo no se envía nada a la hoja).', 240, 26, '#8C93B8', { align: 'center' });
     if (this.page === 'main') {
       const opts = [
         ['isla', 'ELEGIR ISLA', 'Abre cualquier región (desbloquea el mapa).'],
@@ -937,11 +937,12 @@ class TeacherScene {
         ['resumen', 'RESUMEN LOCAL', 'Estadísticas de la partida guardada.'],
         ['jefe', 'LUCHAR CONTRA UN JEFE', 'Cada jefe ejecuta un algoritmo de su isla: se lee con la Lente Debug.'],
         ['lab', 'AURORA LAB', 'Sandbox de microred sin penalización.'],
+        ['hoja', 'HOJA DE CÁLCULO', 'Comprueba la conexión con la hoja de seguimiento y envía lo pendiente.'],
         ['reset', 'REINICIAR PROGRESO', 'Borra la partida guardada (conserva ajustes).']
       ];
       opts.forEach(([id, l, d], i) => {
-        if (UI.btn(g, 'tm' + id, 40, 42 + i * 30, 140, 18, l, { color: id === 'reset' ? PAL.coral : id === 'jefe' ? PAL.orange : PAL.teal })) this.pick(id);
-        drawPara(g, d, 190, 46 + i * 30, 260, PAL.cream);
+        if (UI.btn(g, 'tm' + id, 40, 40 + i * 26, 140, 18, l, { color: id === 'reset' ? PAL.coral : id === 'jefe' ? PAL.orange : id === 'hoja' ? PAL.lime : PAL.teal })) this.pick(id);
+        drawPara(g, d, 190, 44 + i * 26, 260, PAL.cream);
       });
       // el reto del día es el mismo para toda la clase: quien lo supera ve este código
       drawText(g, 'Reto del día: ' + dailyChallenge().title + ' · código ' + dailyCode(), 12, H - 16, PAL.pink);
@@ -949,6 +950,24 @@ class TeacherScene {
     } else if (this.page === 'isla') {
       REGIONS.forEach((r, i) => { if (UI.btn(g, 'ti' + r.key, 30 + (i % 3) * 144, 50 + Math.floor(i / 3) * 40, 136, 30, r.name, { color: r.col })) { G.save.started = true; G.save.teacherAll = true; G.save.teacherUnlocked = true; setFlag('prologueDone'); for (let k = 0; k < i; k++) { setFlag('restored_' + REGIONS[k].key); setFlag('boss_' + REGIONS[k].key); } grantAbilitiesUpTo(r.key); Save.write(); UI.nav = false; Game.startLevel(LEVEL_OF_REGION[r.key] || r.key); } });
       drawPara(g, 'Al elegir una isla se marcan como restauradas las anteriores (con sus jefes) y se otorgan sus habilidades, para poder trabajar un concepto concreto en clase.', 30, 214, 420, '#8C93B8');
+    } else if (this.page === 'hoja') {
+      // conexión con la hoja de cálculo de seguimiento (Google Apps Script)
+      const url = Registro.url(), R = this.conn, p = G.save.player;
+      drawText(g, 'HOJA DE CÁLCULO DE SEGUIMIENTO', 240, 42, PAL.lime, { align: 'center' });
+      drawText(g, 'Dirección: ' + (url ? fitText(url.replace('https://', ''), 360) : 'sin configurar'), 30, 58, '#C9D2F0');
+      if (UI.btn(g, 'thprobar', 30, 72, 150, 18, R && R.wait ? 'PROBANDO...' : 'PROBAR CONEXIÓN', { color: PAL.lime, primary: true })) {
+        this.conn = { wait: true }; Registro.probar().then(r => { this.conn = r; });
+      }
+      if (R && !R.wait) {
+        if (R.ok && R.version >= 2) drawPara(g, '{g}✓ Conectado.{/} Hoja «' + R.hoja + '»: ' + R.eventos + ' eventos de ' + R.estudiantes + ' estudiantes.', 190, 76, 270, PAL.cream, { lh: 10 });
+        else if (R.ok) drawPara(g, '{g}✓ La aplicación web responde.{/} Para ver aquí la hoja y sus filas, pega la versión 2 de Registro.gs y publica una versión nueva.', 190, 76, 270, PAL.cream, { lh: 10 });
+        else drawPara(g, '{r}✗{/} ' + R.msg, 190, 76, 270, PAL.cream, { lh: 10 });
+      }
+      const n = Registro.cola.length;
+      drawText(g, 'En este dispositivo: ' + n + ' evento' + (n === 1 ? '' : 's') + ' pendiente' + (n === 1 ? '' : 's') + ' de enviar.', 30, 122, '#C9D2F0');
+      if (n && UI.btn(g, 'thenviar', 30, 134, 150, 16, 'ENVIAR PENDIENTES', { color: PAL.teal })) { Registro.enviar(); AudioSys.sfx('confirm'); }
+      drawText(g, p ? 'Estudiante de esta partida: ' + fitText(p.full, 240) + ' (consentimiento ' + (p.consent && p.consent.ok ? 'aceptado' : 'pendiente') + ')' : 'Esta partida aún no tiene estudiante registrado.', 30, 160, p ? PAL.cream : '#8C93B8');
+      drawPara(g, 'Cada estudiante se registra al empezar (nombre completo y tres consentimientos). Su actividad llega a la hoja por lotes: cada 20 s, al ocultar la pestaña y al cerrar. Las hojas «Registro» (un evento por fila) y «Estudiantes» (resumen para calificar) se crean solas. Instrucciones: tools/google-sheets/LEEME.md.', 30, 178, 420, '#8C93B8', { lh: 10 });
     } else if (this.page === 'jefe') {
       const keys = Object.keys(BOSSES);
       keys.forEach((k, i) => {
@@ -997,6 +1016,7 @@ class TeacherScene {
     if (id === 'mastery') Scenes.push(new MasteryScene());
     if (id === 'resumen') this.page = 'resumen';
     if (id === 'lab') Scenes.push(new LabScene());
+    if (id === 'hoja') { this.page = 'hoja'; this.conn = { wait: true }; Registro.probar().then(r => { this.conn = r; }); }
     if (id === 'reset') Scenes.push(new ConfirmScene('¿Borrar TODO el progreso guardado en este navegador?', () => { Save.resetAll(); Toast.show('Progreso reiniciado', PAL.coral); this.hasSave = false; }));
   }
 }

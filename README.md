@@ -167,7 +167,7 @@ Cada reto pasa por **DEMO → LO HACEMOS JUNTOS → TÚ SOLO**, ofrece **pistas 
 - Al empezar una partida (o al continuar una sin estudiante) aparece el **REGISTRO DEL ESTUDIANTE**: nombres y apellidos (con tildes y ñ; el teclado del móvil funciona) y **tres consentimientos** que hay que marcar: (1) que los datos de juego se envían a una hoja de cálculo de Google Drive del docente; (2) que el docente los usará para ver el rendimiento y calificar; (3) que, si es menor de edad, su madre, padre o acudiente lo conoce y autoriza.
 - El primer nombre sustituye a «Lía» en toda la historia y el nombre completo aparece en los créditos.
 - Con los consentimientos aceptados, el juego anota la actividad (sesiones, niveles, retos con estrellas, errores y pistas, programas finales, cerraduras, cartas, forja, logros, misiones, islas, jefes, derrotas) y la envía por lotes a la hoja del docente. En el **menú de pausa** se ve siempre «tu progreso se comparte con tu docente».
-- Para conectarlo con tu hoja de cálculo sigue [`tools/google-sheets/LEEME.md`](tools/google-sheets/LEEME.md) (Google Apps Script, una sola vez) y pega la URL en `REGISTRO_URL` (`src/04_registro.js`). Sin URL, los eventos esperan guardados en cada dispositivo.
+- La conexión con la hoja de cálculo se configura una sola vez con Google Apps Script ([`tools/google-sheets/LEEME.md`](tools/google-sheets/LEEME.md)); la URL va en `REGISTRO_URL` (`src/04_registro.js`) y ya está configurada. En **MODO DOCENTE → HOJA DE CÁLCULO** se prueba la conexión, se ve cuántos eventos y estudiantes tiene la hoja y se envían los pendientes del dispositivo.
 
 ### Modo docente
 

@@ -2,10 +2,12 @@
  * Lumina Loop: El Código de los Elementos · © Aslin Gonzalo Botello Plata
  * Receptor del registro de actividad (Google Apps Script).
  *
- * Se pega en el editor de Apps Script de una hoja de cálculo de Google y se
- * publica como «Aplicación web» (ver LEEME.md). El juego le envía, por lotes,
- * los eventos de los estudiantes que se registraron y aceptaron los
- * consentimientos. Crea y mantiene dos hojas:
+ * Versión 2. Se pega en el editor de Apps Script (mejor desde la hoja de
+ * cálculo: Extensiones → Apps Script) y se publica como «Aplicación web»
+ * (ver LEEME.md). Si el proyecto no está vinculado a una hoja, crea una en
+ * tu Drive («Lumina Loop · Registro de la clase») y la recuerda.
+ * El juego le envía, por lotes, los eventos de los estudiantes que se
+ * registraron y aceptaron los consentimientos. Crea y mantiene dos hojas:
  *   · Registro:    una fila por evento (todo lo que hizo cada estudiante).
  *   · Estudiantes: una fila por estudiante con un resumen para calificar.
  */
@@ -17,7 +19,25 @@ var COLS_ESTUDIANTES = ['Estudiante', 'ID', 'Nombres', 'Apellidos', 'Consentimie
   'Eventos', 'Retos superados', 'Retos sin terminar', 'Errores en retos', 'Estrellas', 'Cerraduras: aciertos', 'Cerraduras: errores',
   'Derrotas', 'Logros', 'Islas restauradas', 'Jefes vencidos', 'Nivel', 'Minutos jugados'];
 
-function doGet() {
+// la hoja donde se escribe: la del proyecto (si está vinculado) o una propia en Drive
+function libro_() {
+  var activo = SpreadsheetApp.getActiveSpreadsheet();
+  if (activo) return activo;
+  var props = PropertiesService.getScriptProperties(), id = props.getProperty('HOJA_ID');
+  if (id) { try { return SpreadsheetApp.openById(id); } catch (e) { } }
+  var nuevo = SpreadsheetApp.create('Lumina Loop · Registro de la clase');
+  props.setProperty('HOJA_ID', nuevo.getId());
+  return nuevo;
+}
+
+// ?estado=1 → el modo docente del juego comprueba la conexión y ve la hoja
+function doGet(e) {
+  if (e && e.parameter && e.parameter.estado) {
+    var libro = libro_();
+    var reg = hoja_(libro, HOJA_REGISTRO, COLS_REGISTRO), est = hoja_(libro, HOJA_ESTUDIANTES, COLS_ESTUDIANTES);
+    var out = { ok: true, version: 2, hoja: libro.getName(), url: libro.getUrl(), eventos: Math.max(0, reg.getLastRow() - 1), estudiantes: Math.max(0, est.getLastRow() - 1) };
+    return ContentService.createTextOutput(JSON.stringify(out)).setMimeType(ContentService.MimeType.JSON);
+  }
   return ContentService.createTextOutput('Lumina Loop: registro de actividad activo.');
 }
 
@@ -28,7 +48,7 @@ function doPost(e) {
     var datos = JSON.parse(e.postData.contents);
     var eventos = (datos && datos.eventos) || [];
     if (!eventos.length) return ContentService.createTextOutput('sin eventos');
-    var libro = SpreadsheetApp.getActiveSpreadsheet();
+    var libro = libro_();
     var reg = hoja_(libro, HOJA_REGISTRO, COLS_REGISTRO);
     var filas = eventos.map(function (ev) {
       return [new Date(ev.t), ev.estudiante || '', ev.id || '', ev.sesion || '', ev.tipo || '', ev.lugar || '',
@@ -90,7 +110,7 @@ function actualizarEstudiantes_(libro, eventos) {
       case 'logro': suma('Logros'); break;
       case 'isla_restaurada': suma('Islas restauradas'); break;
       case 'jefe_vencido': suma('Jefes vencidos'); break;
-      case 'inicio_sesion': case 'fin_sesion':
+      case 'inicio_sesion': case 'fin_sesion': case 'pausa':
         if (extra.nivel) f[C['Nivel']] = extra.nivel;
         if (extra.minutosJugados !== undefined) f[C['Minutos jugados']] = extra.minutosJugados;
         break;

@@ -83,6 +83,19 @@ const Registro = {
       errores: sc.fails || 0, pistas: sc.hintLevel || 0, alPrimerIntento: !!(r && r.firstTry), segundos: Math.round(sc.t || 0), programa
     });
   },
+  // comprueba la conexión (modo docente): GET ?estado=1 a la aplicación web
+  probar() {
+    const url = this.url();
+    if (!url) return Promise.resolve({ ok: false, msg: 'No hay dirección configurada (REGISTRO_URL).' });
+    return fetch(url + (url.includes('?') ? '&' : '?') + 'estado=1', { method: 'GET', cache: 'no-store' })
+      .then(r => r.text())
+      .then(txt => {
+        try { const j = JSON.parse(txt); if (j && j.ok) return { ok: true, version: j.version, hoja: j.hoja, url: j.url, eventos: j.eventos, estudiantes: j.estudiantes }; } catch (e) { }
+        if (/registro de actividad activo/.test(txt)) return { ok: true, version: 1 };
+        return { ok: false, msg: 'La dirección responde, pero no es el script del registro.' };
+      })
+      .catch(() => ({ ok: false, msg: 'No responde: revisa que la aplicación web esté implementada con acceso «Cualquier usuario».' }));
+  },
   error(sc, msg) { this.log('error_en_reto', (sc.cfg && sc.cfg.title) || '', String(msg || ''), sc.fails || ''); },
   // banderas de la historia: las importantes con un nombre legible; el resto, como «hito»
   hito(k) {
@@ -101,7 +114,7 @@ Registro.cargar();
 setInterval(() => { if (Registro.cola.length) Registro.enviar(); }, 20000);
 document.addEventListener('visibilitychange', () => {
   if (!Registro.sesion || !Registro.activo()) return;
-  if (document.visibilityState === 'hidden') { Registro.log('pausa', 'la pestaña se ocultó', '', Math.round((Date.now() - Registro.inicio) / 1000)); Registro.enviar(true); }
+  if (document.visibilityState === 'hidden') { Registro.log('pausa', 'la pestaña se ocultó', '', Math.round((Date.now() - Registro.inicio) / 1000), Registro.resumen()); Registro.enviar(true); }
   else Registro.log('reanuda', 'la pestaña volvió a estar visible');
 });
 window.addEventListener('pagehide', () => {
