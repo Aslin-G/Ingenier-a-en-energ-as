@@ -40,6 +40,13 @@
     image-rendering: pixelated;
     image-rendering: crisp-edges;
   }
+  /* capa del modo 2.5D (WebGL2): el mundo en relieve + la interfaz del lienzo del juego */
+  #d25 {
+    display: none; position: absolute; left: 0; top: 0; width: 100%; height: 100%;
+    pointer-events: none;
+    image-rendering: pixelated;
+    image-rendering: crisp-edges;
+  }
   #noscript {
     color: #FFF3D7; font: 16px monospace; text-align: center; padding: 2em;
   }
@@ -49,6 +56,7 @@
 <div id="stage">
 <canvas id="game" width="960" height="540" tabindex="0" aria-label="Lumina Loop: El Código de los Elementos. Videojuego educativo en pixel art."></canvas>
 <canvas id="hd" width="960" height="540" aria-hidden="true"></canvas>
+<canvas id="d25" width="960" height="540" aria-hidden="true"></canvas>
 </div>
 <noscript><div id="noscript">Lumina Loop necesita JavaScript activado para funcionar.</div></noscript>
 <script>
@@ -97,7 +105,8 @@ const W = 480, H = 270, TILE = 16;
 const RES = 2;
 const cv = document.getElementById('game');
 cv.width = W * RES; cv.height = H * RES;
-const ctx = cv.getContext('2d', { alpha: false });
+// con transparencia: en el modo 2.5D este lienzo lleva solo la interfaz y la GPU pone el mundo debajo
+const ctx = cv.getContext('2d', { alpha: true });
 ctx.setTransform(RES, 0, 0, RES, 0, 0);
 ctx.imageSmoothingEnabled = false;
 // dibuja un lienzo preparado a doble densidad (hi-res) ocupando w×h píxeles de juego
@@ -1157,7 +1166,7 @@ const PROG_KEYS = MASTERY_KEYS.slice(0, 11), ENERGY_KEYS = MASTERY_KEYS.slice(11
 
 const DEFAULT_SETTINGS = () => ({
   musicVol: 0.55, sfxVol: 0.8, textSpeed: 1, highContrast: false, reduceFlash: false, reduceShake: false,
-  touch: 'auto', noTimer: false, captions: true, pixelPerfect: false, bindings: null, confidence: true, assist: false, hd: true
+  touch: 'auto', noTimer: false, captions: true, pixelPerfect: false, bindings: null, confidence: true, assist: false, hd: true, d25: true
 });
 
 function newSave() {
@@ -4525,10 +4534,28 @@ class Level {
     const maxX = Math.max(0, this.pw - W), maxY = Math.max(0, this.ph - H);
     return { x: clamp(px0 + Math.round(c.x - p.x), 0, maxX), y: clamp(py0 + Math.round(c.y - p.y), 0, maxY) };
   }
+  // El dibujo va por etapas (fondo, terreno, actores, luces, superposición): el modo
+  // 2.5D (42_gfx_renderer.js) reparte las mismas etapas entre lienzos y la GPU.
   drawWorld(g) {
     const cp = this.camPixel();
     const cx = cp.x + FX.ox, cy = cp.y + FX.oy;
     Level.camRef.x = cx; Level.camRef.y = cy;
+    if (D25.active) { D25.drawLevel(this, g, cx, cy); return; }
+    this.drawBackdrop(g, cx, cy);
+    // terreno
+    g.drawImage(this.staticCv, cx, cy, W, H, 0, 0, W, H);
+    this.drawActors(g, cx, cy);
+    // iluminación
+    this.addLights(cx, cy);
+    const dk = this.darkness();
+    Light.render(g, dk, this.theme.tint || '#0B1030');
+    this.drawSunAfterDark(g, dk);
+    // viñeta suave: más marcada de noche y en cuevas
+    g.drawImage(Vignette.get(this.vignetteA()), 0, 0);
+    this.drawOverlay(g, cx, cy);
+  }
+  // cielo, capas de parallax y elementos vivos del fondo
+  drawBackdrop(g, cx, cy) {
     const th = this.theme;
     g.drawImage(this.bg.sky, 0, 0, W, H);
     drawSkyLive(g, this.bg, this.time);
@@ -4546,8 +4573,9 @@ class Level {
     }
     drawLiveBackground(g, this, cx, cy, prevP, 99);
     if (this.def.skyDraw) this.def.skyDraw(this, g, cx, cy);
-    // terreno
-    g.drawImage(this.staticCv, cx, cy, W, H, 0, 0, W, H);
+  }
+  // baldosas dinámicas, entidades, protagonistas, agua y partículas del mundo
+  drawActors(g, cx, cy) {
     this.drawDynamicTiles(g, cx, cy);
     // entidades de fondo
     for (const e of this.entities) if (e.layer === -1 && e.draw && this.onScreen(e, cx, cy)) drawEntity(g, e, cx, cy);
@@ -4562,7 +4590,9 @@ class Level {
     for (const e of this.entities) if (e.layer === 1 && e.draw && this.onScreen(e, cx, cy)) drawEntity(g, e, cx, cy);
     this.drawWater(g, cx, cy);
     Particles.draw(g, cx, cy, false, 0);
-    // iluminación
+  }
+  // fuentes de luz de este fotograma (en coordenadas de pantalla)
+  addLights(cx, cy) {
     Light.begin();
     const p = this.player;
     Light.add(p.x + p.w / 2 - cx, p.y + 8 - cy, 70, 0.9);
@@ -4570,16 +4600,19 @@ class Level {
     if (p.atk || p.chargeT > 0.3) Light.add(p.cx + p.face * 10 - cx, p.y + 8 - cy, 56, 0.9, saberColor(this));
     for (const e of this.entities) if (e.light && this.onScreen(e, cx, cy, 80)) { const l = e.light(); if (l) Light.add(l.x - cx, l.y - cy, l.r, l.a == null ? 1 : l.a, l.c); }
     if (this.def.lights) this.def.lights(this, cx, cy);
-    const dk = this.darkness();
-    Light.render(g, dk, th.tint || '#0B1030');
-    // el sol y la luna no se apagan con el apagón: se redibujan casi con su brillo propio
+  }
+  // el sol y la luna no se apagan con el apagón: se redibujan casi con su brillo propio
+  drawSunAfterDark(g, dk) {
+    const th = this.theme;
     if (th.sun && dk > 0.05 && th.sun.y < 0.35 && this.bg.sunImg) {
       const sn = th.sun, sx = sn.x * W, sy = sn.y * H;
       g.globalAlpha = Math.min(1, dk * 2.2); g.drawImage(this.bg.sunImg, Math.round(sx - sn.r - 1), Math.round(sy - sn.r - 1));
       g.globalAlpha = 1;
     }
-    // viñeta suave: más marcada de noche y en cuevas
-    g.drawImage(Vignette.get(th.sun && !th.sun.moon ? 0.2 : 0.34), 0, 0);
+  }
+  vignetteA() { const th = this.theme; return th.sun && !th.sun.moon ? 0.2 : 0.34; }
+  // lo que va encima del mundo ya iluminado: avisos, Lente, etiquetas y globos
+  drawOverlay(g, cx, cy) {
     if (this.slowT > 0) { g.globalAlpha = Math.min(0.22, this.slowT * 0.2); rect(g, 0, 0, W, H, PAL.violet); g.globalAlpha = 1; }
     Particles.draw(g, cx, cy, true, 1);
     if (this.lensT > 0.01) this.drawLensOverlay(g, cx, cy);
@@ -11111,7 +11144,8 @@ const Game = {
     }
     if (Save.flash > 0) { ctx.globalAlpha = Math.min(1, Save.flash); icon(ctx, 'star', W - 12, H - 12); ctx.globalAlpha = 1; }
     Trans.draw(ctx);
-    HD.present();
+    // modo 2.5D: la GPU compone el mundo en relieve con la interfaz; si no, el modo HD/clásico
+    if (!D25.present()) HD.present();
   },
   newGame(player) {
     const settings = G.save.settings, teacher = G.save.teacherUnlocked, lab = G.save.labUnlocked;
@@ -11285,7 +11319,8 @@ class DefeatScene {
     }
     // el mundo pierde el color y se oscurece poco a poco
     const gray = clamp((t - 0.3) / 2.0, 0, 1);
-    if (gray > 0) { g.globalCompositeOperation = 'saturation'; g.fillStyle = 'rgba(128,128,128,' + gray + ')'; g.fillRect(0, 0, W, H); g.globalCompositeOperation = 'source-over'; }
+    if (gray > 0 && D25.active) D25.gray = gray;
+    else if (gray > 0) { g.globalCompositeOperation = 'saturation'; g.fillStyle = 'rgba(128,128,128,' + gray + ')'; g.fillRect(0, 0, W, H); g.globalCompositeOperation = 'source-over'; }
     const pulse = this.phase === 'impact' ? 0.25 + 0.2 * Math.abs(Math.sin(t * 9)) : 0.35;
     g.globalAlpha = pulse * clamp(t / 0.4, 0, 1); rect(g, 0, 0, W, H, '#2A0A1A'); g.globalAlpha = 1;
     // viñeta roja en los bordes
@@ -11604,10 +11639,14 @@ class SettingsScene {
     tog('noTimer', 'Modo sin tiempo (sin prisas)');
     tog('confidence', 'Preguntar "¿qué tan seguro estás?"');
     tog('pixelPerfect', 'Escalado de píxel entero');
-    // gráficos HD: filtro en la GPU que redondea los bordes con píxeles más finos
-    row('Gráficos HD (bordes y curvas finos)');
-    if (UI.btn(g, 'thd', 330, y, 90, 12, !HD.ok ? 'NO DISPONIBLE' : S.hd !== false && !HD.autoOff ? 'SÍ' : 'NO', { color: !HD.ok ? '#8A8FB0' : S.hd !== false && !HD.autoOff ? PAL.lime : PAL.coral }) && HD.ok) {
-      S.hd = HD.autoOff ? true : S.hd === false; HD.autoOff = false; HD.apply(); AudioSys.sfx('click');
+    // gráficos: 2.5D (relieve, luces y sombras en la GPU), HD (bordes finos) o clásicos
+    row('Gráficos');
+    const gfx = S.hd === false || !HD.ok ? 'clasico' : S.d25 !== false && D25.ok && !D25.autoOff ? '25d' : 'hd';
+    const gfxName = { '25d': '2.5D', hd: 'HD', clasico: 'CLÁSICOS' }[gfx];
+    if (UI.btn(g, 'thd', 330, y, 90, 12, !HD.ok && !D25.ok ? 'CLÁSICOS' : gfxName, { color: gfx === '25d' ? PAL.lime : gfx === 'hd' ? PAL.teal : PAL.coral, tip: '2.5D: profundidad, luces y sombras · HD: bordes finos · CLÁSICOS: pixel art sin filtros' }) && (HD.ok || D25.ok)) {
+      const order = (D25.ok ? ['25d'] : []).concat(HD.ok ? ['hd'] : [], ['clasico']), next = order[(order.indexOf(gfx) + 1) % order.length];
+      S.hd = next !== 'clasico'; S.d25 = next === '25d';
+      HD.autoOff = false; D25.autoOff = false; D25.quality = 'alta'; HD.apply(); D25.apply(); AudioSys.sfx('click');
     }
     y += 15;
     tog('assist', 'Ayuda de combate (+2 células, jefes lentos)');
@@ -20136,6 +20175,864 @@ class CreditsScene {
 }
 
 
+// ===== 40_gfx_core.js · Lumina Loop · © Aslin Gonzalo Botello Plata =====
+// =====================================================================
+//  GRÁFICOS 2.5D (HD-2D) · NÚCLEO WEBGL2
+//  Lumina Loop: El Código de los Elementos · © Aslin Gonzalo Botello Plata
+//  Utilidades mínimas escritas a mano (sin motores ni librerías): programas
+//  de sombreado, texturas, búferes de fotograma, geometría y la matriz de
+//  la luz direccional. El renderizador está en 42_gfx_renderer.js.
+// =====================================================================
+const GLX = {
+  compile(gl, type, src) {
+    const s = gl.createShader(type);
+    gl.shaderSource(s, src); gl.compileShader(s);
+    if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) { const log = gl.getShaderInfoLog(s); gl.deleteShader(s); throw new Error('sombreador: ' + log); }
+    return s;
+  },
+  // programa con atributos fijos (aP = 0, aT = 1) y mapa de uniformes por nombre
+  program(gl, vs, fs) {
+    const p = gl.createProgram();
+    gl.attachShader(p, this.compile(gl, gl.VERTEX_SHADER, vs));
+    gl.attachShader(p, this.compile(gl, gl.FRAGMENT_SHADER, fs));
+    gl.bindAttribLocation(p, 0, 'aP'); gl.bindAttribLocation(p, 1, 'aT');
+    gl.linkProgram(p);
+    if (!gl.getProgramParameter(p, gl.LINK_STATUS)) throw new Error('programa: ' + gl.getProgramInfoLog(p));
+    const u = {}, n = gl.getProgramParameter(p, gl.ACTIVE_UNIFORMS);
+    for (let i = 0; i < n; i++) { const info = gl.getActiveUniform(p, i); u[info.name.replace(/\[0\]$/, '')] = gl.getUniformLocation(p, info.name); }
+    return { p, u };
+  },
+  // textura con almacenamiento fijo (texStorage2D): RGBA8, RGBA16F, DEPTH24...
+  tex(gl, w, h, internal, linear) {
+    const t = gl.createTexture();
+    gl.bindTexture(gl.TEXTURE_2D, t);
+    gl.texStorage2D(gl.TEXTURE_2D, 1, internal, w, h);
+    const f = linear ? gl.LINEAR : gl.NEAREST;
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, f);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, f);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    t.w = w; t.h = h;
+    return t;
+  },
+  fbo(gl, colors, depth) {
+    const f = gl.createFramebuffer();
+    gl.bindFramebuffer(gl.FRAMEBUFFER, f);
+    colors.forEach((c, i) => gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0 + i, gl.TEXTURE_2D, c, 0));
+    if (depth) gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.TEXTURE_2D, depth, 0);
+    gl.drawBuffers(colors.length ? colors.map((c, i) => gl.COLOR_ATTACHMENT0 + i) : [gl.NONE]);
+    if (!colors.length) gl.readBuffer(gl.NONE);
+    const st = gl.checkFramebufferStatus(gl.FRAMEBUFFER);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    if (st !== gl.FRAMEBUFFER_COMPLETE) throw new Error('búfer de fotograma incompleto (' + st + ')');
+    const ref = colors[0] || depth;
+    f.w = ref.w; f.h = ref.h;
+    return f;
+  },
+  // geometría: vértices (posición de 3 floats + datos de 2 floats) e índices
+  mesh(gl, verts, idx) {
+    const vao = gl.createVertexArray();
+    gl.bindVertexArray(vao);
+    const vb = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, vb); gl.bufferData(gl.ARRAY_BUFFER, verts, gl.STATIC_DRAW);
+    gl.enableVertexAttribArray(0); gl.vertexAttribPointer(0, 3, gl.FLOAT, false, 20, 0);
+    gl.enableVertexAttribArray(1); gl.vertexAttribPointer(1, 2, gl.FLOAT, false, 20, 12);
+    const ib = gl.createBuffer();
+    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, ib); gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, idx, gl.STATIC_DRAW);
+    gl.bindVertexArray(null);
+    return { vao, vb, ib, n: idx.length };
+  },
+  free(gl, m) { if (!m) return; gl.deleteBuffer(m.vb); gl.deleteBuffer(m.ib); gl.deleteVertexArray(m.vao); }
+};
+
+// Matriz (columna mayor) de la luz direccional: proyección ortográfica alineada
+// con la dirección de la luz que abarca la caja visible del diorama. El origen se
+// ajusta a múltiplos de un texel para que las sombras no «tiemblen» al avanzar.
+function lightMatrix(S, box, size) {
+  const n = Math.hypot(S[0], S[1], S[2]), f = [-S[0] / n, -S[1] / n, -S[2] / n];
+  const up = Math.abs(f[2]) > 0.95 ? [1, 0, 0] : [0, 0, 1];
+  const cr = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+  const nm = v => { const l = Math.hypot(v[0], v[1], v[2]); return [v[0] / l, v[1] / l, v[2] / l]; };
+  const r = nm(cr(up, f)), u = cr(f, r);
+  const dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+  const mn = [1e9, 1e9, 1e9], mx = [-1e9, -1e9, -1e9];
+  for (const x of [box[0], box[1]]) for (const y of [box[2], box[3]]) for (const z of [box[4], box[5]]) {
+    const p = [x, y, z], v = [dot(p, r), dot(p, u), dot(p, f)];
+    for (let i = 0; i < 3; i++) { mn[i] = Math.min(mn[i], v[i]); mx[i] = Math.max(mx[i], v[i]); }
+  }
+  const sx = mx[0] - mn[0], sy = mx[1] - mn[1], sz = mx[2] - mn[2] + 8;
+  const tx = sx / size, ty = sy / size;
+  const x0 = Math.floor(mn[0] / tx) * tx, y0 = Math.floor(mn[1] / ty) * ty, z0 = mn[2] - 4;
+  const ax = 2 / sx, ay = 2 / sy, az = 2 / sz;
+  return new Float32Array([
+    r[0] * ax, u[0] * ay, f[0] * az, 0,
+    r[1] * ax, u[1] * ay, f[1] * az, 0,
+    r[2] * ax, u[2] * ay, f[2] * az, 0,
+    -x0 * ax - 1, -y0 * ay - 1, -z0 * az - 1, 1
+  ]);
+}
+
+
+// ===== 41_gfx_materials.js · Lumina Loop · © Aslin Gonzalo Botello Plata =====
+// =====================================================================
+//  GRÁFICOS 2.5D (HD-2D) · MATERIALES
+//  Lumina Loop: El Código de los Elementos · © Aslin Gonzalo Botello Plata
+//  · Parámetros de cada isla: colores del suelo, estilo de la cara superior
+//    (césped, tablones, baldosas, roca, metal, neón, mármol, cristal), luz
+//    del sol o de la luna y corrección de color.
+//  · Sombreadores del G-buffer: las caras superiores y laterales de los
+//    prismas se texturizan a mano, píxel a píxel, con ruido determinista;
+//    la cara frontal es el pixel art original con relieve por Sobel.
+// =====================================================================
+const D25_TOP = { grass: 0, moss: 0, leafy: 0, planks: 1, tiles: 2, rock: 3, metal: 4, neon: 5, marble: 6, crystalTop: 7 };
+// plataformas de un solo sentido: [principal, brillo, sombra, estilo] (como paintPlatform)
+const D25_PLAT = {
+  wood: ['#B07A4A', '#D8A06A', '#5E3A26', 1], glass: ['#9FE8FF', '#FFFFFF', '#30A8C8', 2], stone: ['#EDE6F5', '#66D6A0', '#8A7AA8', 3],
+  leaf: ['#3FA85A', '#B6F35B', '#2A7A4B', 4], crystal: ['#6A4A9A', '#C9B2FF', '#2A1A44', 5], metal: ['#C9D2F0', '#FFFFFF', '#565E8C', 6],
+  neon: ['#2A2458', '#FF4FB8', '#30E1C5', 7], prism: ['#FFD84A', '#FFFFFF', '#9B76FF', 8], gold: ['#FFD84A', '#FFF3D7', '#C88A2A', 9]
+  // las nubes de Aeris siguen planas: un prisma no parece una nube
+};
+const D25_FLOWERS = { flower: ['#FF7FCF', '#FFD84A', '#FFFFFF'], sunflower: ['#FFD84A', '#FF9D42', '#FFFFFF'], coral: ['#FF7FCF', '#FF9D42', '#FFFFFF'], fern: ['#B6F35B', '#FF7FCF', '#FFD84A'] };
+const c3 = hex => { const c = hexRgb(hex); return [c[0] / 255, c[1] / 255, c[2] / 255]; };
+const lum3 = c => c[0] * 0.299 + c[1] * 0.587 + c[2] * 0.114;
+// color de una luz (hex, rgb(), hsl()...) en 0..1, con memoria
+const D25_COLORS = new Map();
+function d25Color(s) {
+  let c = D25_COLORS.get(s);
+  if (c) return c;
+  if (/^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(s)) c = c3(s);
+  else {
+    const g = d25Color.g || (d25Color.g = makeCanvas(1, 1).g);
+    g.clearRect(0, 0, 1, 1); g.fillStyle = '#000'; g.fillStyle = s; g.fillRect(0, 0, 1, 1);
+    const d = g.getImageData(0, 0, 1, 1).data; c = [d[0] / 255, d[1] / 255, d[2] / 255];
+  }
+  if (D25_COLORS.size < 512) D25_COLORS.set(s, c);
+  return c;
+}
+
+// parámetros de material e iluminación de una isla
+function d25Theme(th) {
+  const G2 = th.ground, sun = th.sun, plat = D25_PLAT[th.plat] || null;
+  const deco = (G2.deco || []).find(d => D25_FLOWERS[d]);
+  // dirección hacia el sol (mundo: x a la derecha, y hacia abajo, z hacia el fondo)
+  let S = sun ? [(sun.x - 0.5) * 1.3, -(0.62 + (0.5 - Math.min(sun.y, 0.5)) * 0.7), -0.58] : [0.28, -0.86, -0.46];
+  const n = Math.hypot(S[0], S[1], S[2]); S = S.map(v => v / n);
+  const night = !sun || sun.moon || (th.dark || 0) >= 0.45;
+  const sky = c3((th.sky && th.sky[0] && th.sky[0][1]) || '#59C7FF'), sl = Math.max(0.15, lum3(sky));
+  const sunCol = sun ? c3(mix('#FFFFFF', sun.glow || sun.c, sun.moon ? 0.35 : 0.18)) : c3('#E8DCFF');
+  return {
+    top: D25_TOP[G2.top] != null ? D25_TOP[G2.top] : 3, pier: G2.pier ? 1 : 0,
+    topC: c3(G2.topC), topHi: c3(G2.topHi), fill: c3(G2.fill), fill2: c3(G2.fill2), edge: c3(G2.edge), pierC: c3(G2.pier || G2.fill),
+    wat1: c3(th.water[0]), wat2: c3(th.water[1]), lava: th.hazard === 'magma' ? 1 : 0,
+    plat: plat ? [c3(plat[0]), c3(plat[1]), c3(plat[2])] : null, platStyle: plat ? plat[3] : 0,
+    flowers: deco ? D25_FLOWERS[deco].map(c3) : null,
+    sun: S, sunCol, dif: sun && !sun.moon ? 0.52 : sun ? 0.36 : 0.3, amb: 0.62,
+    // ambiente hemisférico: lo que mira al cielo toma un poco de su color
+    hemi: sky.map(v => clamp((v / sl - 1) * 0.16, -0.12, 0.12)),
+    sunDisc: sun ? [sun.x * W, sun.y * H, sun.r, sun.moon ? 0.25 : 0.55] : [0, 0, 0, 0],
+    sat: night ? 1.04 : 1.1, con: night ? 1.06 : 1.05,
+    shTint: c3(th.tint || '#0B1030'), hiTint: c3(sun ? (sun.glow || sun.c) : '#FFFFFF'),
+    pl: night ? 0.55 : 0.3
+  };
+}
+
+// --------- sombreadores ---------
+const D25_GLSL_HEAD = '#version 300 es\nprecision highp float;\nprecision highp int;\n';
+const D25_HASH = 'float h21(vec2 p){ vec3 q = fract(vec3(p.xyx) * 0.1031); q += dot(q, q.yzx + 33.33); return fract((q.x + q.y) * q.z); }\n';
+
+// vértices del diorama: cámara con desplazamiento de lente (off-axis). El plano
+// Z = 0 cae 1:1 sobre los 480×270 de siempre; el punto de fuga queda por encima.
+const D25_VS_SCENE = D25_GLSL_HEAD + `
+in vec3 aP; in vec2 aT;
+uniform vec3 uEye; uniform vec2 uCam; uniform vec2 uZab; uniform vec2 uScr; uniform vec3 uOff;
+uniform mat4 uLight; uniform int uShadowPass;
+out vec3 vW; out vec2 vUv; flat out vec2 vT;
+void main(){
+  vec3 p = aP + uOff;
+  vW = p; vUv = aT; vT = aT;
+  if (uShadowPass == 1) { gl_Position = uLight * vec4(p, 1.0); return; }
+  float w = (uEye.z + p.z) / uEye.z;
+  vec2 c = (2.0 / uScr) * (p.xy - uEye.xy) + (2.0 * (uEye.xy - uCam) / uScr - 1.0) * w;
+  gl_Position = vec4(c.x, -c.y, uZab.x * p.z + uZab.y, w);
+}`;
+
+// caras superiores y laterales de los prismas, plataformas y superficie del agua
+const D25_FS_FACE = D25_GLSL_HEAD + D25_HASH + `
+in vec3 vW; flat in vec2 vT;
+uniform int uTop, uPlatStyle;
+uniform float uPier, uDz, uTime, uFlowers, uLava;
+uniform vec3 uTopC, uTopHi, uFill, uFill2, uEdge, uPierC, uWat1, uWat2, uPl0, uPl1, uPl2, uDeco0, uDeco1, uDeco2;
+layout(location = 0) out vec4 oAlb;
+layout(location = 1) out vec4 oNrm;
+const vec3 YEL = vec3(1.0, 0.847, 0.29), INK = vec3(0.063, 0.086, 0.169);
+vec3 rainbow(float i){
+  i = mod(i, 8.0);
+  return i < 1.0 ? vec3(1.0, 0.42, 0.42) : i < 2.0 ? vec3(1.0, 0.616, 0.259) : i < 3.0 ? YEL : i < 4.0 ? vec3(0.4, 0.839, 0.416)
+    : i < 5.0 ? vec3(0.188, 0.882, 0.773) : i < 6.0 ? vec3(0.349, 0.78, 1.0) : i < 7.0 ? vec3(0.608, 0.463, 1.0) : vec3(1.0, 0.498, 0.812);
+}
+vec3 topSurface(vec3 P, out float emis){
+  emis = 0.0;
+  vec2 q = floor(vec2(P.x, P.z * 0.5));
+  float n = h21(q + 0.37), m = h21(floor(vec2(P.x / 6.0, P.z / 7.0)) + 5.1);
+  bool rim = P.z < 1.0;
+  vec3 c;
+  if (uPier > 0.5 || uTop == 1) {               // tablones (muelle, taller)
+    float b = floor(P.x / 4.0);
+    c = uTopC * (0.88 + 0.2 * h21(vec2(b, 7.7)));
+    if (mod(floor(P.x), 4.0) < 1.0) c = mix(uTopC, uEdge, 0.55);
+    if (mod(floor(P.z) + b * 5.0, 13.0) < 1.0) c = mix(uTopC, uEdge, 0.4);
+    if (n > 0.94) c *= 0.85;
+    if (rim) c = uTopHi;
+  } else if (uTop == 0) {                        // césped, musgo, hojas
+    c = uTopC * (0.9 + 0.16 * m);
+    if (n < 0.1) c = uTopHi; else if (n > 0.9) c = mix(uTopC, uEdge, 0.28);
+    float f = h21(q * vec2(1.7, 2.3) + 11.0);
+    if (uFlowers > 0.5 && f > 0.986) { float k = h21(q + 3.0); c = k < 0.33 ? uDeco0 : k < 0.66 ? uDeco1 : uDeco2; }
+    if (rim) c = uTopHi;
+  } else if (uTop == 2) {                        // baldosas solares
+    float i = floor(mod(P.x, 16.0) / 4.0) + floor(P.x / 16.0) + floor(P.z / 4.0);
+    c = mod(i, 2.0) < 1.0 ? uTopC : YEL;
+    if (mod(floor(P.x), 4.0) < 1.0 || mod(floor(P.z), 4.0) < 1.0) c *= 0.8;
+    if (rim) c = uTopHi;
+  } else if (uTop == 4) {                        // metal con franja de seguridad
+    c = uTopC * (0.9 + 0.1 * m);
+    if (mod(floor(P.x), 8.0) < 1.0 || mod(floor(P.z), 12.0) < 1.0) c = mix(uTopC, uFill, 0.6);
+    if (mod(floor(P.x), 8.0) == 3.0 && mod(floor(P.z), 12.0) == 4.0) c = vec3(1.0);
+    if (P.z < 3.0) c = mod(floor(P.x / 4.0), 2.0) < 1.0 ? YEL : INK;
+  } else if (uTop == 5) {                        // neón de Ciudad Batería
+    c = uFill * 0.75;
+    if (mod(floor(P.x), 8.0) < 1.0 || mod(floor(P.z), 8.0) < 1.0) { c = uTopC; emis = 0.7; }
+    if (rim) { c = uTopHi; emis = 0.5; }
+  } else if (uTop == 6) {                        // mármol del Faro
+    c = uTopHi;
+    float v = sin(P.x * 0.21 + P.z * 0.6 + sin(P.z * 0.3 + P.x * 0.05) * 2.0);
+    if (v > 0.93) c = mix(uTopHi, uEdge, 0.35);
+    if (P.z < 2.0) c = uTopC;
+  } else if (uTop == 7) {                        // cristal arcoíris de Prisma
+    c = mix(rainbow(floor(P.x / 2.0)), vec3(1.0), 0.15 + 0.25 * step(0.9, n));
+    if (rim) c = vec3(1.0);
+    emis = 0.12;
+  } else {                                       // roca
+    c = uTopC * (0.82 + 0.3 * h21(floor(vec2(P.x / 2.0, P.z / 3.0))));
+    if (n < 0.08 || rim) c = uTopHi;
+  }
+  return c;
+}
+vec3 sideSurface(vec3 P, float runTop, out float emis){
+  emis = 0.0;
+  float n = h21(floor(vec2(P.z * 0.5, P.y)) + 1.7);
+  vec3 c = uPier > 0.5 ? uPierC : uFill;
+  if (n < 0.14) c = uPier > 0.5 ? uPierC * 1.15 : uFill2;
+  if (uPier < 0.5 && fract((P.y + sin(P.z * 0.2) * 1.5) / 11.0) < 0.09) c = mix(c, uEdge, 0.25);   // estratos
+  c *= 1.0 - 0.18 * clamp(P.z / uDz, 0.0, 1.0);
+  if (P.z < 1.0) c = uEdge;
+  // la franja del suelo (césped, tablones...) continúa por el costado
+  if (runTop >= 0.0) {
+    float d = P.y - runTop;
+    if (d < 4.0) { c = uTopC; if (uTop == 5) emis = 0.6; }
+    if (d < 1.0) c = uTopHi;
+    if ((uTop == 1 || uPier > 0.5) && d >= 5.0 && d < 6.0) c = uEdge;
+  }
+  return c;
+}
+vec3 platSurface(vec3 P, bool top, out float emis){
+  emis = 0.0;
+  if (!top) return P.z < 1.0 ? uPl2 * 0.8 : uPl2;
+  vec3 c = uPl0;
+  int s = uPlatStyle;
+  if (s == 1) { if (mod(floor(P.x), 4.0) < 1.0) c = uPl2; else c *= 0.9 + 0.15 * h21(vec2(floor(P.x / 4.0), 2.0)); }
+  else if (s == 2) { c = mix(uPl0, uPl1, 0.2 + 0.5 * step(0.82, fract((P.x + P.z) / 9.0))); }
+  else if (s == 3) { if (mod(floor(P.x), 8.0) < 1.0 || mod(floor(P.z), 8.0) < 1.0) c = uPl2; }
+  else if (s == 4) { c = uPl0 * (0.85 + 0.25 * h21(floor(vec2(P.x / 2.0, P.z / 2.0)))); }
+  else if (s == 5) { if (h21(floor(vec2(P.x / 2.0, P.z / 2.0))) > 0.9) { c = uPl1; emis = 0.3; } }
+  else if (s == 6) { if (mod(floor(P.x), 8.0) < 1.0) c = uPl2; }
+  else if (s == 7) { if (mod(floor(P.x), 6.0) < 1.0) { c = uPl2; emis = 0.7; } }
+  else if (s == 8) { float i = mod(floor(P.x / 4.0), 4.0); c = i < 1.0 ? vec3(1.0, 0.42, 0.42) : i < 2.0 ? YEL : i < 3.0 ? vec3(0.188, 0.882, 0.773) : vec3(0.608, 0.463, 1.0); }
+  else if (s == 9) { c = uPl0 * (0.92 + 0.12 * h21(floor(vec2(P.x / 3.0, P.z / 2.0)))); }
+  if (P.z < 1.0) { c = uPl1; if (s == 7) emis = 0.6; }
+  return c;
+}
+void main(){
+  int type = int(vT.x + 0.5);
+  vec3 P = vW, N, c;
+  float emis = 0.0, mat = 2.0;
+  if (type == 0) { N = vec3(0.0, -1.0, 0.0); c = topSurface(P, emis); }
+  else if (type == 1 || type == 2) { N = vec3(type == 1 ? -1.0 : 1.0, 0.0, 0.0); c = sideSurface(P, vT.y, emis); }
+  else if (type == 3) { N = vec3(0.0, -1.0, 0.0); c = platSurface(P, true, emis); }
+  else if (type == 4 || type == 5) { N = vec3(type == 4 ? -1.0 : 1.0, 0.0, 0.0); c = platSurface(P, false, emis); }
+  else {                                         // superficie del agua (o de la lava)
+    mat = 3.0;
+    float a = P.x * 0.35 + uTime * 2.2, b = P.z * 0.55 - uTime * 1.7 + P.x * 0.1, r = sin(a) + sin(b);
+    N = normalize(vec3(cos(a) * 0.12, -1.0, cos(b) * 0.18));
+    c = mix(uWat1, uWat2, 0.3 + 0.15 * r);
+    if (P.z < 1.0) c = uWat2;
+    emis = uLava > 0.5 ? 0.55 + 0.2 * r : 0.0;
+  }
+  oAlb = vec4(c, mat / 3.0);
+  oNrm = vec4(N * 0.5 + 0.5, emis);
+}`;
+
+// cara frontal: el pixel art de siempre (Z = 0) con relieve por Sobel de su luminancia
+const D25_FS_FRONT = D25_GLSL_HEAD + `
+in vec3 vW;
+uniform sampler2D tStatic; uniform vec2 uLvl; uniform float uBump;
+layout(location = 0) out vec4 oAlb;
+layout(location = 1) out vec4 oNrm;
+vec4 S(ivec2 q){ return texelFetch(tStatic, clamp(q, ivec2(0), ivec2(uLvl) - 1), 0); }
+float Hh(ivec2 q){ vec4 c = S(q); return dot(c.rgb, vec3(0.299, 0.587, 0.114)) * c.a; }
+void main(){
+  ivec2 q = ivec2(floor(vW.xy));
+  vec4 c = S(q);
+  if (c.a < 0.5) discard;
+  float gx = Hh(q + ivec2(1, -1)) + 2.0 * Hh(q + ivec2(1, 0)) + Hh(q + ivec2(1, 1)) - Hh(q + ivec2(-1, -1)) - 2.0 * Hh(q + ivec2(-1, 0)) - Hh(q + ivec2(-1, 1));
+  float gy = Hh(q + ivec2(-1, 1)) + 2.0 * Hh(q + ivec2(0, 1)) + Hh(q + ivec2(1, 1)) - Hh(q + ivec2(-1, -1)) - 2.0 * Hh(q + ivec2(0, -1)) - Hh(q + ivec2(1, -1));
+  vec3 N = normalize(vec3(-gx * uBump, -gy * uBump, -1.0));
+  oAlb = vec4(c.rgb, 1.0 / 3.0);
+  oNrm = vec4(N * 0.5 + 0.5, 0.0);
+}`;
+
+// mapa de sombras: solo profundidad (el pixel art y los actores con prueba de alfa)
+const D25_FS_SHADOW = D25_GLSL_HEAD + `
+in vec3 vW; in vec2 vUv;
+uniform int uMode; uniform sampler2D tSrc; uniform vec2 uLvl;
+void main(){
+  if (uMode == 1 && texelFetch(tSrc, clamp(ivec2(floor(vW.xy)), ivec2(0), ivec2(uLvl) - 1), 0).a < 0.5) discard;
+  if (uMode == 2 && texture(tSrc, vUv).a < 0.5) discard;
+}`;
+
+
+// ===== 42_gfx_renderer.js · Lumina Loop · © Aslin Gonzalo Botello Plata =====
+// =====================================================================
+//  GRÁFICOS 2.5D (HD-2D) · RENDERIZADOR «DIORAMA 3/4 LATERAL»
+//  Lumina Loop: El Código de los Elementos · © Aslin Gonzalo Botello Plata
+//
+//  La lógica del juego no cambia: física, colisiones (cajas AABB contra la
+//  rejilla de baldosas), niveles y textos siguen en el plano 2D. Solo cambia
+//  cómo se ve ese plano:
+//   · Bandas: el fondo, los actores y la interfaz se dibujan con el código
+//     2D de siempre en lienzos separados (Level.drawBackdrop/drawActors/
+//     drawOverlay) y la GPU los compone.
+//   · Cámara con desplazamiento de lente: el plano de juego (Z = 0) cae 1:1
+//     sobre los 480×270 de siempre y el punto de fuga queda por encima de la
+//     pantalla: se ven las caras de arriba y de los lados sin deformar saltos.
+//   · Terreno extruido: cada baldosa sólida es un prisma; su cara frontal es
+//     el pixel art original y las demás se texturizan a mano (materiales).
+//   · Luz: ambiente hemisférico, sol o luna con mapa de sombras, las luces
+//     del juego (Light.add) como luces puntuales y el mismo «apagón» del
+//     modo clásico, para que en las zonas oscuras se vea igual que antes.
+//   · Posprocesado: oclusión ambiental (SSAO) a media resolución, bloom
+//     dual-Kawase, enfoque tilt-shift en la banda de juego y color por isla.
+//  Si no hay WebGL2 o el equipo va lento, el juego vuelve al modo HD/clásico.
+// =====================================================================
+const D25_VS_FULL = D25_GLSL_HEAD + 'in vec2 aP; out vec2 vUv; void main(){ vUv = aP * 0.5 + 0.5; gl_Position = vec4(aP, 0.0, 1.0); }';
+// reconstrucción de la posición en el mundo a partir de la profundidad
+const D25_WORLD = `
+uniform vec3 uEye; uniform vec2 uCam; uniform vec2 uZab; uniform vec2 uRes;
+float zOf(float depth){ float zn = depth * 2.0 - 1.0; return uEye.z * (uZab.y - zn) / (zn - uZab.x * uEye.z); }
+vec3 worldPos(vec2 pix, float depth){
+  float z = zOf(depth), w = (uEye.z + z) / uEye.z;
+  return vec3(uEye.xy + (uCam + (pix + 0.5) * 0.5 - uEye.xy) * w, z);
+}`;
+// Scale2x (EPX) por bloques de 2×2, el mismo filtro del modo HD (05_hd.js), con alfa
+const D25_EPX = `
+vec4 T(sampler2D t, vec2 q){ return texelFetch(t, ivec2(clamp(q, vec2(0.0), uRes - 1.0)), 0); }
+bool eqc(vec4 a, vec4 b){ vec4 d = abs(a - b); return max(max(d.r, d.g), max(d.b, d.a)) < 0.075; }
+bool samec(vec4 a, vec4 b){ vec4 d = abs(a - b); return max(max(d.r, d.g), max(d.b, d.a)) < 0.03; }
+vec4 epx(sampler2D t, vec2 pix){
+  vec2 blk = floor(pix * 0.5) * 2.0, q = pix - blk;
+  vec4 p00 = T(t, blk), p10 = T(t, blk + vec2(1.0, 0.0)), p01 = T(t, blk + vec2(0.0, 1.0)), p11 = T(t, blk + vec2(1.0, 1.0));
+  vec4 self = q.y < 0.5 ? (q.x < 0.5 ? p00 : p10) : (q.x < 0.5 ? p01 : p11);
+  if (!(samec(p00, p10) && samec(p00, p01) && samec(p00, p11))) return self;
+  vec4 A = T(t, blk + vec2(q.x, -1.0)), D = T(t, blk + vec2(q.x, 2.0)), C = T(t, blk + vec2(-1.0, q.y)), B = T(t, blk + vec2(2.0, q.y));
+  vec4 o = p00;
+  if (q.x < 0.5 && q.y < 0.5) { if (eqc(C, A) && !eqc(C, D) && !eqc(A, B)) o = A; }
+  else if (q.y < 0.5) { if (eqc(A, B) && !eqc(A, C) && !eqc(B, D)) o = B; }
+  else if (q.x < 0.5) { if (eqc(D, C) && !eqc(D, B) && !eqc(C, A)) o = C; }
+  else { if (eqc(B, D) && !eqc(B, A) && !eqc(D, C)) o = D; }
+  return o;
+}`;
+
+// oclusión ambiental en pantalla (media resolución)
+const D25_FS_SSAO = D25_GLSL_HEAD + D25_HASH + D25_WORLD + `
+uniform sampler2D tAlb, tNrm, tDepth; uniform vec3 uK[8];
+out vec4 o;
+void main(){
+  ivec2 fc = ivec2(gl_FragCoord.xy) * 2;
+  if (texelFetch(tAlb, fc, 0).a < 0.5) { o = vec4(1.0); return; }   // fondo y caras frontales: sin oclusión
+  vec2 pix = vec2(float(fc.x), uRes.y - 1.0 - float(fc.y));
+  vec3 P = worldPos(pix, texelFetch(tDepth, fc, 0).r);
+  vec3 N = normalize(texelFetch(tNrm, fc, 0).xyz * 2.0 - 1.0);
+  float a = h21(gl_FragCoord.xy) * 6.2832;
+  vec3 rv = vec3(cos(a), sin(a), 0.37);
+  vec3 Tg = normalize(rv - N * dot(rv, N)), Bt = cross(N, Tg);
+  float occ = 0.0;
+  for (int i = 0; i < 8; i++) {
+    vec3 s = P + (Tg * uK[i].x + Bt * uK[i].y + N * uK[i].z) * 11.0;
+    float w = (uEye.z + s.z) / uEye.z;
+    vec2 scr = (uEye.xy + (s.xy - uEye.xy) / w - uCam) * 2.0;
+    ivec2 sf = ivec2(int(scr.x), int(uRes.y - 1.0 - scr.y));
+    if (sf.x < 0 || sf.y < 0 || sf.x >= int(uRes.x) || sf.y >= int(uRes.y)) continue;
+    float sd = texelFetch(tDepth, sf, 0).r;
+    if (sd >= 1.0) continue;
+    float sz = zOf(sd);
+    occ += (sz < s.z - 0.8 ? 1.0 : 0.0) * clamp(14.0 / max(abs(P.z - sz), 1.0), 0.0, 1.0);
+  }
+  float ao = 1.0 - occ / 8.0 * 0.9;
+  o = vec4(ao, ao, ao, 1.0);
+}`;
+// desenfoques y reducciones (cuadro, gaussiano separable, dual-Kawase)
+const D25_FS_BOX = D25_GLSL_HEAD + `
+in vec2 vUv; uniform sampler2D tSrc; uniform vec2 uTexel; out vec4 o;
+void main(){ vec3 s = vec3(0.0); for (int y = -1; y <= 2; y++) for (int x = -1; x <= 2; x++) s += texture(tSrc, vUv + vec2(float(x) - 0.5, float(y) - 0.5) * uTexel).rgb; o = vec4(s / 16.0, 1.0); }`;
+const D25_FS_GAUSS = D25_GLSL_HEAD + `
+in vec2 vUv; uniform sampler2D tSrc; uniform vec2 uDir; out vec4 o;
+void main(){
+  vec3 c = texture(tSrc, vUv).rgb * 0.227027;
+  c += (texture(tSrc, vUv + uDir * 1.384615).rgb + texture(tSrc, vUv - uDir * 1.384615).rgb) * 0.316216;
+  c += (texture(tSrc, vUv + uDir * 3.230769).rgb + texture(tSrc, vUv - uDir * 3.230769).rgb) * 0.070270;
+  o = vec4(c, 1.0);
+}`;
+const D25_FS_PRE = D25_GLSL_HEAD + `
+in vec2 vUv; uniform sampler2D tSrc; uniform float uThr; out vec4 o;
+void main(){
+  vec3 c = texture(tSrc, vUv).rgb;
+  float l = max(c.r, max(c.g, c.b)), k = clamp(l - uThr + 0.2, 0.0, 0.4);
+  float w = max(k * k / 0.8, l - uThr) / max(l, 1e-4);
+  o = vec4(c * w, 1.0);
+}`;
+const D25_FS_KDOWN = D25_GLSL_HEAD + `
+in vec2 vUv; uniform sampler2D tSrc; uniform vec2 uTexel; out vec4 o;
+void main(){
+  vec3 s = texture(tSrc, vUv).rgb * 4.0;
+  s += texture(tSrc, vUv - uTexel).rgb + texture(tSrc, vUv + uTexel).rgb;
+  s += texture(tSrc, vUv + vec2(uTexel.x, -uTexel.y)).rgb + texture(tSrc, vUv - vec2(uTexel.x, -uTexel.y)).rgb;
+  o = vec4(s / 8.0, 1.0);
+}`;
+const D25_FS_KUP = D25_GLSL_HEAD + `
+in vec2 vUv; uniform sampler2D tSrc; uniform vec2 uTexel; out vec4 o;
+void main(){
+  vec2 h = uTexel;
+  vec3 s = texture(tSrc, vUv + vec2(-h.x * 2.0, 0.0)).rgb + texture(tSrc, vUv + vec2(h.x * 2.0, 0.0)).rgb;
+  s += texture(tSrc, vUv + vec2(0.0, h.y * 2.0)).rgb + texture(tSrc, vUv + vec2(0.0, -h.y * 2.0)).rgb;
+  s += (texture(tSrc, vUv + vec2(-h.x, h.y)).rgb + texture(tSrc, vUv + vec2(h.x, h.y)).rgb + texture(tSrc, vUv + vec2(h.x, -h.y)).rgb + texture(tSrc, vUv + vec2(-h.x, -h.y)).rgb) * 2.0;
+  o = vec4(s / 12.0, 1.0);
+}`;
+
+// iluminación y composición de fondo + terreno + actores (HDR)
+const D25_FS_LIGHT = D25_GLSL_HEAD + D25_WORLD + D25_EPX + `
+precision highp sampler2DShadow;
+uniform sampler2D tAlb, tNrm, tDepth, tBg, tBgBlur, tAct, tAO;
+uniform sampler2DShadow tShadow;
+uniform mat4 uLight;
+uniform vec3 uSun, uSunCol, uHemi, uTint;
+uniform float uAmb, uDif, uDark, uBgDof, uPL;
+uniform vec4 uSunDisc;
+uniform int uNL, uFlat, uShadows, uAO, uEPX, uDof;
+uniform vec4 uL[32]; uniform vec4 uLC[32];
+out vec4 o;
+float shadowAt(vec3 P){
+  vec4 l = uLight * vec4(P, 1.0);
+  vec3 c = l.xyz * 0.5 + 0.5;
+  if (c.x <= 0.0 || c.x >= 1.0 || c.y <= 0.0 || c.y >= 1.0 || c.z >= 1.0) return 1.0;
+  vec2 ts = 1.0 / vec2(textureSize(tShadow, 0));
+  float r = c.z - 0.002, s = 0.0;
+  s += texture(tShadow, vec3(c.xy + vec2(-0.6, -0.6) * ts, r));
+  s += texture(tShadow, vec3(c.xy + vec2(0.6, -0.6) * ts, r));
+  s += texture(tShadow, vec3(c.xy + vec2(-0.6, 0.6) * ts, r));
+  s += texture(tShadow, vec3(c.xy + vec2(0.6, 0.6) * ts, r));
+  return s * 0.25;
+}
+vec3 pointLights(vec3 P, vec3 N){
+  vec3 s = vec3(0.0);
+  for (int i = 0; i < 32; i++) {
+    if (i >= uNL) break;
+    vec4 L = uL[i];
+    vec3 d = vec3(L.xy + uCam, -10.0) - P;
+    float dist = length(d), att = clamp(1.0 - dist / (L.z * 1.15), 0.0, 1.0);
+    att *= att * L.w;
+    if (att <= 0.0) continue;
+    vec3 lc = uLC[i].w > 0.5 ? uLC[i].rgb : vec3(1.0, 0.92, 0.78);
+    s += lc * att * max(dot(N, d / dist), 0.0);
+  }
+  return s * uPL;
+}
+void main(){
+  ivec2 fc = ivec2(gl_FragCoord.xy);
+  vec2 pix = vec2(float(fc.x), uRes.y - 1.0 - float(fc.y));   // píxel del lienzo (origen arriba)
+  vec2 sp = (pix + 0.5) * 0.5;                                  // coordenadas de juego
+  vec2 gp = floor(sp) + 0.5;                                    // centro del píxel de juego
+  vec4 alb = texelFetch(tAlb, fc, 0);
+  int mat = int(alb.a * 3.0 + 0.5);
+  float k0 = uAmb + uDif * max(-uSun.z, 0.0);
+  vec3 col;
+  if (mat == 0) {
+    col = texelFetch(tBg, ivec2(pix), 0).rgb;
+    if (uDof == 1) col = mix(col, texture(tBgBlur, (pix + 0.5) / uRes).rgb, uBgDof);
+    if (uFlat == 0) col += uSunCol * uSunDisc.w * (1.0 - smoothstep(uSunDisc.z * 0.5, uSunDisc.z + 1.5, length(sp - uSunDisc.xy)));
+  } else {
+    col = alb.rgb;
+    if (uFlat == 0) {
+      vec4 nr = texelFetch(tNrm, fc, 0);
+      vec3 N = normalize(nr.xyz * 2.0 - 1.0);
+      vec3 P = worldPos(pix, texelFetch(tDepth, fc, 0).r);
+      float ao = uAO == 1 ? texture(tAO, gl_FragCoord.xy / uRes).r : 1.0;
+      float sh = uShadows == 1 && mat >= 2 ? shadowAt(P + N * 0.8) : 1.0;
+      vec3 amb = uAmb * (vec3(1.0) + uHemi * (-N.y)) * ao;
+      vec3 dif = uDif * max(dot(N, uSun), 0.0) * sh * uSunCol;
+      col = alb.rgb * (amb + dif) / k0 + alb.rgb * pointLights(P, N);
+      if (mat == 3) { vec3 V = normalize(vec3(uEye.xy, -uEye.z) - P); col += uSunCol * pow(max(dot(N, normalize(uSun + V)), 0.0), 60.0) * 1.3 * sh; }
+      col += alb.rgb * nr.a * 1.6;
+    }
+  }
+  // actores (Lía, enemigos, objetos, partículas): tarjetas en Z = 0, siempre delante
+  vec4 a = uEPX == 1 ? epx(tAct, pix) : texelFetch(tAct, ivec2(pix), 0);
+  if (a.a > 0.0) {
+    vec3 ac = a.rgb;
+    if (uFlat == 0) {
+      float hl = T(tAct, pix + vec2(-2.0, 0.0)).a, hr = T(tAct, pix + vec2(2.0, 0.0)).a, hu = T(tAct, pix + vec2(0.0, -2.0)).a, hd = T(tAct, pix + vec2(0.0, 2.0)).a;
+      vec3 Na = normalize(vec3((hl - hr) * 0.55, (hu - hd) * 0.55, -1.0));
+      ac *= (uAmb + uDif * max(dot(Na, uSun), 0.0) * uSunCol) / k0;
+    }
+    col = mix(col, ac, a.a);
+  }
+  // el mismo apagón con huecos de luz que el modo clásico (Light.render)
+  if (uDark > 0.01) {
+    float ov = uDark;
+    for (int i = 0; i < 32; i++) {
+      if (i >= uNL) break;
+      vec4 L = uL[i];
+      float t = length(gp - L.xy) / L.z;
+      if (t < 1.0) ov *= 1.0 - (t < 0.55 ? mix(L.w, 0.7 * L.w, t / 0.55) : mix(0.7 * L.w, 0.0, (t - 0.55) / 0.45));
+    }
+    col = mix(col, uTint, ov);
+  }
+  for (int i = 0; i < 32; i++) {
+    if (i >= uNL) break;
+    if (uLC[i].w < 0.5) continue;
+    float t = length(sp - uL[i].xy) / (uL[i].z * 0.6);
+    if (t < 1.0) col += uLC[i].rgb * 0.22 * uL[i].w * (1.0 - t);
+  }
+  if (uFlat == 1) col = clamp(col, 0.0, 1.0);
+  o = vec4(col, 1.0);
+}`;
+
+// composición final: bloom, tilt-shift, tono y color por isla, viñeta e interfaz
+const D25_FS_FINAL = D25_GLSL_HEAD + `
+uniform vec2 uRes;
+` + D25_EPX + `
+uniform sampler2D tHdr, tHalf, tBloom, tUi;
+uniform int uFlat, uEPX, uTilt;
+uniform float uBloomK, uFocusY, uVigA, uGray, uSat, uCon;
+uniform vec3 uShTint, uHiTint;
+out vec4 o;
+vec3 tone(vec3 x){ const float k = 0.8; vec3 e = k + (1.0 - k) * (1.0 - exp(-(x - k) / (1.0 - k))); return mix(x, e, step(k, x)); }
+void main(){
+  ivec2 fc = ivec2(gl_FragCoord.xy);
+  vec2 pix = vec2(float(fc.x), uRes.y - 1.0 - float(fc.y)), sp = (pix + 0.5) * 0.5, gp = floor(sp) + 0.5;
+  vec3 c = texelFetch(tHdr, fc, 0).rgb;
+  if (uFlat == 0) {
+    if (uTilt == 1) c = mix(c, texture(tHalf, gl_FragCoord.xy / uRes).rgb, smoothstep(72.0, 170.0, abs(sp.y - uFocusY)) * 0.65);
+    c += texture(tBloom, gl_FragCoord.xy / uRes).rgb * uBloomK;
+    c = tone(max(c, 0.0));
+    float l = dot(c, vec3(0.299, 0.587, 0.114));
+    c = mix(vec3(l), c, uSat);
+    c = (c - 0.5) * uCon + 0.5;
+    c += (uShTint - 0.5) * (1.0 - smoothstep(0.0, 0.45, l)) * 0.08 + (uHiTint - 0.5) * smoothstep(0.6, 1.0, l) * 0.05;
+  }
+  // viñeta: la misma del modo clásico (Vignette.get)
+  float vt = clamp((length(gp - vec2(240.0, 129.6)) - 113.4) / (297.6 - 113.4), 0.0, 1.0);
+  c = mix(c, vec3(10.0, 14.0, 28.0) / 255.0, uVigA * vt);
+  if (uGray > 0.0) c = mix(c, vec3(dot(c, vec3(0.3, 0.59, 0.11))), uGray);
+  c = clamp(c, 0.0, 1.0);
+  vec4 u = uEPX == 1 ? epx(tUi, pix) : texelFetch(tUi, ivec2(pix), 0);
+  o = vec4(mix(c, u.rgb, u.a), 1.0);
+}`;
+
+const D25 = {
+  ok: false, on: false, gl: null, cv: null, err: '',
+  quality: 'alta', autoOff: false, shown: false,
+  flat: false,            // pruebas: sin luces ni posprocesado (los colores del modo clásico)
+  noDepth: false,         // pruebas: sin extrusión; con flat, el fotograma es idéntico al clásico
+  frame: null, gray: 0, lvRef: null, staticRef: null,
+  // cámara del diorama en píxeles de juego: distancia del ojo, altura sobre la pantalla
+  // y profundidad de los prismas (suelo y plataformas)
+  D: 600, K: 170, DZ: 28, DP: 20, SHADOW: 1024,
+  lastT: 0, avg: 0, slowT: 0,
+  get active() { return this.on; },
+  init() {
+    try {
+      const c = document.getElementById('d25');
+      if (!c || typeof WebGL2RenderingContext === 'undefined') return this.apply();
+      c.width = W * RES; c.height = H * RES;
+      const gl = c.getContext('webgl2', { alpha: false, antialias: false, depth: false, stencil: false, premultipliedAlpha: false, preserveDrawingBuffer: false, powerPreference: 'high-performance' });
+      if (!gl) return this.apply();
+      this.cv = c; this.gl = gl;
+      this.hdr = !!gl.getExtension('EXT_color_buffer_float');
+      this.setup();
+      c.addEventListener('webglcontextlost', e => { e.preventDefault(); this.ok = false; this.apply(); });
+      this.ok = true;
+    } catch (e) { this.err = String(e && e.message || e); this.ok = false; }
+    this.apply();
+  },
+  // en las pruebas automáticas solo se usa si se pide #d25=1
+  wanted() {
+    const S = G.save.settings;
+    if (S.d25 === false || S.hd === false || this.autoOff) return false;
+    return !(navigator.webdriver && !/d25=1/.test(location.hash));
+  },
+  apply() { this.on = this.ok && this.wanted(); if (!this.on) this.show(false); this.avg = 0; this.slowT = 0; },
+  show(v) { if (this.cv && v !== this.shown) { this.cv.style.display = v ? 'block' : 'none'; this.shown = v; } },
+
+  // ---------- recursos ----------
+  setup() {
+    const gl = this.gl, X = GLX, F = this.hdr ? gl.RGBA16F : gl.RGBA8, fw = W * RES, fh = H * RES, hw = fw / 2, hh = fh / 2;
+    gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false); gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, false);
+    const P = (fs, vs) => X.program(gl, vs || D25_VS_FULL, fs);
+    this.pr = {
+      face: P(D25_FS_FACE, D25_VS_SCENE), front: P(D25_FS_FRONT, D25_VS_SCENE), shadow: P(D25_FS_SHADOW, D25_VS_SCENE),
+      ssao: P(D25_FS_SSAO), box: P(D25_FS_BOX), gauss: P(D25_FS_GAUSS), pre: P(D25_FS_PRE), kdown: P(D25_FS_KDOWN), kup: P(D25_FS_KUP),
+      light: P(D25_FS_LIGHT), final: P(D25_FS_FINAL)
+    };
+    // lienzos de las bandas 2D (mismo tamaño y escala que el lienzo del juego)
+    const band = () => { const c = document.createElement('canvas'); c.width = fw; c.height = fh; const g = c.getContext('2d'); return { c, g }; };
+    this.bgB = band(); this.actB = band();
+    const T = (w, h, f, lin) => X.tex(gl, w, h, f, lin);
+    this.tBg = T(fw, fh, gl.RGBA8, true); this.tAct = T(fw, fh, gl.RGBA8, false); this.tUi = T(fw, fh, gl.RGBA8, false);
+    this.tAlb = T(fw, fh, gl.RGBA8, false); this.tNrm = T(fw, fh, gl.RGBA8, false); this.tDepth = T(fw, fh, gl.DEPTH_COMPONENT24, false);
+    this.fG = X.fbo(gl, [this.tAlb, this.tNrm], this.tDepth);
+    this.tHdr = T(fw, fh, F, true); this.fHdr = X.fbo(gl, [this.tHdr]);
+    this.tAO = T(hw, hh, gl.RGBA8, true); this.fAO = X.fbo(gl, [this.tAO]);
+    this.tAO2 = T(hw, hh, gl.RGBA8, true); this.fAO2 = X.fbo(gl, [this.tAO2]);
+    this.tBgH = T(hw, hh, gl.RGBA8, true); this.fBgH = X.fbo(gl, [this.tBgH]);
+    this.tBgH2 = T(hw, hh, gl.RGBA8, true); this.fBgH2 = X.fbo(gl, [this.tBgH2]);
+    this.tHalf = T(hw, hh, F, true); this.fHalf = X.fbo(gl, [this.tHalf]);
+    this.tHalf2 = T(hw, hh, F, true); this.fHalf2 = X.fbo(gl, [this.tHalf2]);
+    this.bl = [];
+    for (let i = 0, w = hw, h = hh; i < 5; i++, w = Math.ceil(w / 2), h = Math.ceil(h / 2)) { const t = T(w, h, F, true); this.bl.push({ t, f: X.fbo(gl, [t]) }); }
+    this.tShadow = T(this.SHADOW, this.SHADOW, gl.DEPTH_COMPONENT24, true);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_COMPARE_MODE, gl.COMPARE_REF_TO_TEXTURE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_COMPARE_FUNC, gl.LEQUAL);
+    this.fShadow = X.fbo(gl, [], this.tShadow);
+    // triángulo de pantalla completa y tarjeta de los actores (W×H en Z = 0)
+    this.vFull = gl.createVertexArray(); gl.bindVertexArray(this.vFull);
+    const b = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, b); gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 3, -1, -1, 3]), gl.STATIC_DRAW);
+    gl.enableVertexAttribArray(0); gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
+    gl.bindVertexArray(null);
+    this.mAct = X.mesh(gl, new Float32Array([0, 0, 0, 0, 0, W, 0, 0, 1, 0, W, H, 0, 1, 1, 0, H, 0, 0, 1]), new Uint32Array([0, 1, 2, 0, 2, 3]));
+    // núcleo de muestras de la oclusión ambiental (hemisferio, más denso cerca del centro)
+    const k = [];
+    for (let i = 0; i < 8; i++) { const a = i * 2.39996, r = 0.35 + 0.65 * ((i + 0.5) / 8), z = 0.25 + 0.7 * ((i * 5) % 8) / 8, s = (0.25 + 0.75 * (i / 7) * (i / 7)); k.push(Math.cos(a) * r * s, Math.sin(a) * r * s, z * s); }
+    this.kernel = new Float32Array(k);
+  },
+  // geometría del nivel: prismas del terreno, plataformas y superficie del agua
+  prepareLevel(lv) {
+    const gl = this.gl;
+    GLX.free(gl, this.mTer); GLX.free(gl, this.mFront);
+    if (this.tStatic) gl.deleteTexture(this.tStatic);
+    const sc = lv.staticCv;
+    this.tStatic = GLX.tex(gl, sc.width, sc.height, gl.RGBA8, false);
+    gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, gl.RGBA, gl.UNSIGNED_BYTE, sc);
+    this.mFront = GLX.mesh(gl, new Float32Array([0, 0, 0, 0, 0, sc.width, 0, 0, 1, 0, sc.width, sc.height, 0, 1, 1, 0, sc.height, 0, 0, 1]), new Uint32Array([0, 1, 2, 0, 2, 3]));
+    const m = d25Mesh(lv, this.DZ, this.DP);
+    this.mTer = m.idx.length ? GLX.mesh(gl, m.verts, m.idx) : null;
+    this.mat = d25Theme(lv.theme);
+    this.lvRef = lv; this.staticRef = sc;
+  },
+  upload(t, src) { const gl = this.gl; gl.bindTexture(gl.TEXTURE_2D, t); gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, gl.RGBA, gl.UNSIGNED_BYTE, src); },
+
+  // ---------- dibujo de un fotograma ----------
+  // Lo llama Level.drawWorld en modo 2.5D: las mismas etapas que el modo
+  // clásico, pero el fondo y los actores van a sus lienzos y el lienzo del
+  // juego queda transparente para la interfaz.
+  drawLevel(lv, g, cx, cy) {
+    const B = this.bgB.g, A = this.actB.g;
+    for (const x of [B, A]) { x.setTransform(RES, 0, 0, RES, 0, 0); x.globalAlpha = 1; x.globalCompositeOperation = 'source-over'; x.imageSmoothingEnabled = false; }
+    A.clearRect(0, 0, W, H);
+    g.clearRect(0, 0, W, H);
+    lv.drawBackdrop(B, cx, cy);
+    lv.drawActors(A, cx, cy);
+    lv.addLights(cx, cy);
+    const dk = lv.darkness(), p = lv.player;
+    this.frame = { lv, cx, cy, dk, tint: lv.theme.tint || '#0B1030', lights: Light.lights.slice(0, 32).map(l => ({ x: l.x, y: l.y, r: l.r, a: l.a, color: l.color })), vig: lv.vignetteA(), focusY: p ? p.y + p.h / 2 - cy : H / 2 };
+    this.gray = 0;
+    lv.drawSunAfterDark(g, dk);
+    lv.drawOverlay(g, cx, cy);
+  },
+  // se llama al final de Game.draw: compone el fotograma 2.5D (o devuelve false)
+  present() {
+    const f = this.frame;
+    this.frame = null;
+    if (!f || !this.on) { this.show(false); return false; }
+    try { this.render(f); } catch (e) { this.err = String(e && e.message || e); this.ok = false; this.apply(); return false; }
+    this.show(true);
+    this.watch();
+    return true;
+  },
+  fs(prog, fbo, tex) {
+    const gl = this.gl;
+    gl.bindFramebuffer(gl.FRAMEBUFFER, fbo || null);
+    gl.viewport(0, 0, fbo ? fbo.w : this.cv.width, fbo ? fbo.h : this.cv.height);
+    gl.useProgram(prog.p);
+    if (tex) for (const k in tex) { const i = tex[k][0]; gl.activeTexture(gl.TEXTURE0 + i); gl.bindTexture(gl.TEXTURE_2D, tex[k][1]); if (prog.u[k]) gl.uniform1i(prog.u[k], i); }
+    gl.bindVertexArray(this.vFull);
+    gl.drawArrays(gl.TRIANGLES, 0, 3);
+  },
+  uni(prog, o) {
+    const gl = this.gl, u = prog.u;
+    for (const k in o) {
+      const v = o[k], l = u[k];
+      if (l == null) continue;
+      if (typeof v === 'number') gl.uniform1f(l, v);
+      else if (v.i != null) gl.uniform1i(l, v.i);
+      else if (v.length === 2) gl.uniform2fv(l, v);
+      else if (v.length === 3) gl.uniform3fv(l, v);
+      else if (v.length === 4) gl.uniform4fv(l, v);
+      else if (v.m) gl.uniformMatrix4fv(l, false, v.m);
+      else if (v.v3) gl.uniform3fv(l, v.v3);
+      else if (v.v4) gl.uniform4fv(l, v.v4);
+    }
+  },
+  render(f) {
+    const gl = this.gl, lv = f.lv;
+    if (this.lvRef !== lv || this.staticRef !== lv.staticCv) this.prepareLevel(lv);
+    const M = this.mat, fw = this.cv.width, fh = this.cv.height;
+    const flat = this.flat, alta = this.quality === 'alta' && !flat, depth = !this.noDepth;
+    const epx = !flat && HD.ok && G.save.settings.hd !== false ? 1 : 0;
+    this.upload(this.tBg, this.bgB.c); this.upload(this.tAct, this.actB.c); this.upload(this.tUi, cv);
+    // cámara: el ojo sobre el centro de la pantalla, por encima de su borde superior
+    const D = this.D, zN = 60, zF = 600;
+    const A = (2 * D + zF - zN) / (D * (zF + zN)), Bz = (D + zF) / D - A * zF;
+    const cam = [f.cx, f.cy], eye = [f.cx + W / 2, f.cy - this.K, D];
+    const scene = { uEye: eye, uCam: cam, uZab: [A, Bz], uScr: [W, H], uRes: [fw, fh], uOff: [0, 0, 0], uShadowPass: { i: 0 } };
+    // luz direccional (sol o luna) y su matriz de sombras
+    const lm = lightMatrix(M.sun, [f.cx - 70, f.cx + W + 70, f.cy - 90, f.cy + H + 40, -2, this.DZ + 2], this.SHADOW);
+    gl.disable(gl.BLEND);
+    // 1) mapa de sombras (terreno, pixel art frontal y actores con prueba de alfa)
+    if (alta && depth) {
+      gl.bindFramebuffer(gl.FRAMEBUFFER, this.fShadow); gl.viewport(0, 0, this.SHADOW, this.SHADOW);
+      gl.enable(gl.DEPTH_TEST); gl.depthFunc(gl.LESS); gl.depthMask(true); gl.clear(gl.DEPTH_BUFFER_BIT);
+      gl.enable(gl.POLYGON_OFFSET_FILL); gl.polygonOffset(1.5, 2.0);
+      const S = this.pr.shadow; gl.useProgram(S.p);
+      this.uni(S, Object.assign({}, scene, { uShadowPass: { i: 1 }, uLight: { m: lm }, uLvl: [lv.staticCv.width, lv.staticCv.height] }));
+      if (this.mTer) { this.uni(S, { uMode: { i: 0 } }); gl.bindVertexArray(this.mTer.vao); gl.drawElements(gl.TRIANGLES, this.mTer.n, gl.UNSIGNED_INT, 0); }
+      gl.activeTexture(gl.TEXTURE0); gl.uniform1i(S.u.tSrc, 0);
+      gl.bindTexture(gl.TEXTURE_2D, this.tStatic); this.uni(S, { uMode: { i: 1 } }); gl.bindVertexArray(this.mFront.vao); gl.drawElements(gl.TRIANGLES, 6, gl.UNSIGNED_INT, 0);
+      gl.bindTexture(gl.TEXTURE_2D, this.tAct); this.uni(S, { uMode: { i: 2 }, uOff: [f.cx, f.cy, 0] }); gl.bindVertexArray(this.mAct.vao); gl.drawElements(gl.TRIANGLES, 6, gl.UNSIGNED_INT, 0);
+      gl.disable(gl.POLYGON_OFFSET_FILL);
+    }
+    // 2) G-buffer: caras 3D del terreno y, encima, el pixel art frontal (Z = 0)
+    gl.bindFramebuffer(gl.FRAMEBUFFER, this.fG); gl.viewport(0, 0, fw, fh);
+    gl.clearColor(0, 0, 0, 0); gl.clearDepth(1); gl.enable(gl.DEPTH_TEST); gl.depthMask(true); gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+    gl.depthFunc(gl.LESS);
+    if (depth && this.mTer) {
+      const P = this.pr.face; gl.useProgram(P.p);
+      this.uni(P, Object.assign({}, scene, {
+        uTop: { i: M.top }, uPlatStyle: { i: M.platStyle }, uPier: M.pier, uDz: this.DZ, uTime: lv.time, uFlowers: M.flowers ? 1 : 0, uLava: M.lava,
+        uTopC: M.topC, uTopHi: M.topHi, uFill: M.fill, uFill2: M.fill2, uEdge: M.edge, uPierC: M.pierC, uWat1: M.wat1, uWat2: M.wat2,
+        uPl0: M.plat ? M.plat[0] : M.topC, uPl1: M.plat ? M.plat[1] : M.topHi, uPl2: M.plat ? M.plat[2] : M.edge,
+        uDeco0: M.flowers ? M.flowers[0] : M.topHi, uDeco1: M.flowers ? M.flowers[1] : M.topHi, uDeco2: M.flowers ? M.flowers[2] : M.topHi
+      }));
+      gl.bindVertexArray(this.mTer.vao); gl.drawElements(gl.TRIANGLES, this.mTer.n, gl.UNSIGNED_INT, 0);
+    }
+    gl.depthFunc(gl.LEQUAL);
+    const Fr = this.pr.front; gl.useProgram(Fr.p);
+    this.uni(Fr, Object.assign({}, scene, { uLvl: [lv.staticCv.width, lv.staticCv.height], uBump: flat ? 0 : 0.22 }));
+    gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, this.tStatic); gl.uniform1i(Fr.u.tStatic, 0);
+    gl.bindVertexArray(this.mFront.vao); gl.drawElements(gl.TRIANGLES, 6, gl.UNSIGNED_INT, 0);
+    gl.disable(gl.DEPTH_TEST);
+    // 3) oclusión ambiental a media resolución (+ desenfoque de 4×4)
+    const half = [this.tAO.w, this.tAO.h];
+    if (alta && depth) {
+      gl.useProgram(this.pr.ssao.p); this.uni(this.pr.ssao, scene); gl.uniform3fv(this.pr.ssao.u.uK, this.kernel);
+      this.fs(this.pr.ssao, this.fAO, { tAlb: [0, this.tAlb], tNrm: [1, this.tNrm], tDepth: [2, this.tDepth] });
+      gl.useProgram(this.pr.box.p); this.uni(this.pr.box, { uTexel: [1 / half[0], 1 / half[1]] });
+      this.fs(this.pr.box, this.fAO2, { tSrc: [0, this.tAO] });
+    }
+    // 4) fondo desenfocado (profundidad de campo: el fondo queda fuera de foco)
+    if (alta) {
+      gl.useProgram(this.pr.box.p); this.uni(this.pr.box, { uTexel: [1 / fw, 1 / fh] });
+      this.fs(this.pr.box, this.fBgH, { tSrc: [0, this.tBg] });
+      gl.useProgram(this.pr.gauss.p); this.uni(this.pr.gauss, { uDir: [1 / half[0], 0] }); this.fs(this.pr.gauss, this.fBgH2, { tSrc: [0, this.tBgH] });
+      gl.useProgram(this.pr.gauss.p); this.uni(this.pr.gauss, { uDir: [0, 1 / half[1]] }); this.fs(this.pr.gauss, this.fBgH, { tSrc: [0, this.tBgH2] });
+    }
+    // 5) iluminación y composición (HDR)
+    const L = this.pr.light, lu = new Float32Array(128), lc = new Float32Array(128);
+    f.lights.forEach((l, i) => { lu.set([l.x, l.y, Math.max(1, l.r), l.a], i * 4); if (l.color) { const c = d25Color(l.color); lc.set([c[0], c[1], c[2], 1], i * 4); } });
+    gl.useProgram(L.p);
+    this.uni(L, Object.assign({}, scene, {
+      uLight: { m: lm }, uSun: M.sun, uSunCol: M.sunCol, uHemi: M.hemi, uTint: c3(f.tint), uAmb: M.amb, uDif: M.dif, uDark: f.dk, uBgDof: 0.55, uPL: M.pl * (0.6 + f.dk),
+      uSunDisc: M.sunDisc, uNL: { i: f.lights.length }, uFlat: { i: flat ? 1 : 0 }, uShadows: { i: alta && depth ? 1 : 0 }, uAO: { i: alta && depth ? 1 : 0 }, uEPX: { i: epx }, uDof: { i: alta ? 1 : 0 }
+    }));
+    gl.uniform4fv(L.u.uL, lu); gl.uniform4fv(L.u.uLC, lc);
+    this.fs(L, this.fHdr, { tAlb: [0, this.tAlb], tNrm: [1, this.tNrm], tDepth: [2, this.tDepth], tBg: [3, this.tBg], tBgBlur: [4, this.tBgH], tAct: [5, this.tAct], tAO: [6, this.tAO2], tShadow: [7, this.tShadow] });
+    // 6) tilt-shift (copia desenfocada a media resolución) y bloom dual-Kawase
+    if (alta) {
+      gl.useProgram(this.pr.box.p); this.uni(this.pr.box, { uTexel: [1 / fw, 1 / fh] }); this.fs(this.pr.box, this.fHalf, { tSrc: [0, this.tHdr] });
+      gl.useProgram(this.pr.gauss.p); this.uni(this.pr.gauss, { uDir: [1 / half[0], 0] }); this.fs(this.pr.gauss, this.fHalf2, { tSrc: [0, this.tHalf] });
+      gl.useProgram(this.pr.gauss.p); this.uni(this.pr.gauss, { uDir: [0, 1 / half[1]] }); this.fs(this.pr.gauss, this.fHalf, { tSrc: [0, this.tHalf2] });
+    }
+    if (!flat) {
+      const bl = this.bl, n = alta ? bl.length : 3;
+      gl.useProgram(this.pr.pre.p); this.uni(this.pr.pre, { uThr: this.hdr ? 1.0 : 0.82 }); this.fs(this.pr.pre, bl[0].f, { tSrc: [0, this.tHdr] });
+      for (let i = 1; i < n; i++) { gl.useProgram(this.pr.kdown.p); this.uni(this.pr.kdown, { uTexel: [1 / bl[i - 1].t.w, 1 / bl[i - 1].t.h] }); this.fs(this.pr.kdown, bl[i].f, { tSrc: [0, bl[i - 1].t] }); }
+      gl.enable(gl.BLEND); gl.blendFunc(gl.ONE, gl.ONE);
+      for (let i = n - 1; i > 0; i--) { gl.useProgram(this.pr.kup.p); this.uni(this.pr.kup, { uTexel: [0.5 / bl[i].t.w, 0.5 / bl[i].t.h] }); this.fs(this.pr.kup, bl[i - 1].f, { tSrc: [0, bl[i].t] }); }
+      gl.disable(gl.BLEND);
+    }
+    // 7) composición final en pantalla
+    const Fi = this.pr.final; gl.useProgram(Fi.p);
+    this.uni(Fi, {
+      uRes: [fw, fh], uFlat: { i: flat ? 1 : 0 }, uEPX: { i: epx }, uTilt: { i: alta ? 1 : 0 }, uBloomK: this.hdr ? 0.42 : 0.3, uFocusY: f.focusY,
+      uVigA: f.vig, uGray: this.gray, uSat: M.sat, uCon: M.con, uShTint: M.shTint, uHiTint: M.hiTint
+    });
+    this.fs(Fi, null, { tHdr: [0, this.tHdr], tHalf: [1, this.tHalf], tBloom: [2, this.bl[0].t], tUi: [3, this.tUi] });
+  },
+  // vigilancia de fluidez: primero baja la calidad; si aún va lento, vuelve al modo HD
+  watch() {
+    const now = performance.now(), dt = now - this.lastT; this.lastT = now;
+    if (!(dt > 0 && dt < 200)) return;
+    this.avg = this.avg ? this.avg * 0.95 + dt * 0.05 : dt;
+    this.slowT = this.avg > 26 ? this.slowT + dt / 1000 : 0;
+    if (this.slowT > 5 && !navigator.webdriver) {
+      this.slowT = 0; this.avg = 0;
+      if (this.quality === 'alta') { this.quality = 'baja'; Toast.show('Gráficos 2.5D en modo ligero para ir más fluido', PAL.sun, 3.5); }
+      else { this.autoOff = true; this.apply(); Toast.show('Gráficos 2.5D en pausa para ir más fluido (Ajustes)', PAL.sun, 3.5); }
+    }
+  }
+};
+
+// Geometría del diorama a partir de la rejilla de baldosas (no cambia la física):
+// tramos de caras superiores (horizontales) y laterales (verticales), losas
+// finas para las plataformas de un solo sentido y la superficie del agua.
+// Vértice: x, y, z, tipo de cara, dato (y del borde superior del tramo lateral).
+function d25Mesh(lv, DZ, DP) {
+  const V = [], I = [], T = TILE, t = (x, y) => lv.tile(x, y), solid = (x, y) => t(x, y) === '#';
+  const q = (a, b, c, d, type, flag) => { const n = V.length / 5; for (const p of [a, b, c, d]) V.push(p[0], p[1], p[2], type, flag); I.push(n, n + 1, n + 2, n, n + 2, n + 3); };
+  const runs = (y, test, fn) => { let x = 0; while (x < lv.w) { if (!test(x)) { x++; continue; } let x2 = x; while (x2 + 1 < lv.w && test(x2 + 1)) x2++; fn(x * T, (x2 + 1) * T); x = x2 + 1; } };
+  for (let y = 0; y < lv.h; y++) {
+    runs(y, x => solid(x, y) && !solid(x, y - 1) && t(x, y - 1) !== '~', (X0, X1) => q([X0, y * T, 0], [X1, y * T, 0], [X1, y * T, DZ], [X0, y * T, DZ], 0, 0));
+    if (D25_PLAT[lv.theme.plat]) runs(y, x => t(x, y) === '=', (X0, X1) => {
+      const Y = y * T, Yb = Y + 4;
+      q([X0, Y, 0], [X1, Y, 0], [X1, Y, DP], [X0, Y, DP], 3, 0);
+      q([X0, Y, 0], [X0, Y, DP], [X0, Yb, DP], [X0, Yb, 0], 4, 0);
+      q([X1, Y, 0], [X1, Y, DP], [X1, Yb, DP], [X1, Yb, 0], 5, 0);
+    });
+    runs(y, x => t(x, y) === '~' && t(x, y - 1) !== '~' && !solid(x, y - 1), (X0, X1) => { const Y = y * T + 2; q([X0, Y, 0], [X1, Y, 0], [X1, Y, DZ], [X0, Y, DZ], 6, 0); });
+  }
+  for (let x = 0; x < lv.w; x++) for (const side of [-1, 1]) {
+    let y = 0;
+    while (y < lv.h) {
+      if (!(solid(x, y) && !solid(x + side, y))) { y++; continue; }
+      let y2 = y; while (y2 + 1 < lv.h && solid(x, y2 + 1) && !solid(x + side, y2 + 1)) y2++;
+      const X = side < 0 ? x * T : (x + 1) * T, Y0 = y * T, Y1 = (y2 + 1) * T, top = !solid(x, y - 1) ? Y0 : -1;
+      q([X, Y0, 0], [X, Y0, DZ], [X, Y1, DZ], [X, Y1, 0], side < 0 ? 1 : 2, top);
+      y = y2 + 1;
+    }
+  }
+  return { verts: new Float32Array(V), idx: new Uint32Array(I) };
+}
+
+
 // ===== 99_main.js · Lumina Loop · © Aslin Gonzalo Botello Plata =====
 // =====================================================================
 //  ARRANQUE Y BUCLE PRINCIPAL (paso fijo de 1/60 s + dibujo por frame)
@@ -20172,6 +21069,7 @@ function frame(now) {
 function boot() {
   Save.loadSettingsOnly();
   HD.init();
+  D25.init();
   Font.build(); Light.init();
   buildAllSprites();
   resize();
@@ -20189,7 +21087,7 @@ function boot() {
 // en la página publicada no deja saltarse la contraseña del modo docente)
 const DEV = !!navigator.webdriver;
 if (DEV) window.LL = {
-  autoria: AUTORIA, Registro, sha256Hex, claveDocenteOk, DOCENTE_CLAVE, TeacherLockScene, makePlayer, cleanNameInput, nameCase, HERO, setHero, G, Game, Scenes, HD, LEVELS, textW, TextAudit, Spr, DefeatScene, MINI, MiniBoss, placeMiniBoss, TRAIN_MOVES, trainList, TrainDummy, SOUVENIRS, COSMETICS, POWERS, hasPower, grantPower, syncPowers, PowersScene, PowerCardScene, LockHelpScene, SimScene, SIMS, SIM_SOLAR, VariableLabScene, SimLabScene, SIM_ORDER, simDone, simReward, placeSims, FORGE, forged, ForgeScene, ForgeTrialScene, pulseCost, healCost, Cards, cardQuestion, CardsScene, ReviewScene, CARD_BANK, CARD_META, dailyChallenge, dailyCode, launchDaily, makeLockQuestion, LOCK_GEN, CodeLock, TraceScene, buildLevel: (k, sp) => new Level(k, sp), Save, Input, UI, Cut, flag, setFlag, CODEX, QUESTS, CHALLENGES, REGIONS, makePuzzleScene, Particles, AudioSys, BOSSES, makeEnemy, unlocked, MapArt,
+  autoria: AUTORIA, D25, d25Mesh, d25Theme, Registro, sha256Hex, claveDocenteOk, DOCENTE_CLAVE, TeacherLockScene, makePlayer, cleanNameInput, nameCase, HERO, setHero, G, Game, Scenes, HD, LEVELS, textW, TextAudit, Spr, DefeatScene, MINI, MiniBoss, placeMiniBoss, TRAIN_MOVES, trainList, TrainDummy, SOUVENIRS, COSMETICS, POWERS, hasPower, grantPower, syncPowers, PowersScene, PowerCardScene, LockHelpScene, SimScene, SIMS, SIM_SOLAR, VariableLabScene, SimLabScene, SIM_ORDER, simDone, simReward, placeSims, FORGE, forged, ForgeScene, ForgeTrialScene, pulseCost, healCost, Cards, cardQuestion, CardsScene, ReviewScene, CARD_BANK, CARD_META, dailyChallenge, dailyCode, launchDaily, makeLockQuestion, LOCK_GEN, CodeLock, TraceScene, buildLevel: (k, sp) => new Level(k, sp), Save, Input, UI, Cut, flag, setFlag, CODEX, QUESTS, CHALLENGES, REGIONS, makePuzzleScene, Particles, AudioSys, BOSSES, makeEnemy, unlocked, MapArt,
   cfg: { CFG_FEST_BOOT, CFG_PUERTO_ROUTE, CFG_PUERTO_CHAIN, CFG_PUERTO_CARRERA, CFG_VALLE_RUTA, CFG_VALLE_SACOS, CFG_VALLE_MOLINO, CFG_SOL_FLOW, CFG_SOL_FLORES, CFG_SOL_SENSOR, CFG_SOL_MATRIZ, CFG_SOL_NUBE, CFG_AERIS_MOLINO, CFG_AERIS_VIENTO, CFG_AERIS_BUCLE, CFG_HYD_FORJA, CFG_HYD_RIO, CFG_HYD_DUP, cfgBioSorter, CFG_BIO_LISTA, CFG_BIO_MERCADO, CFG_GEA_FSM, CFG_GEA_AISLADA, CFG_GEA_CRISTAL, CFG_H2_PIPE, CFG_H2_BARCO, CFG_BAT_SORT, CFG_BAT_SEARCH, CFG_BAT_BETA, CFG_BAT_BUG, CFG_PRISMA_MG, CFG_PRISMA_FEST, CFG_PRISMA_SINSOL, pzPhaseCfg },
   A,
   S: { RegisterScene, CreditsScene, TitleScene, PauseScene, SettingsScene, RemapScene, CodexScene, TeacherScene, TallerScene, QuestLogScene, MasteryScene, MapScene, LabScene, ControlsScene, BlueprintScene, ConfirmScene, SparkEditorScene, ShieldRuleScene, Shot, RegionBoss, LumenWave, BossFX }

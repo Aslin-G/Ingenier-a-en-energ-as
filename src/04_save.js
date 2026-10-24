@@ -15,7 +15,7 @@ const PROG_KEYS = MASTERY_KEYS.slice(0, 11), ENERGY_KEYS = MASTERY_KEYS.slice(11
 
 const DEFAULT_SETTINGS = () => ({
   musicVol: 0.55, sfxVol: 0.8, textSpeed: 1, highContrast: false, reduceFlash: false, reduceShake: false,
-  touch: 'auto', noTimer: false, captions: true, pixelPerfect: false, bindings: null, confidence: true, assist: false, hd: true
+  touch: 'auto', noTimer: false, captions: true, pixelPerfect: false, bindings: null, confidence: true, assist: false, hd: true, d25: true
 });
 
 function newSave() {

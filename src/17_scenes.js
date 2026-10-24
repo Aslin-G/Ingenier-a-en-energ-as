@@ -77,7 +77,8 @@ const Game = {
     }
     if (Save.flash > 0) { ctx.globalAlpha = Math.min(1, Save.flash); icon(ctx, 'star', W - 12, H - 12); ctx.globalAlpha = 1; }
     Trans.draw(ctx);
-    HD.present();
+    // modo 2.5D: la GPU compone el mundo en relieve con la interfaz; si no, el modo HD/clásico
+    if (!D25.present()) HD.present();
   },
   newGame(player) {
     const settings = G.save.settings, teacher = G.save.teacherUnlocked, lab = G.save.labUnlocked;
@@ -251,7 +252,8 @@ class DefeatScene {
     }
     // el mundo pierde el color y se oscurece poco a poco
     const gray = clamp((t - 0.3) / 2.0, 0, 1);
-    if (gray > 0) { g.globalCompositeOperation = 'saturation'; g.fillStyle = 'rgba(128,128,128,' + gray + ')'; g.fillRect(0, 0, W, H); g.globalCompositeOperation = 'source-over'; }
+    if (gray > 0 && D25.active) D25.gray = gray;
+    else if (gray > 0) { g.globalCompositeOperation = 'saturation'; g.fillStyle = 'rgba(128,128,128,' + gray + ')'; g.fillRect(0, 0, W, H); g.globalCompositeOperation = 'source-over'; }
     const pulse = this.phase === 'impact' ? 0.25 + 0.2 * Math.abs(Math.sin(t * 9)) : 0.35;
     g.globalAlpha = pulse * clamp(t / 0.4, 0, 1); rect(g, 0, 0, W, H, '#2A0A1A'); g.globalAlpha = 1;
     // viñeta roja en los bordes
@@ -570,10 +572,14 @@ class SettingsScene {
     tog('noTimer', 'Modo sin tiempo (sin prisas)');
     tog('confidence', 'Preguntar "¿qué tan seguro estás?"');
     tog('pixelPerfect', 'Escalado de píxel entero');
-    // gráficos HD: filtro en la GPU que redondea los bordes con píxeles más finos
-    row('Gráficos HD (bordes y curvas finos)');
-    if (UI.btn(g, 'thd', 330, y, 90, 12, !HD.ok ? 'NO DISPONIBLE' : S.hd !== false && !HD.autoOff ? 'SÍ' : 'NO', { color: !HD.ok ? '#8A8FB0' : S.hd !== false && !HD.autoOff ? PAL.lime : PAL.coral }) && HD.ok) {
-      S.hd = HD.autoOff ? true : S.hd === false; HD.autoOff = false; HD.apply(); AudioSys.sfx('click');
+    // gráficos: 2.5D (relieve, luces y sombras en la GPU), HD (bordes finos) o clásicos
+    row('Gráficos');
+    const gfx = S.hd === false || !HD.ok ? 'clasico' : S.d25 !== false && D25.ok && !D25.autoOff ? '25d' : 'hd';
+    const gfxName = { '25d': '2.5D', hd: 'HD', clasico: 'CLÁSICOS' }[gfx];
+    if (UI.btn(g, 'thd', 330, y, 90, 12, !HD.ok && !D25.ok ? 'CLÁSICOS' : gfxName, { color: gfx === '25d' ? PAL.lime : gfx === 'hd' ? PAL.teal : PAL.coral, tip: '2.5D: profundidad, luces y sombras · HD: bordes finos · CLÁSICOS: pixel art sin filtros' }) && (HD.ok || D25.ok)) {
+      const order = (D25.ok ? ['25d'] : []).concat(HD.ok ? ['hd'] : [], ['clasico']), next = order[(order.indexOf(gfx) + 1) % order.length];
+      S.hd = next !== 'clasico'; S.d25 = next === '25d';
+      HD.autoOff = false; D25.autoOff = false; D25.quality = 'alta'; HD.apply(); D25.apply(); AudioSys.sfx('click');
     }
     y += 15;
     tog('assist', 'Ayuda de combate (+2 células, jefes lentos)');

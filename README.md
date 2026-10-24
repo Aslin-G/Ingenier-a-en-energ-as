@@ -182,7 +182,18 @@ Desde el menú principal, **solo con la contraseña del docente** (tras 5 intent
 
 ### Accesibilidad
 
-**Gráficos HD** (se pueden apagar si el equipo va justo), volumen de música y efectos, velocidad del texto (incluida instantánea), **subtítulos de sonidos**, **alto contraste**, **reducir destellos**, **reducir sacudidas**, **modo sin tiempo**, **ayuda de combate** (+2 células y jefes más lentos), controles táctiles (auto/siempre/nunca), escalado de píxel entero y remapeo de teclas. Todos los menús se pueden usar con teclado, mando, ratón o pantalla táctil.
+**Gráficos** 2.5D, HD o clásicos (si el equipo va justo, el juego baja la calidad solo), volumen de música y efectos, velocidad del texto (incluida instantánea), **subtítulos de sonidos**, **alto contraste**, **reducir destellos**, **reducir sacudidas**, **modo sin tiempo**, **ayuda de combate** (+2 células y jefes más lentos), controles táctiles (auto/siempre/nunca), escalado de píxel entero y remapeo de teclas. Todos los menús se pueden usar con teclado, mando, ratón o pantalla táctil.
+
+### Gráficos 2.5D (HD-2D): el plano de juego como un diorama
+
+Con **Ajustes → Gráficos: 2.5D** (la opción por defecto si el navegador tiene WebGL2) el juego se ve en relieve, al estilo HD-2D, **sin cambiar la lógica**: la física, las colisiones (cajas AABB contra la rejilla de baldosas), los niveles y los textos siguen en el plano 2D de siempre.
+
+- **Cámara con desplazamiento de lente** (*off-axis*): el plano de juego (Z = 0) cae 1:1 sobre los 480×270 de siempre y el punto de fuga queda por encima de la pantalla. Se ven las caras de arriba y de los lados del terreno, pero los saltos, escaleras y plataformas coinciden exactamente con lo que se ve (no hay isometría ni cámara inclinada).
+- **Terreno extruido**: cada baldosa sólida del mapa es un prisma. La cara frontal es el pixel art original; la superior y las laterales se texturizan a mano, píxel a píxel, según la isla (césped con flores, tablones del muelle, baldosas solares, roca, metal con franja de seguridad, rejilla de neón, mármol, cristal arcoíris). Las plataformas de un solo sentido son losas finas y el agua y la lava tienen superficie con ondas y brillos. Los personajes, enemigos y objetos son tarjetas en Z = 0, siempre delante.
+- **Luz**: ambiente hemisférico y sol (o luna) por isla con **mapa de sombras** (el terreno, los adornos y los personajes proyectan sombra sobre el suelo); las luces del juego (Lumi, el Lumisable, faroles, cofres...) son **luces puntuales**; el «apagón» de las zonas sin energía funciona igual que en el modo clásico. El pixel art gana relieve con **mapas de normales por Sobel** (terreno y siluetas).
+- **Posprocesado** en la GPU: oclusión ambiental (**SSAO**) a media resolución, **bloom** dual-Kawase (sol, neón, lava, luces), **tilt-shift** que deja enfocada la banda de juego y desenfoca el fondo, y **color por isla** (saturación, contraste y tonos de sombras y luces).
+- Todo está escrito a mano en WebGL2, sin motores ni librerías: `40_gfx_core.js` (utilidades), `41_gfx_materials.js` (materiales e islas) y `42_gfx_renderer.js` (bandas, cámara, pases y composición). `Level.drawWorld` reparte sus etapas (fondo, actores, luces, interfaz) entre lienzos y la GPU; el dibujo clásico sigue intacto como opción.
+- **Respaldo**: sin WebGL2, si se pierde el contexto o si el equipo va lento (primero pasa a modo ligero, sin sombras, oclusión ni desenfoque; después a HD), el juego vuelve solo al dibujo 2D.
 
 ### Gráficos: pixel art a doble resolución
 
@@ -202,7 +213,7 @@ lumina_loop.html        ← copia idéntica de index.html (enlaces antiguos)
 .nojekyll               ← GitHub Pages publica los archivos tal cual
 .github/workflows/      ← publicación automática en GitHub Pages
 src/
-  shell.html            plantilla HTML (lienzo de 960×540, capa HD y estilos)
+  shell.html            plantilla HTML (lienzo de 960×540, capas HD y 2.5D y estilos)
   01_core.js            lienzo, paleta, utilidades, entrada (teclado, puntero, táctil, mando)
   02_font.js            fuente bitmap propia con acentos y marcado de color
   03_audio.js           Web Audio: efectos procedurales y música generativa por capas
@@ -238,6 +249,9 @@ src/
   29_challenges.js      banco de 115 retos del modo docente
   29_forge.js           Forja del Lumisable (mejoras del sable ligadas a conceptos)
   30_lv_faro.js         Faro Aurora, Perfect Zero, final y créditos
+  40_gfx_core.js        2.5D: utilidades WebGL2 (programas, texturas, búferes, matriz de la luz)
+  41_gfx_materials.js   2.5D: materiales de cada isla y sombreadores del G-buffer
+  42_gfx_renderer.js    2.5D: bandas, cámara off-axis, terreno extruido, luces, sombras y posprocesado
   99_main.js            bucle de 60 Hz de paso fijo y arranque
 tools/
   build.js              concatena src/ en lumina_loop.html
@@ -267,6 +281,7 @@ node tools/tests/presets.js   # cada reto de código empieza armado pero sin res
 node tools/tests/bosses.js    # sable y los 10 jefes: vida ×6, 3 fases, ERROR CRÍTICO, parche fallido que cuesta célula
 node tools/tests/map.js       # mapa ilustrado, viaje entre islas e index.html idéntico a lumina_loop.html
 node tools/tests/hd.js        # modo HD: el filtro WebGL compila, cubre el lienzo y se puede apagar
+node tools/tests/d25.js       # 2.5D: igual al clásico sin efectos, caras frontales en su sitio, todas las islas, respaldos
 node tools/tests/locks.js     # cerraduras de código: 3000 preguntas válidas, cofres en cada isla, fallo → traza → variante
 node tools/tests/cards.js     # cartas: calendario de Leitner, racha, repaso desde el mapa, reto del día y forja
 node tools/tests/sims.js      # los 6 simuladores se completan con sus mandos, no se cumplen solos y los errores no cuentan

@@ -364,10 +364,28 @@ class Level {
     const maxX = Math.max(0, this.pw - W), maxY = Math.max(0, this.ph - H);
     return { x: clamp(px0 + Math.round(c.x - p.x), 0, maxX), y: clamp(py0 + Math.round(c.y - p.y), 0, maxY) };
   }
+  // El dibujo va por etapas (fondo, terreno, actores, luces, superposición): el modo
+  // 2.5D (42_gfx_renderer.js) reparte las mismas etapas entre lienzos y la GPU.
   drawWorld(g) {
     const cp = this.camPixel();
     const cx = cp.x + FX.ox, cy = cp.y + FX.oy;
     Level.camRef.x = cx; Level.camRef.y = cy;
+    if (D25.active) { D25.drawLevel(this, g, cx, cy); return; }
+    this.drawBackdrop(g, cx, cy);
+    // terreno
+    g.drawImage(this.staticCv, cx, cy, W, H, 0, 0, W, H);
+    this.drawActors(g, cx, cy);
+    // iluminación
+    this.addLights(cx, cy);
+    const dk = this.darkness();
+    Light.render(g, dk, this.theme.tint || '#0B1030');
+    this.drawSunAfterDark(g, dk);
+    // viñeta suave: más marcada de noche y en cuevas
+    g.drawImage(Vignette.get(this.vignetteA()), 0, 0);
+    this.drawOverlay(g, cx, cy);
+  }
+  // cielo, capas de parallax y elementos vivos del fondo
+  drawBackdrop(g, cx, cy) {
     const th = this.theme;
     g.drawImage(this.bg.sky, 0, 0, W, H);
     drawSkyLive(g, this.bg, this.time);
@@ -385,8 +403,9 @@ class Level {
     }
     drawLiveBackground(g, this, cx, cy, prevP, 99);
     if (this.def.skyDraw) this.def.skyDraw(this, g, cx, cy);
-    // terreno
-    g.drawImage(this.staticCv, cx, cy, W, H, 0, 0, W, H);
+  }
+  // baldosas dinámicas, entidades, protagonistas, agua y partículas del mundo
+  drawActors(g, cx, cy) {
     this.drawDynamicTiles(g, cx, cy);
     // entidades de fondo
     for (const e of this.entities) if (e.layer === -1 && e.draw && this.onScreen(e, cx, cy)) drawEntity(g, e, cx, cy);
@@ -401,7 +420,9 @@ class Level {
     for (const e of this.entities) if (e.layer === 1 && e.draw && this.onScreen(e, cx, cy)) drawEntity(g, e, cx, cy);
     this.drawWater(g, cx, cy);
     Particles.draw(g, cx, cy, false, 0);
-    // iluminación
+  }
+  // fuentes de luz de este fotograma (en coordenadas de pantalla)
+  addLights(cx, cy) {
     Light.begin();
     const p = this.player;
     Light.add(p.x + p.w / 2 - cx, p.y + 8 - cy, 70, 0.9);
@@ -409,16 +430,19 @@ class Level {
     if (p.atk || p.chargeT > 0.3) Light.add(p.cx + p.face * 10 - cx, p.y + 8 - cy, 56, 0.9, saberColor(this));
     for (const e of this.entities) if (e.light && this.onScreen(e, cx, cy, 80)) { const l = e.light(); if (l) Light.add(l.x - cx, l.y - cy, l.r, l.a == null ? 1 : l.a, l.c); }
     if (this.def.lights) this.def.lights(this, cx, cy);
-    const dk = this.darkness();
-    Light.render(g, dk, th.tint || '#0B1030');
-    // el sol y la luna no se apagan con el apagón: se redibujan casi con su brillo propio
+  }
+  // el sol y la luna no se apagan con el apagón: se redibujan casi con su brillo propio
+  drawSunAfterDark(g, dk) {
+    const th = this.theme;
     if (th.sun && dk > 0.05 && th.sun.y < 0.35 && this.bg.sunImg) {
       const sn = th.sun, sx = sn.x * W, sy = sn.y * H;
       g.globalAlpha = Math.min(1, dk * 2.2); g.drawImage(this.bg.sunImg, Math.round(sx - sn.r - 1), Math.round(sy - sn.r - 1));
       g.globalAlpha = 1;
     }
-    // viñeta suave: más marcada de noche y en cuevas
-    g.drawImage(Vignette.get(th.sun && !th.sun.moon ? 0.2 : 0.34), 0, 0);
+  }
+  vignetteA() { const th = this.theme; return th.sun && !th.sun.moon ? 0.2 : 0.34; }
+  // lo que va encima del mundo ya iluminado: avisos, Lente, etiquetas y globos
+  drawOverlay(g, cx, cy) {
     if (this.slowT > 0) { g.globalAlpha = Math.min(0.22, this.slowT * 0.2); rect(g, 0, 0, W, H, PAL.violet); g.globalAlpha = 1; }
     Particles.draw(g, cx, cy, true, 1);
     if (this.lensT > 0.01) this.drawLensOverlay(g, cx, cy);

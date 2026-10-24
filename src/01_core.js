@@ -10,7 +10,8 @@ const W = 480, H = 270, TILE = 16;
 const RES = 2;
 const cv = document.getElementById('game');
 cv.width = W * RES; cv.height = H * RES;
-const ctx = cv.getContext('2d', { alpha: false });
+// con transparencia: en el modo 2.5D este lienzo lleva solo la interfaz y la GPU pone el mundo debajo
+const ctx = cv.getContext('2d', { alpha: true });
 ctx.setTransform(RES, 0, 0, RES, 0, 0);
 ctx.imageSmoothingEnabled = false;
 // dibuja un lienzo preparado a doble densidad (hi-res) ocupando w×h píxeles de juego
